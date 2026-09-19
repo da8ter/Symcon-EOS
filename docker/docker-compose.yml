@@ -1,0 +1,56 @@
+# Akkudoktor-EOS als Docker-Container neben IP-Symcon.
+#
+# Baut das Image direkt aus dem GitHub-Tag (EOS_GIT_REF in .env), weil es für
+# Release-Kandidaten kein veröffentlichtes Image gibt. Ein lokaler Checkout des
+# EOS-Repos ist nicht nötig. Der Build braucht BuildKit (Docker Desktop: Standard).
+#
+# Start:      ./setup-mac.sh            (oder: docker compose up -d --build)
+# Update:     EOS_GIT_REF in .env ändern, dann ./setup-mac.sh update
+# API:        http://localhost:8503/docs   Dashboard: http://localhost:8504
+
+name: eos
+
+services:
+  eos:
+    image: akkudoktor/eos:${EOS_VERSION}-local
+    container_name: akkudoktoreos
+    build:
+      context: https://github.com/Akkudoktor-EOS/EOS.git#${EOS_GIT_REF}
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION}
+        BUILD_VERSION: ${EOS_VERSION}
+    environment:
+      # Threading begrenzen, sonst blockiert numpy/scipy den Rechner.
+      - OPENBLAS_NUM_THREADS=1
+      - OMP_NUM_THREADS=1
+      - MKL_NUM_THREADS=1
+      - PIP_PROGRESS_BAR=off
+      - PIP_NO_COLOR=1
+      # Im Container auf allen Interfaces lauschen, sonst ist EOS von außen nicht erreichbar.
+      - EOS_SERVER__HOST=0.0.0.0
+      - EOS_SERVER__PORT=8503
+      - EOS_SERVER__EOSDASH_HOST=0.0.0.0
+      - EOS_SERVER__EOSDASH_PORT=8504
+      - EOS_SERVER__EOSDASH_SESSKEY=${EOSDASH_SESSKEY}
+      - TZ=${TZ:-Europe/Berlin}
+    ports:
+      - "${EOS_SERVER__PORT:-8503}:8503"
+      - "${EOS_SERVER__EOSDASH_PORT:-8504}:8504"
+    volumes:
+      # Named Volume: übernimmt die Rechte des Nutzers "eos" aus dem Image.
+      # Auf dem Mac zuverlässiger als ein Bind-Mount. Wer die Dateien direkt
+      # sehen will, tauscht die Zeile gegen: - ./data:/data
+      - eos-data:/data
+    tmpfs:
+      - /tmp
+    read_only: true
+    ulimits:
+      nproc: 65535
+      nofile: 65535
+    security_opt:
+      - seccomp:unconfined
+    restart: unless-stopped
+
+volumes:
+  eos-data:
