@@ -62,6 +62,11 @@ Wechselrichterleistung, Jahresverbrauch, Einspeisevergütung und Netzentgelte (`
 ./setup-mac.sh config meine-anlage.json
 ```
 
+Eigene Konfigurationen als `docker/eos-config-local.json` ablegen, die Datei ist in `.gitignore`
+eingetragen und landet nicht im Repo. Zeitzonentarife (z. B. Octopus Heat mit drei Preiszonen)
+werden mit `ElecPriceFixed` und Zeitfenstern abgebildet, Bruttopreise direkt eintragen und
+`elecfee.provider` auf `null` lassen.
+
 Das Skript sendet die Datei per `PUT /v1/config` (Teilkonfiguration wird gemerged) und speichert sie
 anschließend mit `PUT /v1/config/file` dauerhaft. Alles Weitere lässt sich in EOSdash unter *Config*
 nachjustieren.
@@ -111,8 +116,35 @@ Compose-Netz (`eos_default`) hängen und EOS unter `http://akkudoktoreos:8503` a
 | Port 8503/8504 belegt | Ports in `docker/.env` ändern und `./setup-mac.sh` erneut ausführen. |
 | `/v1/energy-management/plan` liefert 404 | Noch kein erfolgreicher Lauf. `./setup-mac.sh logs` prüfen, SoC-Messwert setzen. |
 | Lauf bricht mit „stale“ / „missing measurement“ ab | Batterie-SoC älter als 300 s. Symcon (oder Test-curl) muss ihn zyklisch liefern. |
+| `POST /v1/optimize` liefert 503 „No new solution was produced“ | Meist fehlt eine Prognose. Log prüfen: `docker compose logs eos \| grep -i "fails on update"`. |
+| `PVForecastAkkudoktor fails on update ... 500 Server Error` | Die Akkudoktor-Cloud-API ist nicht erreichbar. Auf das lokale Backend umschalten (siehe unten). |
 | Optimierung dauert sehr lange | In Docker Desktop mehr CPUs freigeben oder `individuals`/`generations` in `optimization.genetic` senken. |
 | Apple Silicon: Build kompiliert lange | Für einzelne Pakete gibt es keine arm64-Wheels, der Build kompiliert sie (gcc ist im Builder-Image). Einmalig, danach aus dem Cache. |
+
+## PV-Prognose lokal berechnen
+
+Seit 0.4.0 kann `PVForecastAkkudoktor` die Prognose lokal aus Open-Meteo-Wetterdaten berechnen
+(pvlib), ohne die Akkudoktor-Cloud-API. Das ist robuster gegen Ausfälle der API:
+
+```bash
+curl -X PUT http://localhost:8503/v1/config/pvforecast/akkudoktor/backend -H 'Content-Type: application/json' -d '"local"'
+curl -X PUT http://localhost:8503/v1/config/file
+curl -X POST "http://localhost:8503/v1/prediction/update?force_update=true"
+```
+
+Kontrolle: `GET /v1/prediction/series?key=pvforecast_ac_power&interval=1%20hour`.
+
+## Prognose-Keys in 0.4.0rc1
+
+| Größe | Key |
+| --- | --- |
+| PV-Leistung | `pvforecast_ac_power` |
+| Strompreis | `elecprice_marketprice_wh` (€/Wh) |
+| Einspeisevergütung | `feed_in_tariff_wh` (€/Wh), `feed_in_tariff_kwh` |
+| Last | `loadforecast_power_w` (W), `loadakkudoktor_mean_power_w` |
+| Temperatur | `weather_temp_air` |
+
+Die in älterer Doku genannten Keys `load_mean` und `load_mean_adjusted` existieren nicht mehr.
 
 ## Hinweise zum Release-Kandidaten
 

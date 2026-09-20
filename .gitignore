@@ -1,0 +1,3 @@
+docker/.env
+docker/eos-config-local.json
+.DS_Store
