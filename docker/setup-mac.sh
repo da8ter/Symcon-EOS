@@ -80,9 +80,11 @@ cmd_config() {
   file="${1:-eos-config-poc.json}"
   [ -f "$file" ] || fail "Datei '$file' nicht gefunden."
   python3 -m json.tool "$file" >/dev/null || fail "'$file' ist kein gültiges JSON."
+  # Schlüssel, die mit "_" beginnen (eigene Notizen), werden nicht an EOS gesendet.
+  payload=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print(json.dumps({k:v for k,v in c.items() if not k.startswith("_")}))' "$file")
   say "Sende '$file' an PUT ${API}/v1/config (Teil-Konfiguration wird gemerged) ..."
   code=$(curl -sS -o /tmp/eos-config-response.json -w '%{http_code}' -X PUT "${API}/v1/config" \
-    -H 'Content-Type: application/json' --data-binary "@${file}")
+    -H 'Content-Type: application/json' --data-binary "$payload")
   if [ "$code" != "200" ]; then
     cat /tmp/eos-config-response.json; echo
     fail "EOS hat die Konfiguration abgelehnt (HTTP $code)."
