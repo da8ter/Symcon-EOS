@@ -112,7 +112,7 @@ class EOSBattery extends IPSModuleStrict
             $this->SetStatus(self::STATUS_NO_SOC_SOURCE);
             return;
         }
-        if (!$this->HasActiveParent()) {
+        if (!$this->parentUsable()) {
             $this->SetTimerInterval('SoCPush', 0);
             $this->SetStatus(self::STATUS_NO_PARENT);
             return;
@@ -160,7 +160,7 @@ class EOSBattery extends IPSModuleStrict
     public function PushSoC(): bool
     {
         $varId = $this->ReadPropertyInteger('SoCSourceVariable');
-        if ($varId <= 0 || !IPS_VariableExists($varId) || !$this->HasActiveParent()) {
+        if ($varId <= 0 || !IPS_VariableExists($varId) || !$this->parentUsable()) {
             return false;
         }
         $raw = (float) GetValue($varId);
@@ -192,7 +192,7 @@ class EOSBattery extends IPSModuleStrict
 
     public function RefreshPlan(): bool
     {
-        if (!$this->HasActiveParent()) {
+        if (!$this->parentUsable()) {
             return false;
         }
         $res = $this->forward(['Command' => 'GetPlanForResource', 'ResourceID' => $this->ReadPropertyString('DeviceID')]);
@@ -325,6 +325,21 @@ class EOSBattery extends IPSModuleStrict
     }
 
     // ------------------------------------------------------------------ internals
+
+    /**
+     * The EOS Server is usable for measurements even while it reports
+     * "no plan yet" (203) or a version mismatch (202): EOS needs the SoC to
+     * produce a plan in the first place. Only unreachable/inactive blocks.
+     */
+    private function parentUsable(): bool
+    {
+        $parentId = (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
+        if ($parentId <= 0 || !IPS_InstanceExists($parentId)) {
+            return false;
+        }
+        $status = (int) IPS_GetInstance($parentId)['InstanceStatus'];
+        return in_array($status, [IS_ACTIVE, 202, 203], true);
+    }
 
     private function forward(array $payload): array
     {
