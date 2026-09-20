@@ -1,0 +1,43 @@
+{
+    "elements": [
+        { "type": "Label", "caption": "Cumulative meter readings in kWh (or Wh) as your meters report them, not consumption per interval. EOS uses them to adapt the load forecast." },
+        {
+            "type": "List", "name": "Meters", "caption": "Meters", "rowCount": 6, "add": true, "delete": true,
+            "columns": [
+                { "name": "variable", "caption": "Variable", "width": "300px", "add": 0, "edit": { "type": "SelectVariable", "validVariableTypes": [1, 2] } },
+                { "name": "key", "caption": "EOS key", "width": "180px", "add": "load0_emr", "edit": { "type": "ValidationTextBox", "validate": "^[A-Za-z0-9_.-]+$" } },
+                { "name": "category", "caption": "Category", "width": "160px", "add": "load", "edit": { "type": "Select", "options": [
+                    { "caption": "Load", "value": "load" },
+                    { "caption": "Grid import", "value": "grid_import" },
+                    { "caption": "Grid export", "value": "grid_export" },
+                    { "caption": "PV production", "value": "pv" }
+                ] } },
+                { "name": "unit", "caption": "Unit", "width": "auto", "add": 0, "edit": { "type": "Select", "options": [
+                    { "caption": "kWh", "value": 0 },
+                    { "caption": "Wh", "value": 1 }
+                ] } }
+            ],
+            "values": []
+        },
+        { "type": "NumberSpinner", "name": "PushInterval", "caption": "Push interval (s)", "minimum": 60, "maximum": 3600, "suffix": " s" },
+        { "type": "CheckBox", "name": "PushOnChange", "caption": "Also push on value change (at most every 30 s)" },
+        { "type": "NumberSpinner", "name": "HistoryHours", "caption": "History import (h)", "minimum": 1, "maximum": 8760, "suffix": " h" }
+    ],
+    "actions": [
+        {
+            "type": "RowLayout",
+            "items": [
+                { "type": "Button", "caption": "Push now", "onClick": "EOSMTR_Push($id);" },
+                { "type": "Button", "caption": "Register keys in EOS", "onClick": "EOSMTR_WriteKeysToEOS($id);" },
+                { "type": "Button", "caption": "Import history from archive", "onClick": "EOSMTR_ImportHistory($id, 0);" }
+            ]
+        },
+        { "type": "Label", "name": "ActionResult", "caption": " " }
+    ],
+    "status": [
+        { "code": 101, "icon": "inactive", "caption": "Instance is being created" },
+        { "code": 102, "icon": "active", "caption": "Active" },
+        { "code": 104, "icon": "inactive", "caption": "No active EOS Server" },
+        { "code": 201, "icon": "error", "caption": "No meter configured" }
+    ]
+}

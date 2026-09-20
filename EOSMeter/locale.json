@@ -1,0 +1,44 @@
+{
+    "translations": {
+        "en": {
+            "EOS Meter": "EOS Meter",
+            "Last push": "Last push",
+            "Values sent (last push)": "Values sent (last push)",
+            "Last error": "Last error",
+            "%d meter readings sent.": "%d meter readings sent.",
+            "%d history values imported.": "%d history values imported.",
+            "No archive control found.": "No archive control found."
+        },
+        "de": {
+            "EOS Meter": "EOS Zähler",
+            "Last push": "Letzter Push",
+            "Values sent (last push)": "Gesendete Werte (letzter Push)",
+            "Last error": "Letzter Fehler",
+            "%d meter readings sent.": "%d Zählerstände gesendet.",
+            "%d history values imported.": "%d Historienwerte importiert.",
+            "No archive control found.": "Kein Archiv gefunden.",
+
+            "Cumulative meter readings in kWh (or Wh) as your meters report them, not consumption per interval. EOS uses them to adapt the load forecast.": "Kumulierte Zählerstände in kWh (oder Wh), wie die Zähler sie liefern, kein Verbrauch je Intervall. EOS passt damit die Lastprognose an.",
+            "Meters": "Zähler",
+            "Variable": "Variable",
+            "EOS key": "EOS-Key",
+            "Category": "Kategorie",
+            "Load": "Last",
+            "Grid import": "Netzbezug",
+            "Grid export": "Einspeisung",
+            "PV production": "PV-Produktion",
+            "Unit": "Einheit",
+            "Push interval (s)": "Push-Intervall (s)",
+            "Also push on value change (at most every 30 s)": "Zusätzlich bei Wertänderung senden (höchstens alle 30 s)",
+            "History import (h)": "Historien-Import (h)",
+            "Push now": "Jetzt senden",
+            "Register keys in EOS": "Keys in EOS registrieren",
+            "Import history from archive": "Historie aus Archiv importieren",
+
+            "Instance is being created": "Instanz wird erstellt",
+            "Active": "Aktiv",
+            "No active EOS Server": "Kein aktiver EOS Server",
+            "No meter configured": "Kein Zähler konfiguriert"
+        }
+    }
+}

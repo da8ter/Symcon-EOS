@@ -100,6 +100,15 @@ if (!class_exists('EOSClient')) {
             return $this->request('PUT', '/v1/measurement/data', [], $data);
         }
 
+        /**
+         * Upsert raw samples: [{"date_time": iso, "key": k, "value": v}, ...] (max 10000).
+         * Keys must be configured in EOS (measurement.*_emr_keys or device keys).
+         */
+        public function putMeasurementSamples(array $samples): array
+        {
+            return $this->request('PUT', '/v1/measurement/samples', [], $samples, 120);
+        }
+
         public function getMeasurementSeries(string $key, ?string $interval = null): array
         {
             $query = ['key' => $key];

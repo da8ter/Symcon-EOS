@@ -41,6 +41,7 @@ class EOSServer extends IPSModuleStrict
         $this->RegisterAttributeString('PlanHash', '');
         $this->RegisterAttributeString('LastRunSeen', '');
         $this->RegisterAttributeString('EOSConfigCache', '');
+        $this->RegisterAttributeString('SoCCache', '{}');
 
         $this->RegisterVariableBoolean('Connected', $this->Translate('Connected'), $this->eosBoolPresentation('Offline', 'Online', 0xFF0000, 0x00A000, 'Network'), 10);
         $this->RegisterVariableString('Version', $this->Translate('EOS version'), $this->eosValuePresentation('Information'), 20);
@@ -362,11 +363,25 @@ class EOSServer extends IPSModuleStrict
         $command = (string) ($data['Command'] ?? '');
         switch ($command) {
             case 'PutMeasurement':
-                $res = $this->client()->putMeasurementValue((string) ($data['Key'] ?? ''), (float) ($data['Value'] ?? 0), (string) ($data['DateTime'] ?? $this->eosIsoNow()));
+                $key = (string) ($data['Key'] ?? '');
+                $dateTime = (string) ($data['DateTime'] ?? $this->eosIsoNow());
+                $res = $this->client()->putMeasurementValue($key, (float) ($data['Value'] ?? 0), $dateTime);
                 if (!$res['ok']) {
                     $this->SetValue('LastError', 'measurement: ' . (string) $res['error']);
+                } else {
+                    $this->afterMeasurement($key, (float) ($data['Value'] ?? 0), $dateTime);
                 }
                 return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
+
+            case 'PutSamples':
+                $samples = is_array($data['Samples'] ?? null) ? $data['Samples'] : [];
+                $res = $this->client()->putMeasurementSamples($samples);
+                if (!$res['ok']) {
+                    $this->SetValue('LastError', 'samples: ' . (string) $res['error']);
+                } else {
+                    $this->afterMeasurement('', 0.0, $this->eosIsoNow());
+                }
+                return json_encode(['ok' => $res['ok'], 'error' => $res['error'], 'data' => $res['data']]);
 
             case 'GetPlanForResource':
                 return json_encode($this->planForResource((string) ($data['ResourceID'] ?? '')));
@@ -415,6 +430,32 @@ class EOSServer extends IPSModuleStrict
                 $this->SendDebug('EOSClient ' . $tag, $message, 0);
             }
         );
+    }
+
+    /**
+     * EOS 0.4.0rc1 looks up the SoC with dropna=False: the newest measurement
+     * record decides, and a record written for another key (EV SoC, meter
+     * reading, cycles) has NaN for the battery SoC, which cancels the run.
+     * Work-around: remember the latest SoC per key and re-send all of them
+     * whenever a different key is written, so the newest record always
+     * carries every SoC.
+     */
+    private function afterMeasurement(string $key, float $value, string $dateTime): void
+    {
+        $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
+        $cache = is_array($cache) ? $cache : [];
+        $now = time();
+        if (str_ends_with($key, '-soc-factor')) {
+            $cache[$key] = ['value' => $value, 'ts' => $now];
+            $this->WriteAttributeString('SoCCache', json_encode($cache));
+        }
+        $maxAge = max(60, (int) ($this->ReadPropertyInteger('OptMeasurementMaxAge') ?: 300));
+        foreach ($cache as $socKey => $entry) {
+            if ($socKey === $key || $now - (int) ($entry['ts'] ?? 0) > $maxAge) {
+                continue;
+            }
+            $this->client()->putMeasurementValue((string) $socKey, (float) $entry['value'], $dateTime);
+        }
     }
 
     private function applyHealth(array $health): void

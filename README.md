@@ -15,8 +15,11 @@ Phase 1 (Anzeige, keine Steuerung). Getestet mit EOS v0.4.0rc1 und IP-Symcon 9.1
 | --- | --- | --- | --- |
 | EOS Server | Splitter | `EOS` | Verbindung zu EOS, Health- und Plan-Abruf, Kosten/Erlös, EOS-Konfiguration |
 | EOS Batterie | Gerät | `EOSBAT` | SoC an EOS senden, aktive und nächste Anweisung (Modus, Faktor, Sollleistung) anzeigen, HTML-Kachel mit Fahrplan |
+| EOS E-Auto | Gerät | `EOSEV` | Fahrzeug-SoC senden, Abfahrtszeit und Ziel-SoC nach EOS, geplante Ladeleistung und Ladestrom anzeigen |
+| EOS Haushaltsgerät | Gerät | `EOSHA` | Spülmaschine, Waschmaschine, Trockner: Zeitfenster, Frist und erledigte Läufe nach EOS, geplanter Start und RUN/OFF anzeigen |
+| EOS Zähler | Gerät | `EOSMTR` | Zählerstände (Last, Netzbezug, Einspeisung, PV) zyklisch an EOS, Keys in EOS registrieren, Historie aus dem Symcon-Archiv importieren |
 
-Geplant: EOS E-Auto, EOS Haushaltsgerät, EOS Zähler, Steuerung über Zielvariablen/Aktionsskript.
+Geplant: Steuerung über Zielvariablen/Aktionsskript (Steuerungsmodus in den Geräte-Instanzen).
 Details: [docs/integrationsplan.md](docs/integrationsplan.md).
 
 ## Voraussetzungen
@@ -50,6 +53,18 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
    an EOS gesendet. EOS verwirft SoC-Werte, die älter als 300 s sind.
 4. Optional unter **Batterieparameter** Kapazität, Leistung, SoC-Grenzen und Wirkungsgrade eintragen und
    „Nach EOS schreiben“.
+
+### E-Auto, Haushaltsgerät, Zähler
+
+- **E-Auto**: Geräte-ID wie in EOS (`devices/electric_vehicles/<id>`), SoC-Quellvariable, optional Variablen für
+  „angesteckt“ und Abfahrtszeit (Unix-Zeitstempel). Die Abfahrt wird als `min_soc_deadline_datetime` zusammen mit dem
+  Ziel-SoC nach EOS geschrieben. Angezeigt werden Laden geplant, Soll-Ladeleistung und Soll-Ladestrom (aus Phasen und
+  Spannung). Mit „Nach EOS schreiben“ wird das Fahrzeug in EOS angelegt (`max_electric_vehicles` wird auf 1 gesetzt).
+- **Haushaltsgerät**: Energie je Lauf, Dauer, Zeitfenster, Planungsmodus ONCE/DAILY, optional Frist und frühester
+  Start aus Variablen sowie „heute erledigte Läufe“. Angezeigt werden geplanter Start und Ende sowie RUN/OFF.
+- **Zähler**: Liste von Symcon-Variablen mit kumulierten Zählerständen (kWh oder Wh), EOS-Key und Kategorie. Beim
+  Übernehmen werden die Keys in `measurement.*_emr_keys` eingetragen. „Historie aus Archiv importieren“ überträgt die
+  geloggten Werte der letzten Stunden, damit die Lastprognose sofort auf Messdaten aufsetzt.
 
 ## Variablen der Batterie
 
@@ -95,7 +110,19 @@ EOS_SaveConfig($id);
 EOS_PutMeasurement($id, 'load0_emr', 12345.6, '');   // Zeitstempel '' = jetzt
 EOSBAT_PushSoC($id);
 EOSBAT_GetActiveInstruction($id);   // JSON der aktiven Anweisung
+EOSEV_SetDeparture($id, strtotime('tomorrow 07:00'));   // Abfahrt nach EOS
+EOSHA_SetDeadline($id, strtotime('today 18:00'));       // Gerät muss bis dann fertig sein
+EOSMTR_Push($id);                   // Zählerstände sofort senden
+EOSMTR_ImportHistory($id, 48);      // Historie der letzten 48 h importieren
 ```
+
+## Bekannte EOS-Eigenheiten (0.4.0rc1)
+
+- EOS verwirft Läufe, wenn der Batterie-SoC älter als 300 s ist. Push-Intervall 120 s ist Standard.
+- Die SoC-Suche in EOS betrachtet den jüngsten Messwert-Datensatz, auch wenn er nur einen anderen Key enthält.
+  Der EOS Server sendet deshalb bei jedem anderen Messwert die bekannten SoC-Werte erneut mit.
+- Nach einem EOS-Neustart gibt es bis zum ersten erfolgreichen Lauf keinen Plan (Server-Status 203). Die
+  Geräte senden trotzdem weiter, damit EOS rechnen kann.
 
 ## Entwicklung
 

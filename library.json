@@ -15,6 +15,12 @@
         },
         "EOSVehicle": {
             "file": "EOSVehicle/module.php"
+        },
+        "EOSAppliance": {
+            "file": "EOSAppliance/module.php"
+        },
+        "EOSMeter": {
+            "file": "EOSMeter/module.php"
         }
     },
     "version": "0.1.0",
