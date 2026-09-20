@@ -1,0 +1,286 @@
+{
+    "elements": [
+        {
+            "type": "ExpansionPanel",
+            "caption": "Connection",
+            "expanded": true,
+            "items": [
+                { "type": "Label", "caption": "Host or IP of the EOS server. From a Symcon Docker container use host.docker.internal, not localhost." },
+                { "type": "ValidationTextBox", "name": "Host", "caption": "Host" },
+                { "type": "NumberSpinner", "name": "Port", "caption": "Port", "minimum": 1, "maximum": 65535 },
+                { "type": "NumberSpinner", "name": "Timeout", "caption": "Request timeout (s)", "minimum": 1, "maximum": 120, "suffix": " s" },
+                { "type": "NumberSpinner", "name": "HealthInterval", "caption": "Health poll interval (s)", "minimum": 0, "maximum": 3600, "suffix": " s" },
+                { "type": "NumberSpinner", "name": "PlanRefreshInterval", "caption": "Plan refresh interval (s)", "minimum": 0, "maximum": 86400, "suffix": " s" },
+                { "type": "ValidationTextBox", "name": "ExpectedVersion", "caption": "Expected EOS version (prefix)" },
+                { "type": "CheckBox", "name": "Active", "caption": "Active" }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "EOS configuration",
+            "expanded": false,
+            "items": [
+                { "type": "Label", "caption": "Symcon writes to EOS only when you press a button here. Load the current configuration first, press Apply, then adjust and write back." },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        { "type": "Button", "caption": "Load from EOS", "onClick": "EOS_LoadConfigFromEOS($id);" },
+                        { "type": "Button", "caption": "Write to EOS", "onClick": "EOS_WriteConfigToEOS($id);" },
+                        { "type": "Button", "caption": "Save in EOS (config file)", "onClick": "EOS_SaveConfig($id);" }
+                    ]
+                },
+                { "type": "Label", "name": "ConfigInfo", "caption": " " },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Location and general",
+                    "items": [
+                        { "type": "NumberSpinner", "name": "GeneralLatitude", "caption": "Latitude", "digits": 4, "minimum": -90, "maximum": 90 },
+                        { "type": "NumberSpinner", "name": "GeneralLongitude", "caption": "Longitude", "digits": 4, "minimum": -180, "maximum": 180 },
+                        { "type": "Button", "caption": "Take location from Symcon", "onClick": "EOS_UseSymconLocation($id);" },
+                        { "type": "Select", "name": "GeneralConfigSaveMode", "caption": "Config save mode", "options": [
+                            { "caption": "AUTOMATIC", "value": "AUTOMATIC" },
+                            { "caption": "MANUAL", "value": "MANUAL" }
+                        ] }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Energy management",
+                    "items": [
+                        { "type": "Select", "name": "EmsMode", "caption": "Mode", "options": [
+                            { "caption": "DISABLED", "value": "DISABLED" },
+                            { "caption": "PREDICTION", "value": "PREDICTION" },
+                            { "caption": "OPTIMIZATION", "value": "OPTIMIZATION" }
+                        ] },
+                        { "type": "NumberSpinner", "name": "EmsInterval", "caption": "Run interval (s)", "minimum": 60, "maximum": 86400, "suffix": " s" },
+                        { "type": "NumberSpinner", "name": "EmsStartupDelay", "caption": "Startup delay (s)", "minimum": 0, "maximum": 3600, "suffix": " s" }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Optimization",
+                    "items": [
+                        { "type": "Select", "name": "OptAlgorithm", "caption": "Algorithm", "options": [
+                            { "caption": "GENETIC", "value": "GENETIC" },
+                            { "caption": "GENETIC0", "value": "GENETIC0" }
+                        ] },
+                        { "type": "Select", "name": "OptIntervalSec", "caption": "Slot interval (s)", "options": [
+                            { "caption": "900 (15 min)", "value": 900 },
+                            { "caption": "3600 (60 min)", "value": 3600 }
+                        ] },
+                        { "type": "NumberSpinner", "name": "OptHorizonHours", "caption": "Control horizon (h)", "minimum": 1, "maximum": 96, "suffix": " h" },
+                        { "type": "NumberSpinner", "name": "OptIndividuals", "caption": "Individuals", "minimum": 10, "maximum": 5000 },
+                        { "type": "NumberSpinner", "name": "OptGenerations", "caption": "Generations", "minimum": 10, "maximum": 5000 },
+                        { "type": "NumberSpinner", "name": "OptSeed", "caption": "Seed (0 = random)", "minimum": 0 },
+                        { "type": "NumberSpinner", "name": "OptMeasurementMaxAge", "caption": "Max. age of SoC measurement (s)", "minimum": 30, "maximum": 86400, "suffix": " s" },
+                        { "type": "NumberSpinner", "name": "OptTailHorizonHours", "caption": "Tail horizon (h)", "minimum": 0, "maximum": 168, "suffix": " h" },
+                        { "type": "Select", "name": "OptTerminalValueMode", "caption": "Terminal value mode", "options": [
+                            { "caption": "AUTO", "value": "AUTO" },
+                            { "caption": "FIXED", "value": "FIXED" }
+                        ] },
+                        { "type": "NumberSpinner", "name": "OptTerminalValueEuroPerKwh", "caption": "Terminal value (EUR/kWh)", "digits": 4, "minimum": 0 },
+                        { "type": "NumberSpinner", "name": "OptTerminalValueWindowHours", "caption": "Terminal value window (h)", "minimum": 1, "maximum": 168, "suffix": " h" },
+                        { "type": "NumberSpinner", "name": "OptPenaltyEvSocMiss", "caption": "Penalty EV SoC miss", "digits": 2, "minimum": 0 },
+                        { "type": "NumberSpinner", "name": "OptPenaltyAcChargeBreakEven", "caption": "Penalty AC charge break-even", "digits": 2, "minimum": 0 }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Prediction",
+                    "items": [
+                        { "type": "NumberSpinner", "name": "PredictionHours", "caption": "Forecast hours", "minimum": 24, "maximum": 168, "suffix": " h" },
+                        { "type": "NumberSpinner", "name": "PredictionHistoricHours", "caption": "Historic hours", "minimum": 0, "maximum": 8760, "suffix": " h" }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Electricity price",
+                    "items": [
+                        { "type": "Select", "name": "ElecPriceProvider", "caption": "Provider", "options": [ { "caption": "- not set -", "value": "" } ] },
+                        {
+                            "type": "List", "name": "ElecPriceFixedWindows", "caption": "Fixed price time windows (EUR/kWh)", "rowCount": 5, "add": true, "delete": true,
+                            "columns": [
+                                { "name": "start_time", "caption": "Start", "width": "120px", "add": "00:00", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "duration", "caption": "Duration", "width": "160px", "add": "24 hours", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "value", "caption": "Value", "width": "auto", "add": 0.30, "edit": { "type": "NumberSpinner", "digits": 4 } }
+                            ],
+                            "values": []
+                        },
+                        { "type": "ValidationTextBox", "name": "ElecPriceEnergyChartsZone", "caption": "Energy-Charts bidding zone" },
+                        { "type": "PasswordTextBox", "name": "ElecPriceTibberToken", "caption": "Tibber access token" },
+                        { "type": "ValidationTextBox", "name": "ElecPriceTibberHomeId", "caption": "Tibber home ID" },
+                        { "type": "NumberSpinner", "name": "ElecPriceSmardFilterId", "caption": "SMARD filter ID", "minimum": 0 },
+                        { "type": "ValidationTextBox", "name": "ElecPriceSmardRegion", "caption": "SMARD region" }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Fees and taxes",
+                    "items": [
+                        { "type": "Select", "name": "ElecFeeProvider", "caption": "Provider", "options": [ { "caption": "- not set -", "value": "" } ] },
+                        {
+                            "type": "List", "name": "ElecFeeConsumptionAmtWindows", "caption": "Consumption fee (EUR/kWh)", "rowCount": 3, "add": true, "delete": true,
+                            "columns": [
+                                { "name": "start_time", "caption": "Start", "width": "120px", "add": "00:00", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "duration", "caption": "Duration", "width": "160px", "add": "24 hours", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "value", "caption": "Value", "width": "auto", "add": 0.0, "edit": { "type": "NumberSpinner", "digits": 4 } }
+                            ],
+                            "values": []
+                        },
+                        {
+                            "type": "List", "name": "ElecFeeConsumptionPercentWindows", "caption": "Consumption surcharge (%)", "rowCount": 3, "add": true, "delete": true,
+                            "columns": [
+                                { "name": "start_time", "caption": "Start", "width": "120px", "add": "00:00", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "duration", "caption": "Duration", "width": "160px", "add": "24 hours", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "value", "caption": "Value", "width": "auto", "add": 19, "edit": { "type": "NumberSpinner", "digits": 2 } }
+                            ],
+                            "values": []
+                        },
+                        {
+                            "type": "List", "name": "ElecFeeFeedinAmtWindows", "caption": "Feed-in fee (EUR/kWh)", "rowCount": 3, "add": true, "delete": true,
+                            "columns": [
+                                { "name": "start_time", "caption": "Start", "width": "120px", "add": "00:00", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "duration", "caption": "Duration", "width": "160px", "add": "24 hours", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "value", "caption": "Value", "width": "auto", "add": 0.0, "edit": { "type": "NumberSpinner", "digits": 4 } }
+                            ],
+                            "values": []
+                        },
+                        {
+                            "type": "List", "name": "ElecFeeFeedinPercentWindows", "caption": "Feed-in deduction (%)", "rowCount": 3, "add": true, "delete": true,
+                            "columns": [
+                                { "name": "start_time", "caption": "Start", "width": "120px", "add": "00:00", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "duration", "caption": "Duration", "width": "160px", "add": "24 hours", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "value", "caption": "Value", "width": "auto", "add": 0, "edit": { "type": "NumberSpinner", "digits": 2 } }
+                            ],
+                            "values": []
+                        }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Feed-in tariff",
+                    "items": [
+                        { "type": "Select", "name": "FeedInProvider", "caption": "Provider", "options": [ { "caption": "- not set -", "value": "" } ] },
+                        { "type": "CheckBox", "name": "FeedInDirectMarketing", "caption": "Direct marketing (battery export)" },
+                        {
+                            "type": "List", "name": "FeedInFixedWindows", "caption": "Fixed tariff time windows (EUR/kWh)", "rowCount": 3, "add": true, "delete": true,
+                            "columns": [
+                                { "name": "start_time", "caption": "Start", "width": "120px", "add": "00:00", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "duration", "caption": "Duration", "width": "160px", "add": "24 hours", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "value", "caption": "Value", "width": "auto", "add": 0.08, "edit": { "type": "NumberSpinner", "digits": 4 } }
+                            ],
+                            "values": []
+                        },
+                        { "type": "ValidationTextBox", "name": "FeedInEnergyChartsZone", "caption": "Energy-Charts bidding zone" },
+                        { "type": "ValidationTextBox", "name": "FeedInDvhubBaseUrl", "caption": "dvhub base URL" },
+                        { "type": "ValidationTextBox", "name": "FeedInDvhubZone", "caption": "dvhub zone" }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "PV forecast",
+                    "items": [
+                        { "type": "Select", "name": "PvProvider", "caption": "Provider", "options": [ { "caption": "- not set -", "value": "" } ] },
+                        {
+                            "type": "List", "name": "PvPlanes", "caption": "PV planes", "rowCount": 4, "add": true, "delete": true,
+                            "columns": [
+                                { "name": "peakpower", "caption": "Peak power (kWp)", "width": "130px", "add": 5.0, "edit": { "type": "NumberSpinner", "digits": 2 } },
+                                { "name": "surface_azimuth", "caption": "Azimuth (S=180)", "width": "120px", "add": 180, "edit": { "type": "NumberSpinner", "digits": 0, "minimum": 0, "maximum": 360 } },
+                                { "name": "surface_tilt", "caption": "Tilt", "width": "80px", "add": 30, "edit": { "type": "NumberSpinner", "digits": 0, "minimum": 0, "maximum": 90 } },
+                                { "name": "inverter_paco", "caption": "Inverter AC (W)", "width": "130px", "add": 0, "edit": { "type": "NumberSpinner" } },
+                                { "name": "userhorizon", "caption": "Horizon (CSV)", "width": "auto", "add": "", "edit": { "type": "ValidationTextBox" } },
+                                { "name": "loss", "caption": "Loss (%)", "width": "90px", "add": 0, "edit": { "type": "NumberSpinner", "digits": 1 } },
+                                { "name": "albedo", "caption": "Albedo", "width": "90px", "add": 0, "edit": { "type": "NumberSpinner", "digits": 2 } }
+                            ],
+                            "values": []
+                        },
+                        { "type": "Select", "name": "PvAkkudoktorBackend", "caption": "Akkudoktor backend", "options": [
+                            { "caption": "remote (cloud API)", "value": "remote" },
+                            { "caption": "local (Open-Meteo + pvlib)", "value": "local" }
+                        ] },
+                        { "type": "Select", "name": "PvAkkudoktorResolution", "caption": "Resolution (min)", "options": [
+                            { "caption": "15", "value": 15 },
+                            { "caption": "60", "value": 60 }
+                        ] },
+                        { "type": "CheckBox", "name": "PvAkkudoktorCalibration", "caption": "Calibration with measured PV production" },
+                        { "type": "PasswordTextBox", "name": "PvForecastSolarApiKey", "caption": "Forecast.Solar API key" },
+                        { "type": "PasswordTextBox", "name": "PvSolcastApiKey", "caption": "Solcast API key" },
+                        { "type": "ValidationTextBox", "name": "PvSolcastSiteId", "caption": "Solcast site ID" },
+                        { "type": "PasswordTextBox", "name": "PvNodeApiKey", "caption": "pvnode API key" },
+                        { "type": "ValidationTextBox", "name": "PvNodeSiteId", "caption": "pvnode site ID" },
+                        { "type": "NumberSpinner", "name": "PvNodeForecastDays", "caption": "pvnode forecast days", "minimum": 1, "maximum": 7 }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Load",
+                    "items": [
+                        { "type": "Select", "name": "LoadProvider", "caption": "Provider", "options": [ { "caption": "- not set -", "value": "" } ] },
+                        { "type": "NumberSpinner", "name": "LoadYearEnergyKwh", "caption": "Yearly consumption (kWh)", "digits": 0, "minimum": 0, "suffix": " kWh" }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Weather",
+                    "items": [
+                        { "type": "Select", "name": "WeatherProvider", "caption": "Provider", "options": [ { "caption": "- not set -", "value": "" } ] }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Measurement keys",
+                    "items": [
+                        { "type": "List", "name": "MeasLoadEmrKeys", "caption": "Load meter readings", "rowCount": 2, "add": true, "delete": true,
+                          "columns": [ { "name": "key", "caption": "Key", "width": "auto", "add": "load0_emr", "edit": { "type": "ValidationTextBox" } } ], "values": [] },
+                        { "type": "List", "name": "MeasGridImportEmrKeys", "caption": "Grid import meter readings", "rowCount": 2, "add": true, "delete": true,
+                          "columns": [ { "name": "key", "caption": "Key", "width": "auto", "add": "grid_import_emr", "edit": { "type": "ValidationTextBox" } } ], "values": [] },
+                        { "type": "List", "name": "MeasGridExportEmrKeys", "caption": "Grid export meter readings", "rowCount": 2, "add": true, "delete": true,
+                          "columns": [ { "name": "key", "caption": "Key", "width": "auto", "add": "grid_export_emr", "edit": { "type": "ValidationTextBox" } } ], "values": [] },
+                        { "type": "List", "name": "MeasPvEmrKeys", "caption": "PV production meter readings", "rowCount": 2, "add": true, "delete": true,
+                          "columns": [ { "name": "key", "caption": "Key", "width": "auto", "add": "pv1_emr", "edit": { "type": "ValidationTextBox" } } ], "values": [] }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Expert",
+                    "items": [
+                        { "type": "Label", "caption": "Read or write any configuration path (e.g. server/port, logging/console_level). Value as JSON." },
+                        { "type": "ValidationTextBox", "name": "RawConfigPath", "caption": "Config path" },
+                        { "type": "ValidationTextBox", "name": "RawConfigValue", "caption": "Value (JSON)" },
+                        {
+                            "type": "RowLayout",
+                            "items": [
+                                { "type": "Button", "caption": "Read path", "onClick": "EOS_ReadRawConfig($id, $RawConfigPath);" },
+                                { "type": "Button", "caption": "Write path", "onClick": "EOS_WriteRawConfig($id, $RawConfigPath, $RawConfigValue);" }
+                            ]
+                        },
+                        { "type": "ValidationTextBox", "name": "RawConfigJSON", "caption": "Merge object (JSON)", "multiline": true },
+                        { "type": "Button", "caption": "Write merge object", "onClick": "EOS_WriteRawMerge($id, $RawConfigJSON);" },
+                        { "type": "Label", "name": "RawResult", "caption": " " }
+                    ]
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "RowLayout",
+            "items": [
+                { "type": "Button", "caption": "Test connection", "onClick": "EOS_TestConnection($id);" },
+                { "type": "Button", "caption": "Fetch plan now", "onClick": "EOS_FetchPlan($id);" },
+                { "type": "Button", "caption": "Start optimization", "onClick": "EOS_Optimize($id);" }
+            ]
+        },
+        { "type": "Label", "name": "TestResult", "caption": " " },
+        { "type": "Label", "name": "DashboardLink", "caption": " " },
+        { "type": "Label", "name": "SwaggerLink", "caption": " " }
+    ],
+    "status": [
+        { "code": 101, "icon": "inactive", "caption": "Instance is being created" },
+        { "code": 102, "icon": "active", "caption": "EOS connected" },
+        { "code": 104, "icon": "inactive", "caption": "Instance inactive" },
+        { "code": 201, "icon": "error", "caption": "EOS not reachable" },
+        { "code": 202, "icon": "error", "caption": "EOS version mismatch" },
+        { "code": 203, "icon": "error", "caption": "No plan available yet" }
+    ]
+}

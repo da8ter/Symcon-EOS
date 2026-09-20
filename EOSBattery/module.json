@@ -1,0 +1,16 @@
+{
+    "id": "{F4B30383-1210-4169-93DA-5C9664447B42}",
+    "name": "EOS Battery",
+    "type": 3,
+    "vendor": "Stephan Sprick",
+    "aliases": [],
+    "parentRequirements": [
+        "{8C2B1A5E-2D35-4723-8EEA-6B71A7B2428F}"
+    ],
+    "childRequirements": [],
+    "implemented": [
+        "{EAB78E68-BFF7-4608-BA75-9ECDB5165208}"
+    ],
+    "prefix": "EOSBAT",
+    "url": "https://github.com/da8ter/Symcon-EOS"
+}

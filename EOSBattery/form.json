@@ -1,0 +1,66 @@
+{
+    "elements": [
+        {
+            "type": "ExpansionPanel",
+            "caption": "Device",
+            "expanded": true,
+            "items": [
+                { "type": "Label", "caption": "The device ID must match the battery key in the EOS configuration (devices/batteries/<id>)." },
+                { "type": "ValidationTextBox", "name": "DeviceID", "caption": "EOS device ID", "validate": "^[A-Za-z0-9_-]+$" },
+                { "type": "SelectVariable", "name": "SoCSourceVariable", "caption": "State of charge source variable", "validVariableTypes": [1, 2] },
+                { "type": "Select", "name": "SoCUnit", "caption": "Unit of the source variable", "options": [
+                    { "caption": "Percent (0-100)", "value": 0 },
+                    { "caption": "Factor (0-1)", "value": 1 }
+                ] },
+                { "type": "NumberSpinner", "name": "PushInterval", "caption": "Push interval (s)", "minimum": 0, "maximum": 3600, "suffix": " s" },
+                { "type": "Label", "caption": "EOS rejects state of charge values older than 300 s (optimization.genetic.measurement_max_age_seconds). Keep the push interval well below that." },
+                { "type": "NumberSpinner", "name": "PushDebounce", "caption": "Minimum gap between change-triggered pushes (s)", "minimum": 0, "maximum": 300, "suffix": " s" },
+                { "type": "NumberSpinner", "name": "StaleAfterMinutes", "caption": "Mark plan stale after (min)", "minimum": 5, "maximum": 1440, "suffix": " min" },
+                { "type": "Select", "name": "ControlMode", "caption": "Control mode", "options": [
+                    { "caption": "Display only (no control)", "value": 0 }
+                ] }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Battery parameters (EOS device configuration)",
+            "expanded": false,
+            "items": [
+                { "type": "NumberSpinner", "name": "CapacityWh", "caption": "Capacity (Wh)", "minimum": 100, "suffix": " Wh" },
+                { "type": "NumberSpinner", "name": "MaxChargePowerW", "caption": "Max. charge power (W)", "minimum": 0, "suffix": " W" },
+                { "type": "NumberSpinner", "name": "MaxDischargePowerW", "caption": "Max. discharge power (W)", "minimum": 0, "suffix": " W" },
+                { "type": "NumberSpinner", "name": "MinSoC", "caption": "Min. SoC (%)", "minimum": 0, "maximum": 100, "suffix": " %" },
+                { "type": "NumberSpinner", "name": "MaxSoC", "caption": "Max. SoC (%)", "minimum": 0, "maximum": 100, "suffix": " %" },
+                { "type": "NumberSpinner", "name": "ChargingEfficiency", "caption": "Charging efficiency (0-1)", "digits": 2, "minimum": 0.1, "maximum": 1 },
+                { "type": "NumberSpinner", "name": "DischargingEfficiency", "caption": "Discharging efficiency (0-1)", "digits": 2, "minimum": 0.1, "maximum": 1 },
+                { "type": "NumberSpinner", "name": "LcosAmtKwh", "caption": "Levelized cost of storage (EUR/kWh)", "digits": 3, "minimum": 0 },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        { "type": "Button", "caption": "Read from EOS", "onClick": "EOSBAT_ReadConfigFromEOS($id);" },
+                        { "type": "Button", "caption": "Write to EOS", "onClick": "EOSBAT_WriteConfigToEOS($id);" }
+                    ]
+                },
+                { "type": "Label", "name": "ConfigInfo", "caption": " " }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "RowLayout",
+            "items": [
+                { "type": "Button", "caption": "Push SoC now", "onClick": "EOSBAT_PushSoC($id);" },
+                { "type": "Button", "caption": "Refresh plan", "onClick": "EOSBAT_RefreshPlan($id);" }
+            ]
+        },
+        { "type": "Label", "name": "ActionResult", "caption": " " }
+    ],
+    "status": [
+        { "code": 101, "icon": "inactive", "caption": "Instance is being created" },
+        { "code": 102, "icon": "active", "caption": "Active" },
+        { "code": 104, "icon": "inactive", "caption": "No active EOS Server" },
+        { "code": 201, "icon": "error", "caption": "Device ID missing or invalid" },
+        { "code": 202, "icon": "error", "caption": "State of charge source variable missing" },
+        { "code": 203, "icon": "error", "caption": "Device ID already used by another instance" }
+    ]
+}

@@ -1,0 +1,20 @@
+{
+    "id": "{F6F7314C-A64C-4263-AB45-D3A2C4BEDFB7}",
+    "name": "Symcon-EOS",
+    "author": "Stephan Sprick",
+    "url": "https://github.com/da8ter/Symcon-EOS",
+    "compatibility": {
+        "version": "8.1"
+    },
+    "modules": {
+        "EOSServer": {
+            "file": "EOSServer/module.php"
+        },
+        "EOSBattery": {
+            "file": "EOSBattery/module.php"
+        }
+    },
+    "version": "0.1.0",
+    "build": 1,
+    "date": 0
+}
