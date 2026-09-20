@@ -32,6 +32,7 @@ class EOSBattery extends IPSModuleStrict
     public function Create(): void
     {
         parent::Create();
+        $this->SetVisualizationType(1);
 
         $this->RegisterPropertyString('DeviceID', 'battery1');
         $this->RegisterPropertyInteger('SoCSourceVariable', 0);
@@ -51,6 +52,7 @@ class EOSBattery extends IPSModuleStrict
 
         $this->RegisterAttributeString('Instructions', '[]');
         $this->RegisterAttributeString('PlanMeta', '{}');
+        $this->RegisterAttributeString('SolutionSubset', '{}');
         $this->RegisterAttributeInteger('LastPushTs', 0);
         $this->RegisterAttributeInteger('RegisteredSoCVar', 0);
         $this->RegisterAttributeBoolean('EmptyPlanWarned', false);
@@ -148,6 +150,7 @@ class EOSBattery extends IPSModuleStrict
         $event = (string) ($data['Event'] ?? '');
         if ($event === 'PlanUpdated') {
             $this->storePlan($data['Plan'] ?? [], is_array($data['Instructions'] ?? null) ? $data['Instructions'] : []);
+            $this->fetchSolutionSubset();
             $this->ProcessPlan();
         } elseif ($event === 'Status') {
             $this->updatePlanStale();
@@ -203,6 +206,7 @@ class EOSBattery extends IPSModuleStrict
         }
         $instructions = is_array($res['instructions'] ?? null) ? $res['instructions'] : [];
         $this->storePlan(is_array($res['plan'] ?? null) ? $res['plan'] : [], $instructions);
+        $this->fetchSolutionSubset();
         $this->ProcessPlan();
         $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('Plan refreshed: %d instructions'), count($instructions)));
         return true;
@@ -250,6 +254,19 @@ class EOSBattery extends IPSModuleStrict
 
         $this->updatePlanStale($active);
         $this->ApplyInstruction($active);
+        $this->UpdateVisualizationValue(json_encode($this->tileState(), JSON_UNESCAPED_UNICODE));
+    }
+
+    public function GetVisualizationTile(): string
+    {
+        $html = (string) file_get_contents(__DIR__ . '/module.html');
+        return $html . '<script>handleMessage(' . json_encode(json_encode($this->tileState(), JSON_UNESCAPED_UNICODE)) . ');</script>';
+    }
+
+    /** Tile payload as JSON (debugging and external visualizations). */
+    public function GetTileState(): string
+    {
+        return json_encode($this->tileState(), JSON_UNESCAPED_UNICODE);
     }
 
     public function GetActiveInstruction(): string
@@ -347,6 +364,58 @@ class EOSBattery extends IPSModuleStrict
         $raw = $this->SendDataToParent(json_encode($payload));
         $decoded = json_decode((string) $raw, true);
         return is_array($decoded) ? $decoded : ['ok' => false, 'error' => 'no response from EOS Server'];
+    }
+
+    /** Cache SoC and price series of the current solution for the tile. */
+    private function fetchSolutionSubset(): void
+    {
+        $id = $this->ReadPropertyString('DeviceID');
+        $res = $this->forward(['Command' => 'GetSolution', 'Columns' => [$id . '_soc_factor', 'elec_price_amt_kwh', 'pvforecast_ac_energy_wh']]);
+        if (($res['ok'] ?? false) !== true || !is_array($res['series'] ?? null)) {
+            return;
+        }
+        $subset = [];
+        foreach ([$id . '_soc_factor' => 'soc', 'elec_price_amt_kwh' => 'price', 'pvforecast_ac_energy_wh' => 'pv'] as $col => $key) {
+            $subset[$key] = [];
+            foreach ($res['series'][$col] ?? [] as $iso => $value) {
+                $ts = $this->eosParseTime((string) $iso);
+                if ($ts > 0 && $value !== null) {
+                    $subset[$key][] = ['ts' => $ts, 'v' => $key === 'soc' ? round((float) $value * 100, 1) : (float) $value];
+                }
+            }
+        }
+        $this->WriteAttributeString('SolutionSubset', json_encode($subset));
+    }
+
+    private function tileState(): array
+    {
+        $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
+        $subset = $this->eosJsonDecode($this->ReadAttributeString('SolutionSubset'), []);
+        $slot = 900;
+        $soc = is_array($subset['soc'] ?? null) ? $subset['soc'] : [];
+        if (count($soc) > 1) {
+            $slot = max(60, (int) ($soc[1]['ts'] - $soc[0]['ts']));
+        }
+        return [
+            'device'       => $this->ReadPropertyString('DeviceID'),
+            'now'          => time(),
+            'slot'         => $slot,
+            'modeRaw'      => (string) $this->GetValue('ModeRaw'),
+            'factor'       => (float) $this->GetValue('Factor'),
+            'targetW'      => (float) $this->GetValue('TargetChargePowerW'),
+            'nextChange'   => (int) $this->GetValue('NextChange'),
+            'nextMode'     => (string) $this->GetValue('NextMode'),
+            'planStale'    => (bool) $this->GetValue('PlanStale'),
+            'socSent'      => (float) $this->GetValue('SoCSent'),
+            'instructions' => array_map(static fn (array $i): array => [
+                'ts'     => (int) $i['ts'],
+                'mode'   => (string) ($i['operation_mode_id'] ?? ''),
+                'factor' => (float) ($i['operation_mode_factor'] ?? 0),
+            ], is_array($list) ? $list : []),
+            'soc'          => $soc,
+            'price'        => is_array($subset['price'] ?? null) ? $subset['price'] : [],
+            'pv'           => is_array($subset['pv'] ?? null) ? $subset['pv'] : [],
+        ];
     }
 
     private function storePlan(array $meta, array $instructions): void

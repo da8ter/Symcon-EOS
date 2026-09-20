@@ -23,13 +23,13 @@ if (!trait_exists('EOSCommon')) {
          * _battery_operation_from_solution) mapped to Symcon enumeration values.
          */
         public const BATTERY_MODES = [
-            'IDLE'                => ['value' => 0, 'discharge' => false, 'grid' => false, 'chargeFromFactor' => false, 'color' => 0x808080, 'icon' => 'Sleep'],
-            'SELF_CONSUMPTION'    => ['value' => 1, 'discharge' => true,  'grid' => false, 'chargeFromFactor' => false, 'color' => 0x00A000, 'icon' => 'Sun'],
-            'NON_EXPORT'          => ['value' => 2, 'discharge' => false, 'grid' => false, 'chargeFromFactor' => false, 'color' => 0x0080FF, 'icon' => 'Battery'],
-            'PEAK_SHAVING'        => ['value' => 3, 'discharge' => true,  'grid' => false, 'chargeFromFactor' => false, 'color' => 0xFF8000, 'icon' => 'HollowArrowDown'],
-            'GRID_SUPPORT_IMPORT' => ['value' => 4, 'discharge' => false, 'grid' => true,  'chargeFromFactor' => true,  'color' => 0xC000C0, 'icon' => 'Plug'],
-            'FORCED_CHARGE'       => ['value' => 5, 'discharge' => false, 'grid' => true,  'chargeFromFactor' => true,  'color' => 0xFF0000, 'icon' => 'Lightning'],
-            'GRID_SUPPORT_EXPORT' => ['value' => 6, 'discharge' => true,  'grid' => false, 'chargeFromFactor' => false, 'color' => 0x00C0C0, 'icon' => 'HollowArrowUp'],
+            'IDLE'                => ['value' => 0, 'discharge' => false, 'grid' => false, 'chargeFromFactor' => false, 'color' => 0x9A9A94, 'icon' => 'Sleep'],
+            'SELF_CONSUMPTION'    => ['value' => 1, 'discharge' => true,  'grid' => false, 'chargeFromFactor' => false, 'color' => 0x008300, 'icon' => 'Sun'],
+            'NON_EXPORT'          => ['value' => 2, 'discharge' => false, 'grid' => false, 'chargeFromFactor' => false, 'color' => 0x2A78D6, 'icon' => 'Battery'],
+            'PEAK_SHAVING'        => ['value' => 3, 'discharge' => true,  'grid' => false, 'chargeFromFactor' => false, 'color' => 0xEB6834, 'icon' => 'HollowArrowDown'],
+            'GRID_SUPPORT_IMPORT' => ['value' => 4, 'discharge' => false, 'grid' => true,  'chargeFromFactor' => true,  'color' => 0x4A3AA7, 'icon' => 'Plug'],
+            'FORCED_CHARGE'       => ['value' => 5, 'discharge' => false, 'grid' => true,  'chargeFromFactor' => true,  'color' => 0xE34948, 'icon' => 'Lightning'],
+            'GRID_SUPPORT_EXPORT' => ['value' => 6, 'discharge' => true,  'grid' => false, 'chargeFromFactor' => false, 'color' => 0x1BAF7A, 'icon' => 'HollowArrowUp'],
         ];
 
         /** Captions in English; translated via locale.json. */

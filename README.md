@@ -14,9 +14,9 @@ Phase 1 (Anzeige, keine Steuerung). Getestet mit EOS v0.4.0rc1 und IP-Symcon 9.1
 | Modul | Typ | Präfix | Aufgabe |
 | --- | --- | --- | --- |
 | EOS Server | Splitter | `EOS` | Verbindung zu EOS, Health- und Plan-Abruf, Kosten/Erlös, EOS-Konfiguration |
-| EOS Batterie | Gerät | `EOSBAT` | SoC an EOS senden, aktive und nächste Anweisung (Modus, Faktor, Sollleistung) anzeigen |
+| EOS Batterie | Gerät | `EOSBAT` | SoC an EOS senden, aktive und nächste Anweisung (Modus, Faktor, Sollleistung) anzeigen, HTML-Kachel mit Fahrplan |
 
-Geplant: EOS E-Auto, EOS Haushaltsgerät, EOS Zähler, HTML-Kachel, Steuerung über Zielvariablen/Aktionsskript.
+Geplant: EOS E-Auto, EOS Haushaltsgerät, EOS Zähler, Steuerung über Zielvariablen/Aktionsskript.
 Details: [docs/integrationsplan.md](docs/integrationsplan.md).
 
 ## Voraussetzungen
@@ -75,6 +75,13 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
 | FORCED_CHARGE | 5 | Netz- und PV-Laden |
 | GRID_SUPPORT_EXPORT | 6 | Entladen ins Netz |
 | unbekannt | 99 | Neuer Modus in EOS, wird geloggt |
+
+## Kachel
+
+Die Batterie-Instanz liefert eine HTML-Kachel (Visualisierungstyp „Kachel“): Kopfzeile mit aktivem Modus,
+Faktor bzw. Sollleistung und nächstem Wechsel, darunter das Modus-Band über den Planungshorizont, der
+geplante SoC-Verlauf aus der EOS-Lösung, bei variablem Tarif zusätzlich die Preiskurve, Jetzt-Marker,
+Tooltip beim Überfahren und Legende. Hell- und Dunkelmodus werden aus der Textfarbe der Kachel erkannt.
 
 ## Funktionen für Skripte
 
