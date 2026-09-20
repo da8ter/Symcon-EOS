@@ -433,29 +433,38 @@ class EOSServer extends IPSModuleStrict
     }
 
     /**
-     * EOS 0.4.0rc1 looks up the SoC with dropna=False: the newest measurement
-     * record decides, and a record written for another key (EV SoC, meter
-     * reading, cycles) has NaN for the battery SoC, which cancels the run.
-     * Work-around: remember the latest SoC per key and re-send all of them
-     * whenever a different key is written, so the newest record always
-     * carries every SoC.
+     * EOS 0.4.0rc1 looks up device measurements (SoC factor, completed cycles)
+     * with dropna=False: the newest measurement record decides, and a record
+     * written for another key (EV SoC, meter reading, cycles) has NaN for the
+     * others, which cancels the run. Work-around: remember the latest value of
+     * these "sticky" keys and re-send all of them whenever a different key is
+     * written, so the newest record always carries every device value.
      */
     private function afterMeasurement(string $key, float $value, string $dateTime): void
     {
         $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
         $cache = is_array($cache) ? $cache : [];
         $now = time();
-        if (str_ends_with($key, '-soc-factor')) {
+        if ($this->isStickyKey($key)) {
             $cache[$key] = ['value' => $value, 'ts' => $now];
             $this->WriteAttributeString('SoCCache', json_encode($cache));
         }
         $maxAge = max(60, (int) ($this->ReadPropertyInteger('OptMeasurementMaxAge') ?: 300));
-        foreach ($cache as $socKey => $entry) {
-            if ($socKey === $key || $now - (int) ($entry['ts'] ?? 0) > $maxAge) {
+        foreach ($cache as $stickyKey => $entry) {
+            if ($stickyKey === $key) {
                 continue;
             }
-            $this->client()->putMeasurementValue((string) $socKey, (float) $entry['value'], $dateTime);
+            // SoC values expire with the EOS freshness limit; cycle counts stay valid for the day.
+            if (str_ends_with((string) $stickyKey, '-soc-factor') && $now - (int) ($entry['ts'] ?? 0) > $maxAge) {
+                continue;
+            }
+            $this->client()->putMeasurementValue((string) $stickyKey, (float) $entry['value'], $dateTime);
         }
+    }
+
+    private function isStickyKey(string $key): bool
+    {
+        return str_ends_with($key, '-soc-factor') || str_ends_with($key, '.cycles_completed');
     }
 
     private function applyHealth(array $health): void

@@ -62,6 +62,8 @@ class EOSAppliance extends IPSModuleStrict
         $this->registerPlanVariables(80);
 
         $this->RegisterTimer('SlotTimer', 0, 'EOSHA_ProcessPlan($_IPS[\'TARGET\']);');
+        // EOS needs a completed-cycles value from the current day; keep it fresh.
+        $this->RegisterTimer('CyclesPush', 0, 'EOSHA_PushCyclesCompleted($_IPS[\'TARGET\']);');
     }
 
     public function ApplyChanges(): void
@@ -76,6 +78,7 @@ class EOSAppliance extends IPSModuleStrict
         $this->registerOptionalSource('EarliestStartSourceVariable', 'RegisteredEarliestVar');
         $this->registerOptionalSource('CyclesCompletedSourceVariable', 'RegisteredCyclesVar');
         $deviceId = $this->ReadPropertyString('DeviceID');
+        $this->SetTimerInterval('CyclesPush', 0);
 
         if (!$this->validDeviceId($deviceId)) {
             $this->SetStatus(self::STATUS_BAD_DEVICE_ID);
@@ -91,6 +94,7 @@ class EOSAppliance extends IPSModuleStrict
         }
 
         $this->SetStatus(IS_ACTIVE);
+        $this->SetTimerInterval('CyclesPush', 900 * 1000);
         $this->syncTimes();
         $this->sendCyclesCompleted();
         $this->RefreshPlan();
@@ -305,13 +309,15 @@ class EOSAppliance extends IPSModuleStrict
         return true;
     }
 
+    /** Without a source variable 0 is reported; EOS rejects runs without a value for the current day. */
     private function sendCyclesCompleted(): bool
     {
-        $var = $this->ReadPropertyInteger('CyclesCompletedSourceVariable');
-        if ($var <= 0 || !IPS_VariableExists($var) || !$this->parentUsable()) {
+        if (!$this->parentUsable()) {
             return false;
         }
-        $cycles = max(0, (int) GetValue($var));
+        $var = $this->ReadPropertyInteger('CyclesCompletedSourceVariable');
+        $cycles = ($var > 0 && IPS_VariableExists($var)) ? max(0, (int) GetValue($var)) : 0;
+        $cycles = min($cycles, max(1, $this->ReadPropertyInteger('NumCycles')));
         $this->SetValue('CyclesCompleted', $cycles);
         $res = $this->forward([
             'Command'  => 'PutMeasurement',

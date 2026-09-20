@@ -119,8 +119,10 @@ EOSMTR_ImportHistory($id, 48);      // Historie der letzten 48 h importieren
 ## Bekannte EOS-Eigenheiten (0.4.0rc1)
 
 - EOS verwirft Läufe, wenn der Batterie-SoC älter als 300 s ist. Push-Intervall 120 s ist Standard.
-- Die SoC-Suche in EOS betrachtet den jüngsten Messwert-Datensatz, auch wenn er nur einen anderen Key enthält.
-  Der EOS Server sendet deshalb bei jedem anderen Messwert die bekannten SoC-Werte erneut mit.
+- Die Suche nach SoC und erledigten Läufen in EOS betrachtet den jüngsten Messwert-Datensatz, auch wenn er nur einen
+  anderen Key enthält. Der EOS Server sendet deshalb bei jedem anderen Messwert die bekannten Werte erneut mit.
+- Haushaltsgeräte brauchen jeden Tag mindestens einen Wert für erledigte Läufe. Das Modul sendet ihn alle 15 Minuten,
+  ohne Quellvariable den Wert 0.
 - Nach einem EOS-Neustart gibt es bis zum ersten erfolgreichen Lauf keinen Plan (Server-Status 203). Die
   Geräte senden trotzdem weiter, damit EOS rechnen kann.
 
