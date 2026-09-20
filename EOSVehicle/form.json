@@ -1,0 +1,69 @@
+{
+    "elements": [
+        {
+            "type": "ExpansionPanel",
+            "caption": "Device",
+            "expanded": true,
+            "items": [
+                { "type": "Label", "caption": "The device ID must match the vehicle key in the EOS configuration (devices/electric_vehicles/<id>)." },
+                { "type": "ValidationTextBox", "name": "DeviceID", "caption": "EOS device ID", "validate": "^[A-Za-z0-9_-]+$" },
+                { "type": "SelectVariable", "name": "SoCSourceVariable", "caption": "Vehicle SoC source variable", "validVariableTypes": [1, 2] },
+                { "type": "Select", "name": "SoCUnit", "caption": "Unit of the source variable", "options": [
+                    { "caption": "Percent (0-100)", "value": 0 },
+                    { "caption": "Factor (0-1)", "value": 1 }
+                ] },
+                { "type": "NumberSpinner", "name": "PushInterval", "caption": "Push interval (s)", "minimum": 0, "maximum": 3600, "suffix": " s" },
+                { "type": "NumberSpinner", "name": "PushDebounce", "caption": "Minimum gap between change-triggered pushes (s)", "minimum": 0, "maximum": 300, "suffix": " s" },
+                { "type": "SelectVariable", "name": "PluggedSourceVariable", "caption": "Plugged-in source variable (optional)", "validVariableTypes": [0] },
+                { "type": "CheckBox", "name": "PushOnlyWhenPlugged", "caption": "Push SoC only while plugged in" },
+                { "type": "SelectVariable", "name": "DepartureSourceVariable", "caption": "Departure time source variable (unix timestamp, optional)", "validVariableTypes": [1] },
+                { "type": "CheckBox", "name": "SyncDepartureToEOS", "caption": "Write departure time to EOS automatically" },
+                { "type": "NumberSpinner", "name": "TargetSoC", "caption": "Target SoC at departure (%)", "minimum": 0, "maximum": 100, "suffix": " %" },
+                { "type": "NumberSpinner", "name": "StaleAfterMinutes", "caption": "Mark plan stale after (min)", "minimum": 5, "maximum": 1440, "suffix": " min" },
+                { "type": "Select", "name": "ControlMode", "caption": "Control mode", "options": [
+                    { "caption": "Display only (no control)", "value": 0 }
+                ] }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Vehicle and wallbox parameters (EOS device configuration)",
+            "expanded": false,
+            "items": [
+                { "type": "NumberSpinner", "name": "CapacityWh", "caption": "Battery capacity (Wh)", "minimum": 1000, "suffix": " Wh" },
+                { "type": "NumberSpinner", "name": "MaxChargePowerW", "caption": "Max. charge power (W)", "minimum": 0, "suffix": " W" },
+                { "type": "ValidationTextBox", "name": "ChargeRates", "caption": "Charge rates (factors, comma separated)" },
+                { "type": "NumberSpinner", "name": "Phases", "caption": "Phases", "minimum": 1, "maximum": 3 },
+                { "type": "NumberSpinner", "name": "Voltage", "caption": "Phase voltage (V)", "minimum": 100, "maximum": 250, "suffix": " V" },
+                { "type": "NumberSpinner", "name": "MaxSoC", "caption": "Max. SoC (%)", "minimum": 0, "maximum": 100, "suffix": " %" },
+                { "type": "NumberSpinner", "name": "ChargingEfficiency", "caption": "Charging efficiency (0-1)", "digits": 2, "minimum": 0.1, "maximum": 1 },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        { "type": "Button", "caption": "Read from EOS", "onClick": "EOSEV_ReadConfigFromEOS($id);" },
+                        { "type": "Button", "caption": "Write to EOS", "onClick": "EOSEV_WriteConfigToEOS($id);" }
+                    ]
+                },
+                { "type": "Label", "name": "ConfigInfo", "caption": " " }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "RowLayout",
+            "items": [
+                { "type": "Button", "caption": "Push SoC now", "onClick": "EOSEV_PushSoC($id);" },
+                { "type": "Button", "caption": "Refresh plan", "onClick": "EOSEV_RefreshPlan($id);" }
+            ]
+        },
+        { "type": "Label", "name": "ActionResult", "caption": " " }
+    ],
+    "status": [
+        { "code": 101, "icon": "inactive", "caption": "Instance is being created" },
+        { "code": 102, "icon": "active", "caption": "Active" },
+        { "code": 104, "icon": "inactive", "caption": "No active EOS Server" },
+        { "code": 201, "icon": "error", "caption": "Device ID missing or invalid" },
+        { "code": 202, "icon": "error", "caption": "State of charge source variable missing" },
+        { "code": 203, "icon": "error", "caption": "Device ID already used by another instance" }
+    ]
+}

@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../libs/EOSCommon.php';
+require_once __DIR__ . '/../libs/EOSPlanDevice.php';
+require_once __DIR__ . '/../libs/EOSSoCPush.php';
 
 /**
  * EOS Battery: represents one stationary battery known to EOS.
@@ -15,19 +17,10 @@ require_once __DIR__ . '/../libs/EOSCommon.php';
 class EOSBattery extends IPSModuleStrict
 {
     use EOSCommon;
+    use EOSPlanDevice;
+    use EOSSoCPush;
 
     private const MODULE_GUID = '{F4B30383-1210-4169-93DA-5C9664447B42}';
-    private const STATUS_NO_PARENT = 104;
-    private const STATUS_BAD_DEVICE_ID = 201;
-    private const STATUS_NO_SOC_SOURCE = 202;
-    private const STATUS_DUPLICATE_ID = 203;
-    /** Never sleep longer than this before re-evaluating the plan (ms). */
-    private const MAX_SLOT_TIMER_MS = 6 * 3600 * 1000;
-
-    public function GetCompatibleParents(): string
-    {
-        return json_encode(['type' => 'connect', 'moduleIDs' => [self::EOS_SERVER_GUID]]);
-    }
 
     public function Create(): void
     {
@@ -35,10 +28,7 @@ class EOSBattery extends IPSModuleStrict
         $this->SetVisualizationType(1);
 
         $this->RegisterPropertyString('DeviceID', 'battery1');
-        $this->RegisterPropertyInteger('SoCSourceVariable', 0);
-        $this->RegisterPropertyInteger('SoCUnit', 0);
-        $this->RegisterPropertyInteger('PushInterval', 120);
-        $this->RegisterPropertyInteger('PushDebounce', 10);
+        $this->registerSoCProperties();
         $this->RegisterPropertyInteger('StaleAfterMinutes', 180);
         $this->RegisterPropertyInteger('ControlMode', 0);
         $this->RegisterPropertyInteger('CapacityWh', 10000);
@@ -50,12 +40,8 @@ class EOSBattery extends IPSModuleStrict
         $this->RegisterPropertyFloat('DischargingEfficiency', 0.95);
         $this->RegisterPropertyFloat('LcosAmtKwh', 0.0);
 
-        $this->RegisterAttributeString('Instructions', '[]');
-        $this->RegisterAttributeString('PlanMeta', '{}');
+        $this->registerPlanAttributes();
         $this->RegisterAttributeString('SolutionSubset', '{}');
-        $this->RegisterAttributeInteger('LastPushTs', 0);
-        $this->RegisterAttributeInteger('RegisteredSoCVar', 0);
-        $this->RegisterAttributeBoolean('EmptyPlanWarned', false);
 
         $this->RegisterVariableInteger('Mode', $this->Translate('Operation mode'), [
             'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
@@ -66,12 +52,8 @@ class EOSBattery extends IPSModuleStrict
         $this->RegisterVariableFloat('TargetChargePowerW', $this->Translate('Target charge power'), $this->eosValuePresentation('Electricity', ' W', 0), 40);
         $this->RegisterVariableBoolean('DischargeAllowed', $this->Translate('Discharge allowed'), $this->eosBoolPresentation('No', 'Yes', 0x808080, 0x00A000, 'HollowArrowDown'), 50);
         $this->RegisterVariableBoolean('GridChargeActive', $this->Translate('Grid charging active'), $this->eosBoolPresentation('No', 'Yes', 0x808080, 0xC000C0, 'Plug'), 60);
-        $this->RegisterVariableInteger('NextChange', $this->Translate('Next change'), $this->eosDateTimePresentation(), 70);
-        $this->RegisterVariableString('NextMode', $this->Translate('Next mode'), $this->eosValuePresentation('HollowArrowRight'), 80);
-        $this->RegisterVariableBoolean('PlanStale', $this->Translate('Plan stale'), $this->eosBoolPresentation('Current', 'Stale', 0x00A000, 0xFF0000, 'Warning'), 90);
-        $this->RegisterVariableFloat('SoCSent', $this->Translate('SoC sent'), $this->eosValuePresentation('Battery', '', 3), 100);
-        $this->RegisterVariableInteger('LastPush', $this->Translate('Last push'), $this->eosDateTimePresentation('Repeat'), 110);
-        $this->RegisterVariableString('PlanJSON', $this->Translate('Plan (JSON)'), $this->eosValuePresentation('Script'), 120);
+        $this->registerPlanVariables(70);
+        $this->registerSoCVariables(110);
 
         $this->RegisterTimer('SoCPush', 0, 'EOSBAT_PushSoC($_IPS[\'TARGET\']);');
         $this->RegisterTimer('SlotTimer', 0, 'EOSBAT_ProcessPlan($_IPS[\'TARGET\']);');
@@ -85,37 +67,23 @@ class EOSBattery extends IPSModuleStrict
             return;
         }
 
-        // (Re-)register the SoC source variable for change messages.
-        $old = $this->ReadAttributeInteger('RegisteredSoCVar');
-        $src = $this->ReadPropertyInteger('SoCSourceVariable');
-        if ($old > 0 && $old !== $src) {
-            $this->UnregisterMessage($old, VM_UPDATE);
-        }
-        if ($src > 0 && IPS_VariableExists($src)) {
-            $this->RegisterMessage($src, VM_UPDATE);
-            $this->WriteAttributeInteger('RegisteredSoCVar', $src);
-        } else {
-            $this->WriteAttributeInteger('RegisteredSoCVar', 0);
-        }
-
+        $hasSource = $this->setupSoCSource();
         $deviceId = $this->ReadPropertyString('DeviceID');
-        if ($deviceId === '' || preg_match('/^[A-Za-z0-9_-]+$/', $deviceId) !== 1) {
-            $this->SetTimerInterval('SoCPush', 0);
+        $this->SetTimerInterval('SoCPush', 0);
+
+        if (!$this->validDeviceId($deviceId)) {
             $this->SetStatus(self::STATUS_BAD_DEVICE_ID);
             return;
         }
         if ($this->isDuplicateDeviceId($deviceId)) {
-            $this->SetTimerInterval('SoCPush', 0);
             $this->SetStatus(self::STATUS_DUPLICATE_ID);
             return;
         }
-        if ($src <= 0 || !IPS_VariableExists($src)) {
-            $this->SetTimerInterval('SoCPush', 0);
-            $this->SetStatus(self::STATUS_NO_SOC_SOURCE);
+        if (!$hasSource) {
+            $this->SetStatus(self::STATUS_NO_SOURCE);
             return;
         }
         if (!$this->parentUsable()) {
-            $this->SetTimerInterval('SoCPush', 0);
             $this->SetStatus(self::STATUS_NO_PARENT);
             return;
         }
@@ -132,130 +100,10 @@ class EOSBattery extends IPSModuleStrict
             $this->ApplyChanges();
             return;
         }
-        if ($Message === VM_UPDATE && $SenderID === $this->ReadPropertyInteger('SoCSourceVariable')) {
-            if (time() - $this->ReadAttributeInteger('LastPushTs') >= $this->ReadPropertyInteger('PushDebounce')) {
-                $this->PushSoC();
-            }
-        }
+        $this->handleSoCMessage($SenderID, $Message);
     }
 
-    // ------------------------------------------------------------------ data from the server
-
-    public function ReceiveData(string $JSONString): string
-    {
-        $data = json_decode($JSONString, true);
-        if (!is_array($data) || ($data['DataID'] ?? '') !== self::EOS_RX_GUID) {
-            return '';
-        }
-        $event = (string) ($data['Event'] ?? '');
-        if ($event === 'PlanUpdated') {
-            $this->storePlan($data['Plan'] ?? [], is_array($data['Instructions'] ?? null) ? $data['Instructions'] : []);
-            $this->fetchSolutionSubset();
-            $this->ProcessPlan();
-        } elseif ($event === 'Status') {
-            $this->updatePlanStale();
-        }
-        return '';
-    }
-
-    // ------------------------------------------------------------------ public API (prefix EOSBAT_)
-
-    public function PushSoC(): bool
-    {
-        $varId = $this->ReadPropertyInteger('SoCSourceVariable');
-        if ($varId <= 0 || !IPS_VariableExists($varId) || !$this->parentUsable()) {
-            return false;
-        }
-        $raw = (float) GetValue($varId);
-        $factor = $this->ReadPropertyInteger('SoCUnit') === 0 ? $raw / 100.0 : $raw;
-        if ($factor > 1.0 && $factor <= 100.0) {
-            $this->SendDebug('PushSoC', 'value ' . $raw . ' > 1 interpreted as percent', 0);
-            $factor /= 100.0;
-        }
-        $factor = max(0.0, min(1.0, round($factor, 4)));
-
-        $res = $this->forward([
-            'Command'  => 'PutMeasurement',
-            'Key'      => $this->ReadPropertyString('DeviceID') . '-soc-factor',
-            'Value'    => $factor,
-            'DateTime' => $this->eosIsoNow(),
-        ]);
-        if (($res['ok'] ?? false) === true) {
-            $this->SetValue('SoCSent', $factor);
-            $this->SetValue('LastPush', time());
-            $this->WriteAttributeInteger('LastPushTs', time());
-            $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('SoC %.3f sent'), $factor));
-            return true;
-        }
-        $error = (string) ($res['error'] ?? 'no response');
-        $this->LogMessage(sprintf($this->Translate('SoC push failed: %s'), $error), KL_WARNING);
-        $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('SoC push failed: %s'), $error));
-        return false;
-    }
-
-    public function RefreshPlan(): bool
-    {
-        if (!$this->parentUsable()) {
-            return false;
-        }
-        $res = $this->forward(['Command' => 'GetPlanForResource', 'ResourceID' => $this->ReadPropertyString('DeviceID')]);
-        if (($res['ok'] ?? false) !== true) {
-            $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('Plan refresh failed: %s'), (string) ($res['error'] ?? '?')));
-            $this->ProcessPlan();
-            return false;
-        }
-        $instructions = is_array($res['instructions'] ?? null) ? $res['instructions'] : [];
-        $this->storePlan(is_array($res['plan'] ?? null) ? $res['plan'] : [], $instructions);
-        $this->fetchSolutionSubset();
-        $this->ProcessPlan();
-        $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('Plan refreshed: %d instructions'), count($instructions)));
-        return true;
-    }
-
-    /**
-     * Determine the active instruction (latest with execution_time <= now), the
-     * next one, update the variables and arm the slot timer. Idempotent.
-     */
-    public function ProcessPlan(): void
-    {
-        $this->SetTimerInterval('SlotTimer', 0);
-        $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
-        $now = time();
-        $active = null;
-        $next = null;
-        foreach (is_array($list) ? $list : [] as $instruction) {
-            $ts = (int) ($instruction['ts'] ?? 0);
-            if ($ts <= $now) {
-                $active = $instruction;
-            } elseif ($next === null) {
-                $next = $instruction;
-                break;
-            }
-        }
-
-        if ($active !== null) {
-            $this->showInstruction($active);
-            $this->WriteAttributeBoolean('EmptyPlanWarned', false);
-        } elseif ($list === []) {
-            if (!$this->ReadAttributeBoolean('EmptyPlanWarned')) {
-                $this->LogMessage('EOS plan contains no instructions for ' . $this->ReadPropertyString('DeviceID'), KL_WARNING);
-                $this->WriteAttributeBoolean('EmptyPlanWarned', true);
-            }
-            $this->SetValue('Mode', self::EOS_MODE_UNKNOWN);
-            $this->SetValue('ModeRaw', '');
-        }
-
-        $this->SetValue('NextChange', $next !== null ? (int) $next['ts'] : 0);
-        $this->SetValue('NextMode', $next !== null ? (string) ($next['operation_mode_id'] ?? '') : '');
-        if ($next !== null) {
-            $delayMs = max(1000, ((int) $next['ts'] - $now) * 1000 + 500);
-            $this->SetTimerInterval('SlotTimer', min($delayMs, self::MAX_SLOT_TIMER_MS));
-        }
-
-        $this->updatePlanStale($active);
-        $this->ApplyInstruction($active);
-        $this->UpdateVisualizationValue(json_encode($this->tileState(), JSON_UNESCAPED_UNICODE));
-    }
+    // ------------------------------------------------------------------ visualization
 
     public function GetVisualizationTile(): string
     {
@@ -269,18 +117,7 @@ class EOSBattery extends IPSModuleStrict
         return json_encode($this->tileState(), JSON_UNESCAPED_UNICODE);
     }
 
-    public function GetActiveInstruction(): string
-    {
-        $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
-        $now = time();
-        $active = null;
-        foreach (is_array($list) ? $list : [] as $instruction) {
-            if ((int) ($instruction['ts'] ?? 0) <= $now) {
-                $active = $instruction;
-            }
-        }
-        return json_encode($active, JSON_UNESCAPED_UNICODE);
-    }
+    // ------------------------------------------------------------------ device configuration in EOS
 
     public function WriteConfigToEOS(): bool
     {
@@ -332,41 +169,52 @@ class EOSBattery extends IPSModuleStrict
         return true;
     }
 
-    // ------------------------------------------------------------------ control hook (phase 2)
+    // ------------------------------------------------------------------ plan hooks
 
+    protected function showInstruction(array $instruction): void
+    {
+        $modeId = (string) ($instruction['operation_mode_id'] ?? '');
+        $factor = max(0.0, min(1.0, (float) ($instruction['operation_mode_factor'] ?? 0.0)));
+        $mode = $this->eosBatteryMode($modeId);
+        if (!$mode['known'] && $modeId !== (string) $this->GetValue('ModeRaw')) {
+            $this->LogMessage(sprintf($this->Translate('Unknown operation mode %s'), $modeId), KL_WARNING);
+        }
+        $this->SetValue('Mode', $mode['value']);
+        $this->SetValue('ModeRaw', $modeId);
+        $this->SetValue('Factor', $factor);
+        $this->SetValue('DischargeAllowed', $mode['discharge']);
+        $this->SetValue('GridChargeActive', $mode['grid']);
+        $this->SetValue('TargetChargePowerW', $mode['chargeFromFactor'] ? round($factor * $this->ReadPropertyInteger('MaxChargePowerW')) : 0.0);
+    }
+
+    protected function showNoInstruction(): void
+    {
+        $this->SetValue('Mode', self::EOS_MODE_UNKNOWN);
+        $this->SetValue('ModeRaw', '');
+    }
+
+    protected function onPlanStored(): void
+    {
+        $this->fetchSolutionSubset();
+    }
+
+    protected function onPlanProcessed(?array $active): void
+    {
+        $this->ApplyInstruction($active);
+        $this->UpdateVisualizationValue(json_encode($this->tileState(), JSON_UNESCAPED_UNICODE));
+    }
+
+    /** Control hook (phase 2). ControlMode 0 = display only. */
     protected function ApplyInstruction(?array $instruction): void
     {
         if ($this->ReadPropertyInteger('ControlMode') === 0) {
-            return; // display only
+            return;
         }
     }
 
-    // ------------------------------------------------------------------ internals
+    // ------------------------------------------------------------------ tile data
 
-    /**
-     * The EOS Server is usable for measurements even while it reports
-     * "no plan yet" (203) or a version mismatch (202): EOS needs the SoC to
-     * produce a plan in the first place. Only unreachable/inactive blocks.
-     */
-    private function parentUsable(): bool
-    {
-        $parentId = (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
-        if ($parentId <= 0 || !IPS_InstanceExists($parentId)) {
-            return false;
-        }
-        $status = (int) IPS_GetInstance($parentId)['InstanceStatus'];
-        return in_array($status, [IS_ACTIVE, 202, 203], true);
-    }
-
-    private function forward(array $payload): array
-    {
-        $payload['DataID'] = self::EOS_TX_GUID;
-        $raw = $this->SendDataToParent(json_encode($payload));
-        $decoded = json_decode((string) $raw, true);
-        return is_array($decoded) ? $decoded : ['ok' => false, 'error' => 'no response from EOS Server'];
-    }
-
-    /** Cache SoC and price series of the current solution for the tile. */
+    /** Cache SoC, price and PV series of the current solution for the tile. */
     private function fetchSolutionSubset(): void
     {
         $id = $this->ReadPropertyString('DeviceID');
@@ -389,10 +237,9 @@ class EOSBattery extends IPSModuleStrict
 
     private function tileState(): array
     {
-        $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
         $subset = $this->eosJsonDecode($this->ReadAttributeString('SolutionSubset'), []);
-        $slot = 900;
         $soc = is_array($subset['soc'] ?? null) ? $subset['soc'] : [];
+        $slot = 900;
         if (count($soc) > 1) {
             $slot = max(60, (int) ($soc[1]['ts'] - $soc[0]['ts']));
         }
@@ -411,94 +258,10 @@ class EOSBattery extends IPSModuleStrict
                 'ts'     => (int) $i['ts'],
                 'mode'   => (string) ($i['operation_mode_id'] ?? ''),
                 'factor' => (float) ($i['operation_mode_factor'] ?? 0),
-            ], is_array($list) ? $list : []),
+            ], $this->instructionList()),
             'soc'          => $soc,
             'price'        => is_array($subset['price'] ?? null) ? $subset['price'] : [],
             'pv'           => is_array($subset['pv'] ?? null) ? $subset['pv'] : [],
         ];
-    }
-
-    private function storePlan(array $meta, array $instructions): void
-    {
-        $deviceId = $this->ReadPropertyString('DeviceID');
-        $mine = [];
-        foreach ($instructions as $instruction) {
-            if (!is_array($instruction) || (string) ($instruction['resource_id'] ?? '') !== $deviceId) {
-                continue;
-            }
-            $instruction['ts'] = $this->eosParseTime($instruction['execution_time'] ?? null);
-            if ($instruction['ts'] > 0) {
-                $mine[] = $instruction;
-            }
-        }
-        usort($mine, static fn (array $a, array $b): int => $a['ts'] <=> $b['ts']);
-        $this->WriteAttributeString('Instructions', json_encode($mine));
-        $this->WriteAttributeString('PlanMeta', json_encode([
-            'id'           => $meta['id'] ?? '',
-            'generated_at' => $meta['generated_at'] ?? null,
-            'valid_from'   => $meta['valid_from'] ?? null,
-            'valid_until'  => $meta['valid_until'] ?? null,
-            'received'     => time(),
-        ]));
-        $this->SetValue('PlanJSON', json_encode(array_map(static function (array $i): array {
-            return [
-                'time'   => $i['execution_time'] ?? '',
-                'ts'     => $i['ts'],
-                'mode'   => $i['operation_mode_id'] ?? '',
-                'factor' => $i['operation_mode_factor'] ?? 0,
-            ];
-        }, $mine), JSON_UNESCAPED_UNICODE));
-        $this->SendDebug('storePlan', count($mine) . ' instructions for ' . $deviceId, 0);
-    }
-
-    private function showInstruction(array $instruction): void
-    {
-        $modeId = (string) ($instruction['operation_mode_id'] ?? '');
-        $factor = max(0.0, min(1.0, (float) ($instruction['operation_mode_factor'] ?? 0.0)));
-        $mode = $this->eosBatteryMode($modeId);
-        if (!$mode['known'] && $modeId !== (string) $this->GetValue('ModeRaw')) {
-            $this->LogMessage(sprintf($this->Translate('Unknown operation mode %s'), $modeId), KL_WARNING);
-        }
-        $this->SetValue('Mode', $mode['value']);
-        $this->SetValue('ModeRaw', $modeId);
-        $this->SetValue('Factor', $factor);
-        $this->SetValue('DischargeAllowed', $mode['discharge']);
-        $this->SetValue('GridChargeActive', $mode['grid']);
-        $this->SetValue('TargetChargePowerW', $mode['chargeFromFactor'] ? round($factor * $this->ReadPropertyInteger('MaxChargePowerW')) : 0.0);
-    }
-
-    private function updatePlanStale(?array $active = null): void
-    {
-        $meta = $this->eosJsonDecode($this->ReadAttributeString('PlanMeta'), []);
-        $generated = $this->eosParseTime(is_array($meta) ? ($meta['generated_at'] ?? null) : null);
-        $limit = $this->ReadPropertyInteger('StaleAfterMinutes') * 60;
-        $stale = $generated === 0 || (time() - $generated) > $limit;
-        if ($active === null) {
-            $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
-            $now = time();
-            $active = null;
-            foreach (is_array($list) ? $list : [] as $instruction) {
-                if ((int) ($instruction['ts'] ?? 0) <= $now) {
-                    $active = $instruction;
-                }
-            }
-            if ($active === null) {
-                $stale = true;
-            }
-        }
-        $this->SetValue('PlanStale', $stale);
-    }
-
-    private function isDuplicateDeviceId(string $deviceId): bool
-    {
-        foreach (IPS_GetInstanceListByModuleID(self::MODULE_GUID) as $id) {
-            if ($id === $this->InstanceID) {
-                continue;
-            }
-            if ((string) IPS_GetProperty($id, 'DeviceID') === $deviceId) {
-                return true;
-            }
-        }
-        return false;
     }
 }

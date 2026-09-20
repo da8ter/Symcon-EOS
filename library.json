@@ -12,6 +12,9 @@
         },
         "EOSBattery": {
             "file": "EOSBattery/module.php"
+        },
+        "EOSVehicle": {
+            "file": "EOSVehicle/module.php"
         }
     },
     "version": "0.1.0",
