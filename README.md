@@ -9,18 +9,18 @@ erlaubt die Pflege der EOS-Konfiguration aus der Symcon-Konsole.
 
 ## Status
 
-Phase 1 (Anzeige, keine Steuerung). Getestet mit EOS v0.4.0rc1 und IP-Symcon 9.1, Mindestversion 8.1.
+Anzeige und **Steuerung** (herstellerneutral über Zielvariablen, Symcon-Aktionen und Skript). Getestet mit EOS v0.4.0rc1 und IP-Symcon 9.1, Mindestversion 8.1.
 
 | Modul | Typ | Präfix | Aufgabe |
 | --- | --- | --- | --- |
 | EOS Server | Splitter | `EOS` | Verbindung zu EOS, Health- und Plan-Abruf, Kosten/Erlös, EOS-Konfiguration |
-| EOS Batterie | Gerät | `EOSBAT` | SoC an EOS senden, aktive und nächste Anweisung (Modus, Faktor, Sollleistung) anzeigen, HTML-Kachel mit Fahrplan |
-| EOS E-Auto | Gerät | `EOSEV` | Fahrzeug-SoC senden, Abfahrtszeit und Ziel-SoC nach EOS, geplante Ladeleistung und Ladestrom anzeigen |
-| EOS Haushaltsgerät | Gerät | `EOSHA` | Spülmaschine, Waschmaschine, Trockner: Zeitfenster, Frist und erledigte Läufe nach EOS, geplanter Start und RUN/OFF anzeigen |
+| EOS Batterie | Gerät | `EOSBAT` | SoC an EOS senden, aktive und nächste Anweisung (Modus, Faktor, Sollleistung) anzeigen, Wechselrichter zur Slot-Grenze umschalten, HTML-Kachel mit Fahrplan |
+| EOS E-Auto | Gerät | `EOSEV` | Fahrzeug-SoC senden, Abfahrtszeit und Ziel-SoC nach EOS, geplante Ladeleistung und Ladestrom anzeigen und an die Wallbox geben |
+| EOS Haushaltsgerät | Gerät | `EOSHA` | Spülmaschine, Waschmaschine, Trockner: Zeitfenster, Frist und erledigte Läufe nach EOS, geplanter Start anzeigen, Gerät zum geplanten Start freigeben |
 | EOS Zähler | Gerät | `EOSMTR` | Zählerstände (Last, Netzbezug, Einspeisung, PV) zyklisch an EOS, Keys in EOS registrieren, Historie aus dem Symcon-Archiv importieren |
 
-Geplant: Steuerung über Zielvariablen/Aktionsskript (Steuerungsmodus in den Geräte-Instanzen).
-Details: [docs/integrationsplan.md](docs/integrationsplan.md).
+Details: [docs/integrationsplan.md](docs/integrationsplan.md), Beispiele für die Geräte-Anbindung:
+[docs/geraete-mapping.md](docs/geraete-mapping.md).
 
 ## Voraussetzungen
 
@@ -66,6 +66,37 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
   Übernehmen werden die Keys in `measurement.*_emr_keys` eingetragen. „Historie aus Archiv importieren“ überträgt die
   geloggten Werte der letzten Stunden, damit die Lastprognose sofort auf Messdaten aufsetzt.
 
+## Steuerung
+
+Jede Geräte-Instanz hat ein Panel **Steuerung** mit dem Steuerungsmodus *Nur anzeigen* (Standard), *Simulation*
+(protokolliert, was geschrieben würde, schreibt nichts) und *Aktiv*. Die Anbindung an die Hardware ist
+herstellerneutral und kombinierbar:
+
+1. **Zielvariablen** – schaltbare Variablen anderer Module (Betriebsmodus, Soll-Ladeleistung, Entladen
+   erlaubt, Netzladen; E-Auto: Laden erlaubt, Ladestrom, Ladeleistung, Lademodus; Gerät: Freigabe). Der Wert
+   wird auf den Variablentyp umgewandelt und per `RequestAction` geschrieben. Für die Modus-Variable legt die
+   Tabelle „EOS-Modus → Wert“ fest, welcher Wert je EOS-Modus geschrieben wird (z. B. evcc `off`/`pv`/`now`).
+2. **Symcon-Aktionen** – je EOS-Modus eine Aktion (feuert beim Wechsel in den Modus) und eine Aktion bei jedem
+   Wechsel. Der Kontext wird als Parameter mitgegeben.
+3. **Skript** – bei jedem Wechsel mit dem Kontext in `$_IPS` (`Reason`, `ModeRaw`, `Factor`, `PowerW`,
+   `ChargeAllowed`, `CurrentA`, `Run` …, vollständige Liste in [docs/geraete-mapping.md](docs/geraete-mapping.md)).
+
+Geschrieben wird nur bei Änderung. Optional sendet ein **Heartbeat** die Sollwerte alle n Sekunden erneut
+(für Wechselrichter mit eigenem Timeout). Der **Fallback-Modus** greift, wenn der Plan veraltet (Einstellung
+„Plan als veraltet markieren nach“), abgelaufen (`valid_until`) oder für die Steuerung unbrauchbar ist
+(unbekannter Modus); ein kurzer EOS-Ausfall ist kein Auslöser, der gespeicherte Plan läuft weiter. Ein
+**Hauptschalter** (Variable „Steuerung aktiv“) und ein **manueller Modus** mit Haltezeit überlagern den
+Plan. Beim Abschalten wird der Fallback einmal geschrieben (abschaltbar). Schreiben passiert nie im
+Empfangspfad des Servers, sondern kurz danach im eigenen Zeitgeber der Instanz; ein 60-s-Wächter prüft
+Alter des Plans, Rückkehr aus dem manuellen Modus, Heartbeat und wiederholt fehlgeschlagene Ziele mit
+wachsendem Abstand.
+
+Sicherheitsregeln der Batterie: Netzladen mit 0 W wird nie geschrieben (wird zu `NON_EXPORT`), „Netzladen
+erlauben“ und „Netzeinspeisung erlauben“ schwächen die Modi ab, wenn der Anwender sie verbietet.
+E-Auto: Mindest-Ladestrom (6 A), Mindestabstand zwischen Laden Ein/Aus (300 s), nicht angesteckt = aus.
+Haushaltsgerät: Start nur einmal je Anweisung und nur innerhalb der Gnadenfrist nach dem geplanten Start,
+Stoppen nur wenn erlaubt.
+
 ## Variablen der Batterie
 
 | Variable | Bedeutung |
@@ -79,6 +110,10 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
 | Plan veraltet | Kein aktiver Eintrag oder Plan älter als eingestellt |
 | SoC gesendet, Letzter Push | Zuletzt an EOS übertragener Faktor |
 | Plan (JSON) | Alle Anweisungen dieser Batterie, sortiert |
+| Steuerung aktiv | Hauptschalter der Steuerung (schaltbar); aus → Fallback wird einmal geschrieben, danach nichts mehr |
+| Manueller Modus | Automatik oder ein fester EOS-Modus (schaltbar), kehrt nach der eingestellten Haltezeit zurück |
+| Fallback aktiv | Plan veraltet, abgelaufen oder unbrauchbar: der Fallback-Modus ist geschrieben |
+| Letzte Steuerung, Ergebnis der letzten Steuerung | Zeitpunkt und Text des letzten Schreibvorgangs, z. B. `[plan] Mode→pv OK · ChargePowerW→0 OK` |
 
 | Modus (EOS) | Wert | Bedeutung |
 | --- | --- | --- |
@@ -110,6 +145,9 @@ EOS_SaveConfig($id);
 EOS_PutMeasurement($id, 'load0_emr', 12345.6, '');   // Zeitstempel '' = jetzt
 EOSBAT_PushSoC($id);
 EOSBAT_GetActiveInstruction($id);   // JSON der aktiven Anweisung
+EOSBAT_ApplyControl($id, true);     // Steuerung jetzt anwenden, true = alle Ziele neu schreiben
+EOSBAT_SetManualMode($id, 5);       // manuell FORCED_CHARGE; 100 = Automatik (EOSEV_: 0 aus / 5 laden; EOSHA_: 0 / 1)
+EOSBAT_GetControlState($id);        // JSON: Sollzustand, zuletzt Geschriebenes, Fallback, manuell
 EOSEV_SetDeparture($id, strtotime('tomorrow 07:00'));   // Abfahrt nach EOS
 EOSHA_SetDeadline($id, strtotime('today 18:00'));       // Gerät muss bis dann fertig sein
 EOSMTR_Push($id);                   // Zählerstände sofort senden

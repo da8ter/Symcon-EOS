@@ -206,6 +206,17 @@ Konsequenz: **Polling aus Symcon** ist der robuste Weg (Phase 1). Push ist ein K
 
 ## 5. Phasenplan
 
+**Stand 21.09.2026:** Phase 0 bis 2 umgesetzt (Server, Batterie, E-Auto, Haushaltsgerät, Zähler, Konfig-Sync,
+„Jetzt optimieren“), Batterie-Kachel aus Phase 3 vorgezogen. Die **Steuerung** (Akzeptanzkriterium Phase 1)
+ist umgesetzt: herstellerneutral über Zielvariablen (`RequestAction`), Symcon-Aktionen (`SelectAction`) und
+Skript, Traits `libs/EOSControl.php` + `libs/EOSControlBindings.php`. Abweichungen vom ursprünglichen Text:
+Keine Variablenprofile (`EOS.BatteryMode`), sondern Darstellungen; EOS-Unerreichbarkeit ist **kein**
+Fallback-Auslöser (nur Plan-Alter, `valid_until`, fehlende/unbekannte Anweisung), damit der Fallback nicht
+flattert; Schreibzugriffe laufen nie im Empfangspfad des Servers, sondern in einem Einmal-Zeitgeber der
+Geräte-Instanz; 60-s-Wächter für Stale/Heartbeat/manuelle Rückkehr. Offen: Phase 3 (KPIs, PDF, Diagnose-Export,
+Prognose-Import), Phase 4, Folgearbeiten Fremdänderungs-Erkennung vor dem Heartbeat, asynchrone Aktionen,
+`PhasesSourceVariable` fürs E-Auto. Beispiele: `docs/geraete-mapping.md`.
+
 ### Phase 0 – Infrastruktur und Proof of Concept (1–2 Tage)
 
 - EOS aus Tag `v0.4.0rc1` als Docker-Image bauen und neben Symcon starten (`EOS_SERVER__HOST=0.0.0.0`, Volume für `/data`).
