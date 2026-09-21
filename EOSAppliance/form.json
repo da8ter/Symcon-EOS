@@ -1,0 +1,73 @@
+{
+    "elements": [
+        {
+            "type": "ExpansionPanel",
+            "caption": "Device",
+            "expanded": true,
+            "items": [
+                { "type": "Label", "caption": "The device ID must match the appliance key in the EOS configuration (devices/home_appliances/<id>)." },
+                { "type": "ValidationTextBox", "name": "DeviceID", "caption": "EOS device ID", "validate": "^[A-Za-z0-9_-]+$" },
+                { "type": "SelectVariable", "name": "DeadlineSourceVariable", "caption": "Deadline source variable (unix timestamp, optional)", "validVariableTypes": [1] },
+                { "type": "SelectVariable", "name": "EarliestStartSourceVariable", "caption": "Earliest start source variable (unix timestamp, optional)", "validVariableTypes": [1] },
+                { "type": "CheckBox", "name": "SyncTimesToEOS", "caption": "Write deadline and earliest start to EOS automatically" },
+                { "type": "SelectVariable", "name": "CyclesCompletedSourceVariable", "caption": "Cycles completed today source variable (optional)", "validVariableTypes": [1] },
+                { "type": "NumberSpinner", "name": "StaleAfterMinutes", "caption": "Mark plan stale after (min)", "minimum": 5, "maximum": 1440, "suffix": " min" },
+                { "type": "Select", "name": "ControlMode", "caption": "Control mode", "options": [
+                    { "caption": "Display only (no control)", "value": 0 }
+                ] }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Appliance parameters (EOS device configuration)",
+            "expanded": false,
+            "items": [
+                { "type": "NumberSpinner", "name": "ConsumptionWh", "caption": "Energy per run (Wh)", "minimum": 1, "suffix": " Wh" },
+                { "type": "NumberSpinner", "name": "DurationH", "caption": "Run duration (h)", "minimum": 1, "maximum": 24, "suffix": " h" },
+                { "type": "NumberSpinner", "name": "NumCycles", "caption": "Runs per horizon", "minimum": 1, "maximum": 10 },
+                { "type": "NumberSpinner", "name": "MinCycleGapH", "caption": "Minimum gap between runs (h)", "minimum": 0, "maximum": 24, "suffix": " h" },
+                { "type": "Select", "name": "ScheduleMode", "caption": "Schedule mode", "options": [
+                    { "caption": "ONCE (one run within the horizon)", "value": "ONCE" },
+                    { "caption": "DAILY (one run per day)", "value": "DAILY" }
+                ] },
+                { "type": "Select", "name": "DeadlinePolicy", "caption": "Deadline policy", "options": [
+                    { "caption": "BEST_EFFORT", "value": "BEST_EFFORT" },
+                    { "caption": "STRICT", "value": "STRICT" }
+                ] },
+                {
+                    "type": "List", "name": "TimeWindows", "caption": "Allowed time windows", "rowCount": 4, "add": true, "delete": true,
+                    "columns": [
+                        { "name": "start_time", "caption": "Start", "width": "140px", "add": "08:00", "edit": { "type": "ValidationTextBox" } },
+                        { "name": "duration", "caption": "Duration", "width": "auto", "add": "6 hours", "edit": { "type": "ValidationTextBox" } }
+                    ],
+                    "values": []
+                },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        { "type": "Button", "caption": "Read from EOS", "onClick": "EOSHA_ReadConfigFromEOS($id);" },
+                        { "type": "Button", "caption": "Write to EOS", "onClick": "EOSHA_WriteConfigToEOS($id);" }
+                    ]
+                },
+                { "type": "Label", "name": "ConfigInfo", "caption": " " }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "RowLayout",
+            "items": [
+                { "type": "Button", "caption": "Refresh plan", "onClick": "EOSHA_RefreshPlan($id);" },
+                { "type": "Button", "caption": "Push cycles completed", "onClick": "EOSHA_PushCyclesCompleted($id);" }
+            ]
+        },
+        { "type": "Label", "name": "ActionResult", "caption": " " }
+    ],
+    "status": [
+        { "code": 101, "icon": "inactive", "caption": "Instance is being created" },
+        { "code": 102, "icon": "active", "caption": "Active" },
+        { "code": 104, "icon": "inactive", "caption": "No active EOS Server" },
+        { "code": 201, "icon": "error", "caption": "Device ID missing or invalid" },
+        { "code": 203, "icon": "error", "caption": "Device ID already used by another instance" }
+    ]
+}

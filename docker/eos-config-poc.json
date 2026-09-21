@@ -1,0 +1,126 @@
+{
+  "general": {
+    "latitude": 51.0,
+    "longitude": 9.0
+  },
+  "ems": {
+    "mode": "OPTIMIZATION",
+    "interval": 900,
+    "startup_delay": 15
+  },
+  "optimization": {
+    "algorithm": "GENETIC",
+    "genetic": {
+      "interval_sec": 900,
+      "horizon_hours": 24,
+      "individuals": 200,
+      "generations": 200,
+      "measurement_max_age_seconds": 300
+    }
+  },
+  "prediction": {
+    "hours": 48,
+    "historic_hours": 48
+  },
+  "devices": {
+    "max_inverters": 1,
+    "inverters": {
+      "inv1": {
+        "device_id": "inv1",
+        "max_power_w": 10000,
+        "battery_id": "battery1",
+        "ac_to_dc_efficiency": 0.95,
+        "dc_to_ac_efficiency": 0.95,
+        "max_ac_charge_power_w": 5000
+      }
+    },
+    "max_batteries": 1,
+    "batteries": {
+      "battery1": {
+        "device_id": "battery1",
+        "capacity_wh": 10000,
+        "charging_efficiency": 0.95,
+        "discharging_efficiency": 0.95,
+        "max_charge_power_w": 5000,
+        "min_soc_percentage": 10,
+        "max_soc_percentage": 95
+      }
+    },
+    "max_electric_vehicles": 0,
+    "electric_vehicles": {},
+    "max_home_appliances": 0,
+    "home_appliances": {}
+  },
+  "measurement": {
+    "load_emr_keys": [
+      "load0_emr"
+    ],
+    "grid_import_emr_keys": [
+      "grid_import_emr"
+    ],
+    "grid_export_emr_keys": [
+      "grid_export_emr"
+    ]
+  },
+  "elecprice": {
+    "provider": "ElecPriceEnergyCharts"
+  },
+  "elecfee": {
+    "provider": "ElecFeeFixed",
+    "elecfeefixed": {
+      "consumption_amt_kwh": {
+        "windows": [
+          {
+            "start_time": "00:00",
+            "duration": "24 hours",
+            "value": 0.17
+          }
+        ]
+      },
+      "consumption_percent_amt": {
+        "windows": [
+          {
+            "start_time": "00:00",
+            "duration": "24 hours",
+            "value": 19
+          }
+        ]
+      }
+    }
+  },
+  "feedintariff": {
+    "provider": "FeedInTariffFixed",
+    "feedintarifffixed": {
+      "feed_in_tariff_amt_kwh": {
+        "windows": [
+          {
+            "start_time": "00:00",
+            "duration": "24 hours",
+            "value": 0.079
+          }
+        ]
+      }
+    }
+  },
+  "pvforecast": {
+    "provider": "PVForecastAkkudoktor",
+    "max_planes": 1,
+    "planes": [
+      {
+        "peakpower": 8.0,
+        "surface_azimuth": 180,
+        "surface_tilt": 30,
+        "inverter_paco": 10000
+      }
+    ]
+  },
+  "load": {
+    "provider": "LoadAkkudoktorAdjusted",
+    "loadakkudoktor": {
+      "loadakkudoktor_year_energy_kwh": 4500
+    }
+  },
+  "weather": {
+    "provider": "OpenMeteo"
+  }
+}

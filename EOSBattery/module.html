@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+    :root {
+        --gap: #ffffff;
+        --m-idle: #9a9a94;
+        --m-self: #008300;
+        --m-nonexport: #2a78d6;
+        --m-peak: #eb6834;
+        --m-import: #4a3aa7;
+        --m-forced: #e34948;
+        --m-export: #1baf7a;
+        --m-unknown: #9a9a94;
+        --soc: #2a78d6;
+        --price: #eb6834;
+    }
+    :root[data-dark="1"] {
+        --gap: #1a1a19;
+        --m-idle: #8a8a85;
+        --m-self: #008300;
+        --m-nonexport: #3987e5;
+        --m-peak: #d95926;
+        --m-import: #9085e9;
+        --m-forced: #e66767;
+        --m-export: #199e70;
+        --soc: #3987e5;
+        --price: #d95926;
+    }
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: transparent; font: 13px/1.3 -apple-system, "Segoe UI", Roboto, sans-serif; }
+    /* Tokens live on body so they resolve against the text color Symcon hands the tile. */
+    body {
+        color: var(--content-color, var(--font-color, #0b0b0b));
+        --ink: currentColor;
+        --ink-2: color-mix(in srgb, currentColor 62%, transparent);
+        --ink-3: color-mix(in srgb, currentColor 34%, transparent);
+        --grid: color-mix(in srgb, currentColor 12%, transparent);
+    }
+    #root { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 8px 10px 6px; gap: 6px; }
+    header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-height: 22px; }
+    .mode { font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 6px; }
+    .mode i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; background: var(--mode-color, var(--m-unknown)); }
+    .sub { color: var(--ink-2); font-size: 12px; }
+    .stale { color: #e34948; font-weight: 600; }
+    #chart { flex: 1 1 auto; min-height: 60px; position: relative; }
+    svg { display: block; width: 100%; height: 100%; overflow: visible; }
+    .grid line { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; }
+    .axis text { fill: var(--ink-2); font-size: 10px; }
+    .axis .unit { fill: var(--ink-3); }
+    .band rect { rx: 2; }
+    .band text { fill: #fff; font-size: 9.5px; font-weight: 600; pointer-events: none; }
+    .band .idle { fill: url(#hatch); }
+    .soc-area { fill: var(--soc); fill-opacity: 0.14; }
+    .soc-line { stroke: var(--soc); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+    .price-line { stroke: var(--price); stroke-width: 2; fill: none; stroke-linejoin: round; }
+    .now line { stroke: var(--ink); stroke-width: 1; stroke-dasharray: 3 3; }
+    .now text { fill: var(--ink-2); font-size: 10px; }
+    .cross { stroke: var(--ink-3); stroke-width: 1; pointer-events: none; }
+    .dot { stroke: var(--gap); stroke-width: 2; }
+    #tip { position: absolute; pointer-events: none; background: color-mix(in srgb, var(--ink) 88%, transparent); color: #fff; border-radius: 6px; padding: 6px 8px; font-size: 11px; line-height: 1.35; white-space: nowrap; display: none; z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+    :root[data-dark="1"] #tip { background: #f4f4f2; color: #0b0b0b; }
+    #tip b { font-weight: 600; }
+    #tip .row { display: flex; align-items: center; gap: 6px; }
+    #tip .row s { text-decoration: none; display: inline-block; width: 10px; height: 0; border-top: 2px solid currentColor; }
+    footer { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--ink-2); min-height: 14px; }
+    footer .chip { display: inline-flex; align-items: center; gap: 5px; }
+    footer .chip i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+    footer .chip i.hatch { background: repeating-linear-gradient(135deg, var(--m-idle) 0 2px, transparent 2px 4px); }
+    footer .chip .ln { width: 12px; border-top: 2px solid; display: inline-block; }
+    .empty { color: var(--ink-2); padding: 12px 0; }
+    #table { position: absolute; left: -10000px; top: 0; }
+</style>
+</head>
+<body>
+<div id="root">
+    <header>
+        <span class="mode"><i></i><span id="modeText">–</span></span>
+        <span class="sub" id="factorText"></span>
+        <span class="sub" id="nextText"></span>
+        <span class="sub stale" id="staleText"></span>
+    </header>
+    <div id="chart"><div id="tip"></div></div>
+    <footer id="legend"></footer>
+    <table id="table" aria-label="Plan"></table>
+</div>
+<script>
+(function () {
+    'use strict';
+
+    // ---- message queue until the script is ready
+    window._pendingMessages = window._pendingMessages || [];
+    if (typeof window.handleMessage !== 'function') {
+        window.handleMessage = function (m) { window._pendingMessages.push(m); };
+    }
+
+    const MODES = {
+        IDLE:                { label: 'Gesperrt',        cls: 'idle',      color: '--m-idle' },
+        SELF_CONSUMPTION:    { label: 'Eigenverbrauch',  cls: 'self',      color: '--m-self' },
+        NON_EXPORT:          { label: 'Nur PV-Laden',    cls: 'nonexport', color: '--m-nonexport' },
+        PEAK_SHAVING:        { label: 'Nur Entladen',    cls: 'peak',      color: '--m-peak' },
+        GRID_SUPPORT_IMPORT: { label: 'Netzladen',       cls: 'import',    color: '--m-import' },
+        FORCED_CHARGE:       { label: 'Zwangsladen',     cls: 'forced',    color: '--m-forced' },
+        GRID_SUPPORT_EXPORT: { label: 'Netzeinspeisung', cls: 'export',    color: '--m-export' }
+    };
+    const UNKNOWN = { label: 'Unbekannt', cls: 'unknown', color: '--m-unknown' };
+    const NS = 'http://www.w3.org/2000/svg';
+    let state = null;
+
+    function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+    function modeInfo(id) { return MODES[id] || Object.assign({}, UNKNOWN, { label: id || 'Unbekannt' }); }
+    function fmtTime(ts) { const d = new Date(ts * 1000); return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); }
+    function fmtDay(ts) { const d = new Date(ts * 1000); return d.toLocaleDateString('de-DE', { weekday: 'short' }); }
+    function el(tag, attrs, parent) {
+        const e = document.createElementNS(NS, tag);
+        for (const k in attrs) { e.setAttribute(k, attrs[k]); }
+        if (parent) { parent.appendChild(e); }
+        return e;
+    }
+
+    function detectDark() {
+        // Symcon hands the tile its font color; light text means a dark card.
+        const probe = getComputedStyle(document.body).color;
+        const m = probe.match(/\d+(\.\d+)?/g);
+        if (m && m.length >= 3) {
+            const lum = 0.2126 * m[0] + 0.7152 * m[1] + 0.0722 * m[2];
+            document.documentElement.setAttribute('data-dark', lum > 140 ? '1' : '0');
+            return;
+        }
+        document.documentElement.setAttribute('data-dark', window.matchMedia('(prefers-color-scheme: dark)').matches ? '1' : '0');
+    }
+
+    function render() {
+        detectDark();
+        const chart = document.getElementById('chart');
+        const tip = document.getElementById('tip');
+        Array.from(chart.querySelectorAll('svg, .empty')).forEach(n => n.remove());
+        if (!state) { return; }
+
+        // ---- header
+        const mi = modeInfo(state.modeRaw);
+        document.querySelector('.mode i').style.setProperty('--mode-color', css(mi.color));
+        document.getElementById('modeText').textContent = state.modeRaw ? mi.label : 'Kein Plan';
+        const f = Number(state.factor || 0);
+        let ftxt = '';
+        if (state.modeRaw && (state.modeRaw === 'GRID_SUPPORT_IMPORT' || state.modeRaw === 'FORCED_CHARGE')) {
+            ftxt = Math.round(state.targetW || 0).toLocaleString('de-DE') + ' W';
+        } else if (state.modeRaw && f > 0 && f < 1) {
+            ftxt = Math.round(f * 100) + ' %';
+        }
+        document.getElementById('factorText').textContent = ftxt;
+        document.getElementById('nextText').textContent = state.nextChange ? ('ab ' + fmtTime(state.nextChange) + ': ' + modeInfo(state.nextMode).label) : '';
+        document.getElementById('staleText').textContent = state.planStale ? 'Plan veraltet' : '';
+
+        const instr = (state.instructions || []).slice().sort((a, b) => a.ts - b.ts);
+        const soc = (state.soc || []).slice().sort((a, b) => a.ts - b.ts);
+        const price = (state.price || []).slice().sort((a, b) => a.ts - b.ts);
+        if (!instr.length && !soc.length) {
+            const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Noch kein Plan von EOS.'; chart.appendChild(d);
+            return;
+        }
+
+        // ---- time range: from first data point to end of horizon
+        const slot = Number(state.slot || 900);
+        const allTs = instr.map(i => i.ts).concat(soc.map(p => p.ts), price.map(p => p.ts));
+        const t0 = Math.min.apply(null, allTs);
+        let t1 = Math.max.apply(null, allTs) + slot;
+        if (t1 - t0 < 3600) { t1 = t0 + 3600; }
+
+        const W = chart.clientWidth || 300;
+        const H = chart.clientHeight || 160;
+        const padL = 34, padR = 8, padT = 4, padB = 16;
+        const bandH = 16, bandGap = 6;
+        const plotTop = padT + bandH + bandGap;
+        const plotH = Math.max(20, H - plotTop - padB);
+        const hasPrice = price.length > 1 && (Math.max.apply(null, price.map(p => p.v)) - Math.min.apply(null, price.map(p => p.v))) > 1e-6;
+        const socH = hasPrice ? Math.round(plotH * 0.62) : plotH;
+        const priceTop = plotTop + socH + (hasPrice ? 8 : 0);
+        const priceH = hasPrice ? plotH - socH - 8 : 0;
+        const x = ts => padL + (ts - t0) / (t1 - t0) * (W - padL - padR);
+
+        const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': 'EOS Fahrplan' }, chart);
+        const defs = el('defs', {}, svg);
+        const pat = el('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(135)' }, defs);
+        el('rect', { width: 6, height: 6, fill: 'transparent' }, pat);
+        el('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: css('--m-idle'), 'stroke-width': 2 }, pat);
+
+        // ---- grid + time axis (every 3 h, or 6 h when narrow)
+        const gGrid = el('g', { class: 'grid' }, svg);
+        const gAxis = el('g', { class: 'axis' }, svg);
+        const stepH = (W - padL - padR) < 360 ? 6 : 3;
+        const first = new Date(t0 * 1000); first.setMinutes(0, 0, 0);
+        for (let t = Math.floor(first.getTime() / 1000); t <= t1; t += 3600) {
+            const d = new Date(t * 1000);
+            if (d.getHours() % stepH !== 0 || t < t0) { continue; }
+            el('line', { x1: x(t), x2: x(t), y1: plotTop, y2: plotTop + plotH }, gGrid);
+            const tx = el('text', { x: x(t), y: H - 4, 'text-anchor': 'middle' }, gAxis);
+            tx.textContent = d.getHours() === 0 ? fmtDay(t) + ' ' + fmtTime(t) : fmtTime(t);
+        }
+
+        // ---- SoC axis (0..100 %)
+        const ySoc = v => plotTop + socH - (v / 100) * socH;
+        [0, 50, 100].forEach(v => {
+            el('line', { x1: padL, x2: W - padR, y1: ySoc(v), y2: ySoc(v) }, gGrid);
+            const tx = el('text', { x: padL - 4, y: ySoc(v) + 3, 'text-anchor': 'end' }, gAxis); tx.textContent = v + '%';
+        });
+
+        // ---- mode band
+        const gBand = el('g', { class: 'band' }, svg);
+        for (let i = 0; i < instr.length; i++) {
+            const a = instr[i], b = instr[i + 1];
+            const xs = x(Math.max(a.ts, t0)), xe = x(b ? b.ts : t1);
+            const w = Math.max(0, xe - xs - 2); // 2px surface gap
+            if (w <= 0) { continue; }
+            const info = modeInfo(a.mode);
+            const r = el('rect', { x: xs, y: padT, width: w, height: bandH, class: info.cls === 'idle' ? 'idle' : '', fill: info.cls === 'idle' ? 'url(#hatch)' : css(info.color) }, gBand);
+            r.setAttribute('data-i', i);
+            if (w > 58) {
+                const tx = el('text', { x: xs + 5, y: padT + bandH - 4.5 }, gBand);
+                tx.textContent = info.label;
+                if (info.cls === 'idle') { tx.setAttribute('fill', css('--ink')); }
+            }
+        }
+
+        // ---- SoC area + line
+        if (soc.length > 1) {
+            let dLine = '', dArea = '';
+            soc.forEach((p, i) => { dLine += (i ? 'L' : 'M') + x(p.ts).toFixed(1) + ' ' + ySoc(p.v).toFixed(1) + ' '; });
+            dArea = dLine + 'L' + x(soc[soc.length - 1].ts).toFixed(1) + ' ' + ySoc(0) + ' L' + x(soc[0].ts).toFixed(1) + ' ' + ySoc(0) + ' Z';
+            el('path', { d: dArea, class: 'soc-area' }, svg);
+            el('path', { d: dLine, class: 'soc-line' }, svg);
+        }
+
+        // ---- price step line (separate small axis, same x)
+        if (hasPrice) {
+            const pv = price.map(p => p.v);
+            const pMin = Math.min.apply(null, pv), pMax = Math.max.apply(null, pv);
+            const yP = v => priceTop + priceH - ((v - pMin) / (pMax - pMin || 1)) * priceH;
+            let d = '';
+            price.forEach((p, i) => {
+                const xs = x(p.ts), xe = x(price[i + 1] ? price[i + 1].ts : p.ts + slot);
+                d += (i ? 'L' : 'M') + xs.toFixed(1) + ' ' + yP(p.v).toFixed(1) + ' L' + xe.toFixed(1) + ' ' + yP(p.v).toFixed(1) + ' ';
+            });
+            el('path', { d: d, class: 'price-line' }, svg);
+            [pMin, pMax].forEach(v => {
+                const tx = el('text', { x: padL - 4, y: yP(v) + 3, 'text-anchor': 'end', class: 'axis' }, svg);
+                const t = el('tspan', {}, tx); t.textContent = (v * 100).toFixed(0) + 'ct';
+            });
+        }
+
+        // ---- now marker
+        const now = Number(state.now || Math.floor(Date.now() / 1000));
+        if (now >= t0 && now <= t1) {
+            const g = el('g', { class: 'now' }, svg);
+            el('line', { x1: x(now), x2: x(now), y1: padT, y2: plotTop + plotH }, g);
+            const tx = el('text', { x: x(now) + 3, y: plotTop + 9 }, g); tx.textContent = 'jetzt';
+        }
+
+        // ---- hover layer (crosshair + one tooltip for every series)
+        const gHover = el('g', {}, svg);
+        const cross = el('line', { class: 'cross', y1: padT, y2: plotTop + plotH, x1: 0, x2: 0, visibility: 'hidden' }, gHover);
+        const dotS = el('circle', { r: 4, class: 'dot', fill: css('--soc'), visibility: 'hidden' }, gHover);
+        const dotP = el('circle', { r: 4, class: 'dot', fill: css('--price'), visibility: 'hidden' }, gHover);
+        const hit = el('rect', { x: padL, y: padT, width: W - padL - padR, height: plotTop + plotH - padT, fill: 'transparent' }, svg);
+
+        function at(list, ts) { let best = null; for (const p of list) { if (p.ts <= ts) { best = p; } else { break; } } return best; }
+        function show(clientX) {
+            const rect = svg.getBoundingClientRect();
+            const px = clientX - rect.left;
+            const ts = t0 + (px - padL) / (W - padL - padR) * (t1 - t0);
+            if (ts < t0 || ts > t1) { hide(); return; }
+            const snapped = Math.floor(ts / slot) * slot;
+            const xs = x(snapped);
+            cross.setAttribute('x1', xs); cross.setAttribute('x2', xs); cross.setAttribute('visibility', 'visible');
+            const m = at(instr, snapped), s = at(soc, snapped), p = at(price, snapped);
+            tip.textContent = '';
+            const head = document.createElement('div'); head.textContent = fmtDay(snapped) + ' ' + fmtTime(snapped); head.style.opacity = '.75'; tip.appendChild(head);
+            if (m) { const r = document.createElement('div'); r.className = 'row'; const sw = document.createElement('s'); sw.style.color = css(modeInfo(m.mode).color); r.appendChild(sw); const b = document.createElement('b'); b.textContent = modeInfo(m.mode).label + (m.factor > 0 && m.factor < 1 ? ' ' + Math.round(m.factor * 100) + ' %' : ''); r.appendChild(b); tip.appendChild(r); }
+            if (s) { const r = document.createElement('div'); r.className = 'row'; const sw = document.createElement('s'); sw.style.color = css('--soc'); r.appendChild(sw); const b = document.createElement('b'); b.textContent = Math.round(s.v) + ' %'; r.appendChild(b); r.appendChild(document.createTextNode(' SoC')); tip.appendChild(r); dotS.setAttribute('cx', xs); dotS.setAttribute('cy', ySoc(s.v)); dotS.setAttribute('visibility', 'visible'); }
+            if (p && hasPrice) { const r = document.createElement('div'); r.className = 'row'; const sw = document.createElement('s'); sw.style.color = css('--price'); r.appendChild(sw); const b = document.createElement('b'); b.textContent = (p.v * 100).toFixed(1) + ' ct/kWh'; r.appendChild(b); r.appendChild(document.createTextNode(' Preis')); tip.appendChild(r); }
+            tip.style.display = 'block';
+            const tw = tip.offsetWidth;
+            tip.style.left = Math.min(Math.max(0, px - tw / 2), W - tw) + 'px';
+            tip.style.top = (plotTop + 2) + 'px';
+        }
+        function hide() { tip.style.display = 'none'; cross.setAttribute('visibility', 'hidden'); dotS.setAttribute('visibility', 'hidden'); dotP.setAttribute('visibility', 'hidden'); }
+        hit.addEventListener('pointermove', e => show(e.clientX));
+        hit.addEventListener('pointerleave', hide);
+        gBand.addEventListener('pointermove', e => show(e.clientX));
+        gBand.addEventListener('pointerleave', hide);
+
+        // ---- legend: only modes that occur, plus series keys
+        const legend = document.getElementById('legend');
+        legend.textContent = '';
+        const seen = [];
+        instr.forEach(i => { if (!seen.includes(i.mode)) { seen.push(i.mode); } });
+        seen.forEach(id => {
+            const info = modeInfo(id);
+            const c = document.createElement('span'); c.className = 'chip';
+            const i = document.createElement('i'); if (info.cls === 'idle') { i.className = 'hatch'; } else { i.style.background = css(info.color); }
+            c.appendChild(i); c.appendChild(document.createTextNode(info.label)); legend.appendChild(c);
+        });
+        if (soc.length > 1) { const c = document.createElement('span'); c.className = 'chip'; const l = document.createElement('span'); l.className = 'ln'; l.style.borderColor = css('--soc'); c.appendChild(l); c.appendChild(document.createTextNode('SoC')); legend.appendChild(c); }
+        if (hasPrice) { const c = document.createElement('span'); c.className = 'chip'; const l = document.createElement('span'); l.className = 'ln'; l.style.borderColor = css('--price'); c.appendChild(l); c.appendChild(document.createTextNode('Preis')); legend.appendChild(c); }
+
+        // ---- table view (accessibility; visually offscreen)
+        const table = document.getElementById('table');
+        table.textContent = '';
+        const th = document.createElement('tr');
+        ['Zeit', 'Modus', 'Faktor'].forEach(h => { const c = document.createElement('th'); c.textContent = h; th.appendChild(c); });
+        table.appendChild(th);
+        instr.forEach(i => { const tr = document.createElement('tr'); [fmtTime(i.ts), modeInfo(i.mode).label, String(i.factor)].forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }); table.appendChild(tr); });
+    }
+
+    window.handleMessage = function (message) {
+        try {
+            state = typeof message === 'string' ? JSON.parse(message) : message;
+        } catch (e) {
+            return;
+        }
+        render();
+    };
+
+    window.addEventListener('resize', render);
+    document.addEventListener('DOMContentLoaded', function () {
+        const queued = window._pendingMessages || [];
+        window._pendingMessages = [];
+        queued.forEach(m => window.handleMessage(m));
+    });
+})();
+</script>
+</body>
+</html>
