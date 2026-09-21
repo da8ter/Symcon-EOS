@@ -19,10 +19,48 @@
                 { "type": "SelectVariable", "name": "DepartureSourceVariable", "caption": "Departure time source variable (unix timestamp, optional)", "validVariableTypes": [1] },
                 { "type": "CheckBox", "name": "SyncDepartureToEOS", "caption": "Write departure time to EOS automatically" },
                 { "type": "NumberSpinner", "name": "TargetSoC", "caption": "Target SoC at departure (%)", "minimum": 0, "maximum": 100, "suffix": " %" },
-                { "type": "NumberSpinner", "name": "StaleAfterMinutes", "caption": "Mark plan stale after (min)", "minimum": 5, "maximum": 1440, "suffix": " min" },
+                { "type": "NumberSpinner", "name": "StaleAfterMinutes", "caption": "Mark plan stale after (min)", "minimum": 5, "maximum": 1440, "suffix": " min" }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Control",
+            "expanded": false,
+            "items": [
                 { "type": "Select", "name": "ControlMode", "caption": "Control mode", "options": [
-                    { "caption": "Display only (no control)", "value": 0 }
-                ] }
+                    { "caption": "Display only (no control)", "value": 0 },
+                    { "caption": "Simulation (log only, write nothing)", "value": 1 },
+                    { "caption": "Active (write to the device)", "value": 2 }
+                ] },
+                { "type": "Label", "caption": "All bindings are optional and can be combined. Order per change: target variables, action of the mode row, action on change, script. Values are written only when they change." },
+                { "type": "Label", "bold": true, "caption": "Target variables (written via RequestAction, converted to the variable type)" },
+                { "type": "SelectVariable", "name": "TargetChargeAllowedVariable", "caption": "Charging allowed (bool)", "requiredAction": 1, "validVariableTypes": [0] },
+                { "type": "SelectVariable", "name": "TargetCurrentVariable", "caption": "Charge current setpoint (A)", "requiredAction": 1, "validVariableTypes": [1, 2] },
+                { "type": "SelectVariable", "name": "TargetPowerVariable", "caption": "Charge power setpoint (W)", "requiredAction": 1, "validVariableTypes": [1, 2] },
+                { "type": "SelectVariable", "name": "TargetModeVariable", "caption": "Charging mode (value per mode from the table below, e.g. evcc off/pv/now)", "requiredAction": 1 },
+                {
+                    "type": "List", "name": "ModeMap", "caption": "EOS mode → value / action", "rowCount": 7, "add": false, "delete": false,
+                    "columns": [
+                        { "name": "mode", "caption": "EOS", "width": "170px", "visible": true, "save": true },
+                        { "name": "caption", "caption": "Meaning", "width": "160px" },
+                        { "name": "value", "caption": "Value for the mode variable", "width": "200px", "add": "", "edit": { "type": "ValidationTextBox" } },
+                        { "name": "action", "caption": "Action when switching to this mode", "width": "auto", "add": "", "edit": { "type": "SelectAction" } }
+                    ],
+                    "values": []
+                },
+                { "type": "SelectAction", "name": "ChangeAction", "caption": "Action on every change" },
+                { "type": "SelectScript", "name": "ControlScript", "caption": "Script on every change ($_IPS parameters, see README)" },
+                { "type": "Label", "bold": true, "caption": "Fallback and safety" },
+                { "type": "Select", "name": "FallbackMode", "caption": "Fallback mode (plan stale or expired)", "options": [
+                    { "caption": "No intervention", "value": -1 },
+                    { "caption": "Charging off", "value": 0 },
+                    { "caption": "Charging allowed (max. power)", "value": 5 }
+                ] },
+                { "type": "NumberSpinner", "name": "MinChargeCurrentA", "caption": "Minimum charge current (A)", "minimum": 0, "maximum": 32, "suffix": " A" },
+                { "type": "NumberSpinner", "name": "MinSwitchIntervalSec", "caption": "Minimum time between charging on/off switches (s)", "minimum": 0, "maximum": 3600, "suffix": " s" },
+                { "type": "NumberSpinner", "name": "HeartbeatSeconds", "caption": "Re-send setpoints every (s), 0 = off", "minimum": 0, "maximum": 3600, "suffix": " s" },
+                { "type": "NumberSpinner", "name": "ManualReturnMinutes", "caption": "Manual mode returns to automatic after (min), 0 = never", "minimum": 0, "maximum": 1440, "suffix": " min" },
+                { "type": "CheckBox", "name": "ReleaseOnDisable", "caption": "Write the fallback once when control is switched off" }
             ]
         },
         {
@@ -53,10 +91,12 @@
             "type": "RowLayout",
             "items": [
                 { "type": "Button", "caption": "Push SoC now", "onClick": "EOSEV_PushSoC($id);" },
-                { "type": "Button", "caption": "Refresh plan", "onClick": "EOSEV_RefreshPlan($id);" }
+                { "type": "Button", "caption": "Refresh plan", "onClick": "EOSEV_RefreshPlan($id);" },
+                { "type": "Button", "caption": "Apply control now", "onClick": "EOSEV_ApplyControl($id, true);" }
             ]
         },
-        { "type": "Label", "name": "ActionResult", "caption": " " }
+        { "type": "Label", "name": "ActionResult", "caption": " " },
+        { "type": "Label", "name": "ControlResult", "caption": " " }
     ],
     "status": [
         { "code": 101, "icon": "inactive", "caption": "Instance is being created" },
