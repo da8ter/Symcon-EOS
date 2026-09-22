@@ -199,13 +199,13 @@
         const W = chart.clientWidth || 300;
         const H = chart.clientHeight || 160;
         const padL = 34, padR = 8, padT = 4, padB = 16;
-        const bandH = 16, bandGap = 6;
+        const bandH = 16, bandGap = 10, panelGap = 22; // panelGap keeps the 0% and top price labels apart
         const plotTop = padT + bandH + bandGap;
         const plotH = Math.max(20, H - plotTop - padB);
         const hasPrice = price.length > 1 && (Math.max.apply(null, price.map(p => p.v)) - Math.min.apply(null, price.map(p => p.v))) > 1e-6;
         const socH = hasPrice ? Math.round(plotH * 0.62) : plotH;
-        const priceTop = plotTop + socH + (hasPrice ? 8 : 0);
-        const priceH = hasPrice ? plotH - socH - 8 : 0;
+        const priceTop = plotTop + socH + (hasPrice ? panelGap : 0);
+        const priceH = hasPrice ? plotH - socH - panelGap : 0;
         const x = ts => padL + (ts - t0) / (t1 - t0) * (W - padL - padR);
 
         const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': 'EOS Fahrplan' }, chart);
@@ -272,7 +272,7 @@
             });
             el('path', { d: d, class: 'price-line' }, svg);
             [pMin, pMax].forEach(v => {
-                const tx = el('text', { x: padL - 4, y: yP(v) + 3, 'text-anchor': 'end', class: 'axis' }, svg);
+                const tx = el('text', { x: padL - 4, y: yP(v) + 3, 'text-anchor': 'end' }, gAxis); // in gAxis: theme colour instead of black
                 const t = el('tspan', {}, tx); t.textContent = (v * 100).toFixed(0) + 'ct';
             });
         }
@@ -281,7 +281,7 @@
         const now = Number(state.now || Math.floor(Date.now() / 1000));
         if (now >= t0 && now <= t1) {
             const g = el('g', { class: 'now' }, svg);
-            el('line', { x1: x(now), x2: x(now), y1: padT, y2: plotTop + plotH }, g);
+            el('line', { x1: x(now), x2: x(now), y1: plotTop, y2: plotTop + plotH }, g); // below the band, not through its labels
             const tx = el('text', { x: x(now) + 3, y: plotTop + 9 }, g); tx.textContent = 'jetzt';
         }
 
