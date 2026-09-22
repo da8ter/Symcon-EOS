@@ -15,14 +15,14 @@ Akkudoktor-EOS-Instanz (v0.4.0rc1) im LAN, die Symcon später per REST anspricht
 ## Warum ein eigener Build?
 
 Für den Release-Kandidaten 0.4.0rc1 veröffentlicht das EOS-Projekt kein Docker-Image. Die
-Compose-Datei in `docker/` baut das Image deshalb direkt aus dem GitHub-Tag. Ein Checkout des
+Compose-Datei in `.docker/` baut das Image deshalb direkt aus dem GitHub-Tag. Ein Checkout des
 EOS-Repos ist nicht nötig. Sobald 0.4.0 final erscheint, genügt es, `EOS_GIT_REF` und
-`EOS_VERSION` in `docker/.env` zu ändern und `./setup-mac.sh update` auszuführen.
+`EOS_VERSION` in `.docker/.env` zu ändern und `./setup-mac.sh update` auszuführen.
 
 ## Schnellstart
 
 ```bash
-cd Symcon-EOS/docker
+cd Symcon-EOS/.docker
 ./setup-mac.sh
 ```
 
@@ -48,7 +48,7 @@ Konfiguration, Messwerte und Cache liegen im Docker-Volume `eos_eos-data` und ü
 
 ## Konfiguration laden
 
-`docker/eos-config-poc.json` ist eine Minimalkonfiguration für den Proof of Concept:
+`.docker/eos-config-poc.json` ist eine Minimalkonfiguration für den Proof of Concept:
 ein Wechselrichter, eine Batterie (`battery1`), GENETIC im 15-Minuten-Raster, automatische
 Optimierung alle 15 Minuten, Strompreis von Energy-Charts, PV-Prognose von Akkudoktor,
 Lastprofil nach Jahresverbrauch, Wetter von Open-Meteo.
@@ -62,7 +62,7 @@ Wechselrichterleistung, Jahresverbrauch, Einspeisevergütung und Netzentgelte (`
 ./setup-mac.sh config meine-anlage.json
 ```
 
-Eigene Konfigurationen als `docker/eos-config-local.json` ablegen, die Datei ist in `.gitignore`
+Eigene Konfigurationen als `.docker/eos-config-local.json` ablegen, die Datei ist in `.gitignore`
 eingetragen und landet nicht im Repo. Zeitzonentarife (z. B. Octopus Heat mit drei Preiszonen)
 werden mit `ElecPriceFixed` und Zeitfenstern abgebildet, Bruttopreise direkt eintragen und
 `elecfee.provider` auf `null` lassen.
@@ -113,7 +113,7 @@ Compose-Netz (`eos_default`) hängen und EOS unter `http://akkudoktoreos:8503` a
 | --- | --- |
 | `docker info` schlägt fehl | Docker Desktop läuft nicht. Starten und warten, bis das Symbol in der Menüleiste ruhig ist. |
 | Build bricht bei `uv sync` ab | Netzwerk/Proxy. Erneut starten, der Build setzt am Cache auf. |
-| Port 8503/8504 belegt | Ports in `docker/.env` ändern und `./setup-mac.sh` erneut ausführen. |
+| Port 8503/8504 belegt | Ports in `.docker/.env` ändern und `./setup-mac.sh` erneut ausführen. |
 | `/v1/energy-management/plan` liefert 404 | Noch kein erfolgreicher Lauf. `./setup-mac.sh logs` prüfen, SoC-Messwert setzen. |
 | Lauf bricht mit „stale“ / „missing measurement“ ab | Batterie-SoC älter als 300 s. Symcon (oder Test-curl) muss ihn zyklisch liefern. |
 | `POST /v1/optimize` liefert 503 „No new solution was produced“ | Meist fehlt eine Prognose. Log prüfen: `docker compose logs eos \| grep -i "fails on update"`. |
