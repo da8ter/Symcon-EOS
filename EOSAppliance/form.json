@@ -39,7 +39,9 @@
                 },
                 { "type": "SelectObject", "name": "ActionTarget", "caption": "Target for actions (variable or instance; default: the mode variable)" },
                 { "type": "ExpansionPanel", "name": "ModeActions", "caption": "Action per EOS mode (runs once when switching into the mode)", "expanded": false, "items": [] },
-                { "type": "SelectAction", "name": "ChangeAction", "caption": "Action on every change" },
+                { "type": "ExpansionPanel", "caption": "Action on every change (optional)", "expanded": false, "items": [
+                    { "type": "SelectAction", "name": "ChangeAction", "caption": "Action on every change" }
+                ] },
                 { "type": "SelectScript", "name": "ControlScript", "caption": "Script on every change ($_IPS parameters, see README)" },
                 { "type": "Label", "bold": true, "caption": "Fallback and safety" },
                 { "type": "Select", "name": "FallbackMode", "caption": "Fallback mode (plan stale or expired)", "options": [
