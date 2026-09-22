@@ -130,7 +130,7 @@
                 {
                     "type": "ExpansionPanel",
                     "caption": "Option 1: write values to variables on mode change",
-                    "expanded": true,
+                    "expanded": false,
                     "items": [
                         {
                             "type": "SelectVariable",
