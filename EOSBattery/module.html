@@ -38,12 +38,18 @@
         --ink-3: color-mix(in srgb, currentColor 34%, transparent);
         --grid: color-mix(in srgb, currentColor 12%, transparent);
     }
-    #root { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 8px 10px 6px; gap: 6px; }
+    /* Symcon passes the tile margins (title strip, sides, bottom) as URL parameters
+       margintop/marginside/marginbottom; the script below copies them into these variables. */
+    :root { --sym-mt: 8px; --sym-ms: 10px; --sym-mb: 6px; }
+    #root { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: var(--sym-mt) var(--sym-ms) var(--sym-mb); gap: 6px; }
     header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-height: 22px; }
     .mode { font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 6px; }
     .mode i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; background: var(--mode-color, var(--m-unknown)); }
     .sub { color: var(--ink-2); font-size: 12px; }
     .stale { color: #e34948; font-weight: 600; }
+    .ctrl { margin-left: auto; padding: 1px 7px; border-radius: 9px; background: color-mix(in srgb, var(--ink) 8%, transparent); }
+    .ctrl.warn { color: #e34948; font-weight: 600; }
+    .ctrl.sim { font-style: italic; }
     #chart { flex: 1 1 auto; min-height: 60px; position: relative; }
     svg { display: block; width: 100%; height: 100%; overflow: visible; }
     .grid line { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; }
@@ -80,6 +86,7 @@
         <span class="sub" id="factorText"></span>
         <span class="sub" id="nextText"></span>
         <span class="sub stale" id="staleText"></span>
+        <span class="sub ctrl" id="controlText"></span>
     </header>
     <div id="chart"><div id="tip"></div></div>
     <footer id="legend"></footer>
@@ -88,6 +95,16 @@
 <script>
 (function () {
     'use strict';
+
+    // ---- margins handed over by Symcon (same mechanism as the List tiles)
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const px = (name) => { const v = parseInt(params.get(name), 10); return (Number.isFinite(v) && v >= 0) ? v + 'px' : null; };
+        const root = document.documentElement.style;
+        const mt = px('margintop');    if (mt !== null) { root.setProperty('--sym-mt', mt); }
+        const ms = px('marginside');   if (ms !== null) { root.setProperty('--sym-ms', ms); }
+        const mb = px('marginbottom'); if (mb !== null) { root.setProperty('--sym-mb', mb); }
+    } catch (e) { /* without parameters the defaults above apply */ }
 
     // ---- message queue until the script is ready
     window._pendingMessages = window._pendingMessages || [];
@@ -152,6 +169,17 @@
         document.getElementById('factorText').textContent = ftxt;
         document.getElementById('nextText').textContent = state.nextChange ? ('ab ' + fmtTime(state.nextChange) + ': ' + modeInfo(state.nextMode).label) : '';
         document.getElementById('staleText').textContent = state.planStale ? 'Plan veraltet' : '';
+        const c = state.control || null;
+        let ctxt = '', ccls = 'sub ctrl';
+        if (c && c.mode > 0) {
+            if (!c.active) { ctxt = 'Steuerung aus'; }
+            else if (c.mode === 1) { ctxt = 'Simulation'; ccls += ' sim'; }
+            else if (c.manual !== 100) { ctxt = 'Manuell: ' + modeInfo(c.manualId).label; ccls += ' warn'; }
+            else if (c.fallback) { ctxt = 'Fallback'; ccls += ' warn'; }
+            else { ctxt = 'Steuerung aktiv'; }
+        }
+        const ce = document.getElementById('controlText');
+        ce.textContent = ctxt; ce.className = ccls; ce.title = (c && c.result) ? c.result : '';
 
         const instr = (state.instructions || []).slice().sort((a, b) => a.ts - b.ts);
         const soc = (state.soc || []).slice().sort((a, b) => a.ts - b.ts);
@@ -171,13 +199,13 @@
         const W = chart.clientWidth || 300;
         const H = chart.clientHeight || 160;
         const padL = 34, padR = 8, padT = 4, padB = 16;
-        const bandH = 16, bandGap = 6;
+        const bandH = 16, bandGap = 10, panelGap = 22; // panelGap keeps the 0% and top price labels apart
         const plotTop = padT + bandH + bandGap;
         const plotH = Math.max(20, H - plotTop - padB);
         const hasPrice = price.length > 1 && (Math.max.apply(null, price.map(p => p.v)) - Math.min.apply(null, price.map(p => p.v))) > 1e-6;
         const socH = hasPrice ? Math.round(plotH * 0.62) : plotH;
-        const priceTop = plotTop + socH + (hasPrice ? 8 : 0);
-        const priceH = hasPrice ? plotH - socH - 8 : 0;
+        const priceTop = plotTop + socH + (hasPrice ? panelGap : 0);
+        const priceH = hasPrice ? plotH - socH - panelGap : 0;
         const x = ts => padL + (ts - t0) / (t1 - t0) * (W - padL - padR);
 
         const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': 'EOS Fahrplan' }, chart);
@@ -244,7 +272,7 @@
             });
             el('path', { d: d, class: 'price-line' }, svg);
             [pMin, pMax].forEach(v => {
-                const tx = el('text', { x: padL - 4, y: yP(v) + 3, 'text-anchor': 'end', class: 'axis' }, svg);
+                const tx = el('text', { x: padL - 4, y: yP(v) + 3, 'text-anchor': 'end' }, gAxis); // in gAxis: theme colour instead of black
                 const t = el('tspan', {}, tx); t.textContent = (v * 100).toFixed(0) + 'ct';
             });
         }
@@ -253,7 +281,7 @@
         const now = Number(state.now || Math.floor(Date.now() / 1000));
         if (now >= t0 && now <= t1) {
             const g = el('g', { class: 'now' }, svg);
-            el('line', { x1: x(now), x2: x(now), y1: padT, y2: plotTop + plotH }, g);
+            el('line', { x1: x(now), x2: x(now), y1: plotTop, y2: plotTop + plotH }, g); // below the band, not through its labels
             const tx = el('text', { x: x(now) + 3, y: plotTop + 9 }, g); tx.textContent = 'jetzt';
         }
 

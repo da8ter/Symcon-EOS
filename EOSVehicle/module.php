@@ -5,22 +5,32 @@ declare(strict_types=1);
 require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSPlanDevice.php';
 require_once __DIR__ . '/../libs/EOSSoCPush.php';
+require_once __DIR__ . '/../libs/EOSControlBindings.php';
+require_once __DIR__ . '/../libs/EOSControl.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
 
 /**
  * EOS Vehicle: the battery of an electric vehicle known to EOS.
  *
  * Pushes the vehicle SoC, keeps departure time and target SoC in the EOS
- * device configuration and shows the planned charging instruction (charge
- * power and current for the wallbox). Display only; ApplyInstruction() is the
- * hook for later control modes.
+ * device configuration, shows the planned charging instruction (charge power
+ * and current for the wallbox) and - with a control mode enabled - drives the
+ * wallbox through vendor-neutral bindings (EOSControl).
  */
 class EOSVehicle extends IPSModuleStrict
 {
     use EOSCommon;
     use EOSPlanDevice;
     use EOSSoCPush;
+    use EOSControlBindings;
+    use EOSControl;
+    use EOSDeviceConfigSync;
 
     private const MODULE_GUID = '{5D0C0E3A-7B1F-4E7A-9C7E-2E6E4B1A8F21}';
+    private const CONTROL_PREFIX = 'EOSEV';
+    /** Manual / fallback values reuse the battery enumeration: 0 = no charging, 5 = charge at max power. */
+    private const CHARGE_OFF = 0;
+    private const CHARGE_NOW = 5;
 
     public function Create(): void
     {
@@ -34,7 +44,6 @@ class EOSVehicle extends IPSModuleStrict
         $this->RegisterPropertyBoolean('SyncDepartureToEOS', true);
         $this->RegisterPropertyInteger('TargetSoC', 80);
         $this->RegisterPropertyInteger('StaleAfterMinutes', 180);
-        $this->RegisterPropertyInteger('ControlMode', 0);
         $this->RegisterPropertyInteger('CapacityWh', 60000);
         $this->RegisterPropertyInteger('MaxChargePowerW', 11000);
         $this->RegisterPropertyInteger('Phases', 3);
@@ -42,11 +51,17 @@ class EOSVehicle extends IPSModuleStrict
         $this->RegisterPropertyInteger('MaxSoC', 100);
         $this->RegisterPropertyFloat('ChargingEfficiency', 0.90);
         $this->RegisterPropertyString('ChargeRates', '0, 0.25, 0.5, 0.75, 1');
+        $this->RegisterPropertyInteger('MinChargeCurrentA', 6);
+        $this->RegisterPropertyInteger('MinSwitchIntervalSec', 300);
+        $this->registerControlProperties(self::CHARGE_NOW);
 
+        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeInteger('RegisteredPluggedVar', 0);
         $this->RegisterAttributeInteger('RegisteredDepartureVar', 0);
         $this->RegisterAttributeString('LastDeadlineSent', '');
+        $this->RegisterAttributeInteger('LastChargeState', -1);
+        $this->RegisterAttributeInteger('LastChargeSwitchTs', 0);
 
         $this->RegisterVariableInteger('Mode', $this->Translate('Operation mode'), [
             'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
@@ -60,9 +75,12 @@ class EOSVehicle extends IPSModuleStrict
         $this->RegisterVariableInteger('Departure', $this->Translate('Departure'), $this->eosDateTimePresentation('Car'), 70);
         $this->registerPlanVariables(80);
         $this->registerSoCVariables(120);
+        $this->registerControlVariables(200);
 
         $this->RegisterTimer('SoCPush', 0, 'EOSEV_PushSoC($_IPS[\'TARGET\']);');
         $this->RegisterTimer('SlotTimer', 0, 'EOSEV_ProcessPlan($_IPS[\'TARGET\']);');
+        $this->registerControlTimers();
+        $this->registerFormFillTimer();
     }
 
     public function ApplyChanges(): void
@@ -73,6 +91,7 @@ class EOSVehicle extends IPSModuleStrict
             return;
         }
 
+        $this->setupControl();
         $hasSource = $this->setupSoCSource();
         $this->registerOptionalSource('PluggedSourceVariable', 'RegisteredPluggedVar');
         $this->registerOptionalSource('DepartureSourceVariable', 'RegisteredDepartureVar');
@@ -99,6 +118,8 @@ class EOSVehicle extends IPSModuleStrict
         $this->SetStatus(IS_ACTIVE);
         $this->SetTimerInterval('SoCPush', $this->ReadPropertyInteger('PushInterval') * 1000);
         $this->updateDeparture();
+        [$path, $device, $merge] = $this->deviceConfig();
+        $this->syncDeviceConfig($path, $device, $merge, false);
         $this->PushSoC();
         $this->RefreshPlan();
     }
@@ -126,6 +147,24 @@ class EOSVehicle extends IPSModuleStrict
         $this->handleSoCMessage($SenderID, $Message);
     }
 
+    public function RequestAction(string $Ident, mixed $Value): void
+    {
+        if (!$this->handleControlAction($Ident, $Value)) {
+            throw new Exception('Invalid ident: ' . $Ident);
+        }
+    }
+
+    public function GetConfigurationForm(): string
+    {
+        $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
+        $this->fillModeMap($form);
+        [$path, $device] = $this->deviceConfig();
+        $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
+        $this->armFormFillIfDiffers($path, $device);
+        $this->fillDevicePicker($form, dirname($path));
+        return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
     // ------------------------------------------------------------------ public API (prefix EOSEV_)
 
     /** Write departure time (unix timestamp, 0 = none) and target SoC to EOS. */
@@ -135,7 +174,41 @@ class EOSVehicle extends IPSModuleStrict
         return $this->writeDeadline($Timestamp);
     }
 
+    public function Dispatch(): void
+    {
+        $this->runDispatch();
+    }
+
+    public function Watchdog(): void
+    {
+        $this->runWatchdog();
+    }
+
+    public function ApplyControl(bool $Force): bool
+    {
+        return $this->applyControlNow($Force);
+    }
+
+    /** Manual override: 0 = charging off, 5 = charge now, 100 = automatic. */
+    public function SetManualMode(int $Mode): void
+    {
+        $this->changeManualMode($Mode);
+    }
+
+    public function GetControlState(): string
+    {
+        return json_encode($this->controlState(), JSON_UNESCAPED_UNICODE);
+    }
+
+    /** Force-write the vehicle parameters to EOS (ApplyChanges does it automatically when they differ). */
     public function WriteConfigToEOS(): bool
+    {
+        [$path, $device, $merge] = $this->deviceConfig();
+        return $this->syncDeviceConfig($path, $device, $merge, true);
+    }
+
+    /** [config path, device entry, merge payload] for the EOS configuration. */
+    private function deviceConfig(): array
     {
         $id = $this->ReadPropertyString('DeviceID');
         $rates = array_values(array_filter(array_map(
@@ -156,15 +229,7 @@ class EOSVehicle extends IPSModuleStrict
         }
         $departure = (int) $this->GetValue('Departure');
         $ev['min_soc_deadline_datetime'] = $departure > time() ? $this->eosIsoNow($departure) : null;
-
-        $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['devices' => ['max_electric_vehicles' => 1, 'electric_vehicles' => [$id => $ev]]]]);
-        if (($res['ok'] ?? false) !== true) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
-            return false;
-        }
-        $save = $this->forward(['Command' => 'SaveConfig']);
-        $this->UpdateFormField('ConfigInfo', 'caption', ($save['ok'] ?? false) ? $this->Translate('Vehicle configuration written to EOS.') : (string) ($save['error'] ?? '?'));
-        return (bool) ($save['ok'] ?? false);
+        return ['devices/electric_vehicles/' . $id, $ev, ['devices' => ['max_electric_vehicles' => 1, 'electric_vehicles' => [$id => $ev]]]];
     }
 
     public function ReadConfigFromEOS(): bool
@@ -191,37 +256,32 @@ class EOSVehicle extends IPSModuleStrict
         if (is_array($ev['charge_rates'] ?? null)) {
             $this->UpdateFormField('ChargeRates', 'value', implode(', ', $ev['charge_rates']));
         }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Vehicle configuration loaded from EOS. Press Apply to store.'));
+        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
         return true;
     }
 
-    // ------------------------------------------------------------------ plan hooks
+    // ------------------------------------------------------------------ plan hooks (display)
 
     protected function showInstruction(array $instruction): void
     {
         $modeId = (string) ($instruction['operation_mode_id'] ?? '');
-        $factor = max(0.0, min(1.0, (float) ($instruction['operation_mode_factor'] ?? 0.0)));
-        $mode = $this->eosBatteryMode($modeId);
-        if (!$mode['known'] && $modeId !== (string) $this->GetValue('ModeRaw')) {
+        $state = $this->vehicleState($modeId, (float) ($instruction['operation_mode_factor'] ?? 0.0), false);
+        if (!$state['mode']['known'] && $modeId !== (string) $this->GetValue('ModeRaw')) {
             $this->LogMessage(sprintf($this->Translate('Unknown operation mode %s'), $modeId), KL_WARNING);
         }
-        // Any charging-type mode with a factor > 0 means: charge the car at factor × max power.
-        $charging = $factor > 0.0 && $mode['id'] !== 'IDLE' && ($mode['grid'] || $mode['chargeFromFactor'] || !$mode['known']);
-        $powerW = $charging ? round($factor * $this->ReadPropertyInteger('MaxChargePowerW')) : 0.0;
-        $phases = max(1, $this->ReadPropertyInteger('Phases'));
-        $voltage = max(100, $this->ReadPropertyInteger('Voltage'));
-        $this->SetValue('Mode', $mode['value']);
+        $this->SetValue('Mode', $state['mode']['value']);
         $this->SetValue('ModeRaw', $modeId);
-        $this->SetValue('Factor', $factor);
-        $this->SetValue('ChargingPlanned', $charging);
-        $this->SetValue('TargetChargePowerW', $powerW);
-        $this->SetValue('TargetChargeCurrentA', $charging ? round($powerW / ($phases * $voltage), 1) : 0.0);
+        $this->SetValue('Factor', $state['factor']);
+        $this->SetValue('ChargingPlanned', $state['charging']);
+        $this->SetValue('TargetChargePowerW', $state['powerW']);
+        $this->SetValue('TargetChargeCurrentA', $state['currentA']);
     }
 
     protected function showNoInstruction(): void
     {
         $this->SetValue('Mode', self::EOS_MODE_UNKNOWN);
         $this->SetValue('ModeRaw', '');
+        $this->SetValue('Factor', 0.0);
         $this->SetValue('ChargingPlanned', false);
         $this->SetValue('TargetChargePowerW', 0.0);
         $this->SetValue('TargetChargeCurrentA', 0.0);
@@ -229,14 +289,148 @@ class EOSVehicle extends IPSModuleStrict
 
     protected function onPlanProcessed(?array $active): void
     {
-        if ($this->ReadPropertyInteger('ControlMode') !== 0) {
-            // Phase 2: control hook.
-        }
+        $this->scheduleControl($active, 'plan');
     }
 
     protected function socPushAllowed(): bool
     {
         return !$this->ReadPropertyBoolean('PushOnlyWhenPlugged') || $this->isPlugged();
+    }
+
+    // ------------------------------------------------------------------ control hooks
+
+    protected function controlTargets(): array
+    {
+        return [
+            'Mode'          => ['property' => 'TargetModeVariable'],
+            'ChargeAllowed' => ['property' => 'TargetChargeAllowedVariable'],
+            'CurrentA'      => ['property' => 'TargetCurrentVariable'],
+            'PowerW'        => ['property' => 'TargetPowerVariable'],
+        ];
+    }
+
+    protected function modeMapRows(): array
+    {
+        $rows = [];
+        foreach (self::BATTERY_MODE_CAPTIONS as $mode => $caption) {
+            $rows[] = ['mode' => $mode, 'caption' => $caption];
+        }
+        return $rows;
+    }
+
+    protected function manualModeOptions(): array
+    {
+        return [
+            ['Value' => self::CHARGE_OFF, 'Caption' => $this->Translate('Charging off'), 'Icon' => 'Power', 'Color' => 0x9A9A94, 'IconActive' => true],
+            ['Value' => self::CHARGE_NOW, 'Caption' => $this->Translate('Charge now'), 'Icon' => 'Lightning', 'Color' => 0xE34948, 'IconActive' => true],
+        ];
+    }
+
+    /**
+     * Plan instruction -> desired wallbox state. Unplugged (with a plug variable)
+     * means "off"; on/off flapping inside MinSwitchIntervalSec keeps the previous state.
+     */
+    protected function desiredFromInstruction(array $instruction): ?array
+    {
+        $modeId = (string) ($instruction['operation_mode_id'] ?? '');
+        if (!$this->eosBatteryMode($modeId)['known']) {
+            return null;
+        }
+        $state = $this->vehicleState($modeId, (float) ($instruction['operation_mode_factor'] ?? 0.0), true);
+        $degraded = '';
+        if ($this->ReadPropertyInteger('PluggedSourceVariable') > 0 && !$this->isPlugged()) {
+            $state = $this->vehicleState('IDLE', 0.0, true);
+            $degraded = $this->Translate('unplugged');
+        } else {
+            $previous = $this->ReadAttributeInteger('LastChargeState');
+            $dwell = $this->ReadPropertyInteger('MinSwitchIntervalSec');
+            if ($previous >= 0 && $state['charging'] !== ($previous === 1) && time() - $this->ReadAttributeInteger('LastChargeSwitchTs') < $dwell) {
+                $state = $previous === 1 ? $this->vehicleState('FORCED_CHARGE', max($state['factor'], 0.01), true) : $this->vehicleState('IDLE', 0.0, true);
+                $degraded = $this->Translate('switch held back (minimum interval)');
+            }
+        }
+        return $this->desiredFromVehicleState($state, (string) ($instruction['execution_time'] ?? ''), $degraded);
+    }
+
+    protected function desiredFallback(): ?array
+    {
+        $fallback = $this->ReadPropertyInteger('FallbackMode');
+        if ($fallback === self::FALLBACK_NONE) {
+            return null;
+        }
+        return $this->desiredManual($fallback);
+    }
+
+    protected function desiredManual(int $manualMode): array
+    {
+        $state = $manualMode === self::CHARGE_NOW ? $this->vehicleState('FORCED_CHARGE', 1.0, true) : $this->vehicleState('IDLE', 0.0, true);
+        return $this->desiredFromVehicleState($state, '', '');
+    }
+
+    protected function onDispatched(array $desired, bool $sim): void
+    {
+        $charging = !empty($desired['targets']['ChargeAllowed']) ? 1 : 0;
+        if ($this->ReadAttributeInteger('LastChargeState') !== $charging) {
+            $this->WriteAttributeInteger('LastChargeState', $charging);
+            $this->WriteAttributeInteger('LastChargeSwitchTs', time());
+        }
+    }
+
+    protected function validateControlDevice(): string
+    {
+        $bound = $this->ReadPropertyInteger('TargetCurrentVariable') > 0 || $this->ReadPropertyInteger('TargetPowerVariable') > 0;
+        if ($bound && $this->ReadPropertyInteger('MaxChargePowerW') <= 0) {
+            return $this->Translate('Max. charge power must be greater than 0 for a current or power target');
+        }
+        return '';
+    }
+
+    // ------------------------------------------------------------------ state math
+
+    /** Any charging-type mode with a factor > 0 means: charge the car at factor × max power. */
+    private function vehicleState(string $modeId, float $factor, bool $forControl): array
+    {
+        $factor = (is_nan($factor) || is_infinite($factor)) ? 0.0 : max(0.0, min(1.0, $factor));
+        $mode = $this->eosBatteryMode($modeId);
+        $charging = $factor > 0.0 && $mode['id'] !== 'IDLE' && ($mode['grid'] || $mode['chargeFromFactor'] || !$mode['known']);
+        $maxW = max(0, $this->ReadPropertyInteger('MaxChargePowerW'));
+        $phases = max(1, $this->ReadPropertyInteger('Phases'));
+        $voltage = max(100, $this->ReadPropertyInteger('Voltage'));
+        $powerW = $charging ? round($factor * $maxW) : 0.0;
+        $currentA = $charging ? round($powerW / ($phases * $voltage), 1) : 0.0;
+        if ($forControl && $charging) {
+            // Below the wallbox minimum the car would not charge at all; EOS wanted charging.
+            $min = max(0, $this->ReadPropertyInteger('MinChargeCurrentA'));
+            if ($currentA < $min) {
+                $currentA = (float) $min;
+                $powerW = round($min * $phases * $voltage);
+            }
+        }
+        return ['mode' => $mode, 'factor' => $factor, 'charging' => $charging, 'powerW' => $powerW, 'currentA' => $currentA];
+    }
+
+    private function desiredFromVehicleState(array $state, string $executionTime, string $degraded): array
+    {
+        $mode = $state['mode'];
+        return [
+            'modeRaw'       => $state['charging'] ? $mode['id'] : 'IDLE',
+            'mode'          => $state['charging'] ? $mode['value'] : self::CHARGE_OFF,
+            'factor'        => $state['factor'],
+            'executionTime' => $executionTime,
+            'degraded'      => $degraded,
+            'targets'       => [
+                'Mode'          => $mode['value'],
+                'ChargeAllowed' => $state['charging'],
+                'CurrentA'      => $state['currentA'],
+                'PowerW'        => $state['powerW'],
+            ],
+            'context'       => [
+                'ChargeAllowed' => $state['charging'],
+                'CurrentA'      => $state['currentA'],
+                'PowerW'        => $state['powerW'],
+                'Plugged'       => $this->isPlugged(),
+            ],
+        ];
     }
 
     // ------------------------------------------------------------------ internals
@@ -248,21 +442,6 @@ class EOSVehicle extends IPSModuleStrict
             return true; // unknown: assume plugged in
         }
         return (bool) GetValue($var);
-    }
-
-    private function registerOptionalSource(string $property, string $attribute): void
-    {
-        $old = $this->ReadAttributeInteger($attribute);
-        $src = $this->ReadPropertyInteger($property);
-        if ($old > 0 && $old !== $src) {
-            $this->UnregisterMessage($old, VM_UPDATE);
-        }
-        if ($src > 0 && IPS_VariableExists($src)) {
-            $this->RegisterMessage($src, VM_UPDATE);
-            $this->WriteAttributeInteger($attribute, $src);
-        } else {
-            $this->WriteAttributeInteger($attribute, 0);
-        }
     }
 
     /** Read the departure source variable (unix timestamp) and sync it to EOS if changed. */

@@ -16,6 +16,11 @@ declare(strict_types=1);
  *   - register a timer 'SlotTimer' calling <PREFIX>_ProcessPlan,
  *   - implement showInstruction(array $instruction): void and showNoInstruction(): void,
  *   - optionally override onPlanProcessed(?array $active): void.
+ *
+ * planUsable() is the single predicate the control layer relies on: plan age,
+ * valid_until and "no active instruction" (with a gap tolerance for plans that
+ * start at the next slot boundary). EOS reachability is deliberately NOT part
+ * of it - a stored plan keeps running autonomously between EOS runs.
  */
 if (!trait_exists('EOSPlanDevice')) {
     trait EOSPlanDevice
@@ -26,6 +31,8 @@ if (!trait_exists('EOSPlanDevice')) {
         public const STATUS_DUPLICATE_ID = 203;
         /** Never sleep longer than this before re-evaluating the plan (ms). */
         public const MAX_SLOT_TIMER_MS = 6 * 3600 * 1000;
+        /** A plan whose first instruction is at most this far ahead is not "without instruction" (s). */
+        public const GAP_TOLERANCE_S = 900;
 
         public function GetCompatibleParents(): string
         {
@@ -37,6 +44,7 @@ if (!trait_exists('EOSPlanDevice')) {
             $this->RegisterAttributeString('Instructions', '[]');
             $this->RegisterAttributeString('PlanMeta', '{}');
             $this->RegisterAttributeBoolean('EmptyPlanWarned', false);
+            $this->RegisterAttributeBoolean('SkewWarned', false);
         }
 
         protected function registerPlanVariables(int $position): void
@@ -99,6 +107,13 @@ if (!trait_exists('EOSPlanDevice')) {
                 return '';
             }
             $event = (string) ($data['Event'] ?? '');
+            // Restart race: the server may come up after this child. Once it is
+            // usable, redo ApplyChanges so the instance leaves status 104 and
+            // starts its timers. Deferred: we are inside the parent's
+            // SendDataToChildren call and must not call back into it here.
+            if ($this->GetStatus() === self::STATUS_NO_PARENT && $this->parentUsable()) {
+                $this->RegisterOnceTimer('ApplyLater', 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
+            }
             if ($event === 'PlanUpdated') {
                 $this->storePlan($data['Plan'] ?? [], is_array($data['Instructions'] ?? null) ? $data['Instructions'] : []);
                 $this->onPlanStored();
@@ -197,6 +212,56 @@ if (!trait_exists('EOSPlanDevice')) {
             return is_array($list) ? $list : [];
         }
 
+        /** First instruction in the future, null if none. */
+        protected function nextInstruction(): ?array
+        {
+            $now = time();
+            foreach ($this->instructionList() as $instruction) {
+                if ((int) ($instruction['ts'] ?? 0) > $now) {
+                    return $instruction;
+                }
+            }
+            return null;
+        }
+
+        protected function planGeneratedAt(): int
+        {
+            $meta = $this->eosJsonDecode($this->ReadAttributeString('PlanMeta'), []);
+            return $this->eosParseTime(is_array($meta) ? ($meta['generated_at'] ?? null) : null);
+        }
+
+        protected function planValidUntil(): int
+        {
+            $meta = $this->eosJsonDecode($this->ReadAttributeString('PlanMeta'), []);
+            return $this->eosParseTime(is_array($meta) ? ($meta['valid_until'] ?? null) : null);
+        }
+
+        /**
+         * Is the stored plan good enough to drive hardware? $reason receives
+         * 'stale', 'expired', 'gap' (fresh plan, next instruction within the
+         * tolerance, hold the last state) or 'no instruction'.
+         */
+        protected function planUsable(?array $active, string &$reason): bool
+        {
+            $reason = '';
+            $generated = $this->planGeneratedAt();
+            if ($generated === 0 || (time() - $generated) > $this->ReadPropertyInteger('StaleAfterMinutes') * 60) {
+                $reason = 'stale';
+                return false;
+            }
+            $until = $this->planValidUntil();
+            if ($until > 0 && time() > $until + self::GAP_TOLERANCE_S) {
+                $reason = 'expired';
+                return false;
+            }
+            if ($active === null) {
+                $next = $this->nextInstruction();
+                $reason = ($next !== null && (int) $next['ts'] - time() <= self::GAP_TOLERANCE_S) ? 'gap' : 'no instruction';
+                return false;
+            }
+            return true;
+        }
+
         protected function storePlan(array $meta, array $instructions): void
         {
             $deviceId = $this->ReadPropertyString('DeviceID');
@@ -228,6 +293,14 @@ if (!trait_exists('EOSPlanDevice')) {
                 ];
             }, $mine), JSON_UNESCAPED_UNICODE));
             $this->SendDebug('storePlan', count($mine) . ' instructions for ' . $deviceId, 0);
+
+            // Clock skew between the EOS host and Symcon makes every plan start "in the future".
+            $generated = $this->eosParseTime($meta['generated_at'] ?? null);
+            $skewed = $generated > time() + 60;
+            if ($skewed && !$this->ReadAttributeBoolean('SkewWarned')) {
+                $this->LogMessage(sprintf('EOS plan generated_at is %d s in the future - check the clocks of EOS host and Symcon', $generated - time()), KL_WARNING);
+            }
+            $this->WriteAttributeBoolean('SkewWarned', $skewed);
         }
 
         protected function updatePlanStale(?array $active = null): void
@@ -240,6 +313,22 @@ if (!trait_exists('EOSPlanDevice')) {
                 $stale = true;
             }
             $this->SetValue('PlanStale', $stale);
+        }
+
+        /** Register/unregister VM_UPDATE for an optional source variable property (remembered in an attribute). */
+        protected function registerOptionalSource(string $property, string $attribute): void
+        {
+            $old = $this->ReadAttributeInteger($attribute);
+            $src = $this->ReadPropertyInteger($property);
+            if ($old > 0 && $old !== $src) {
+                $this->UnregisterMessage($old, VM_UPDATE);
+            }
+            if ($src > 0 && IPS_VariableExists($src)) {
+                $this->RegisterMessage($src, VM_UPDATE);
+                $this->WriteAttributeInteger($attribute, $src);
+            } else {
+                $this->WriteAttributeInteger($attribute, 0);
+            }
         }
 
         /** Hook: a new plan was stored (before ProcessPlan). */

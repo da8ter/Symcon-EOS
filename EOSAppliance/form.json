@@ -5,16 +5,246 @@
             "caption": "Device",
             "expanded": true,
             "items": [
-                { "type": "Label", "caption": "The device ID must match the appliance key in the EOS configuration (devices/home_appliances/<id>)." },
-                { "type": "ValidationTextBox", "name": "DeviceID", "caption": "EOS device ID", "validate": "^[A-Za-z0-9_-]+$" },
-                { "type": "SelectVariable", "name": "DeadlineSourceVariable", "caption": "Deadline source variable (unix timestamp, optional)", "validVariableTypes": [1] },
-                { "type": "SelectVariable", "name": "EarliestStartSourceVariable", "caption": "Earliest start source variable (unix timestamp, optional)", "validVariableTypes": [1] },
-                { "type": "CheckBox", "name": "SyncTimesToEOS", "caption": "Write deadline and earliest start to EOS automatically" },
-                { "type": "SelectVariable", "name": "CyclesCompletedSourceVariable", "caption": "Cycles completed today source variable (optional)", "validVariableTypes": [1] },
-                { "type": "NumberSpinner", "name": "StaleAfterMinutes", "caption": "Mark plan stale after (min)", "minimum": 5, "maximum": 1440, "suffix": " min" },
-                { "type": "Select", "name": "ControlMode", "caption": "Control mode", "options": [
-                    { "caption": "Display only (no control)", "value": 0 }
-                ] }
+                {
+                    "type": "Label",
+                    "caption": "The device ID must match the appliance key in the EOS configuration (devices/home_appliances/<id>)."
+                },
+                {
+                    "type": "Select",
+                    "name": "EOSDevicePick",
+                    "caption": "Device in EOS",
+                    "options": [
+                        {
+                            "caption": "- select from EOS -",
+                            "value": ""
+                        }
+                    ],
+                    "onChange": "IPS_RequestAction($id, 'PickDeviceId', $EOSDevicePick);"
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "DeviceID",
+                    "caption": "EOS device ID (free text; a new device is created in EOS on Apply)",
+                    "validate": "^[A-Za-z0-9_-]+$"
+                },
+                {
+                    "type": "SelectVariable",
+                    "name": "DeadlineSourceVariable",
+                    "caption": "Deadline source variable (unix timestamp, optional)",
+                    "validVariableTypes": [
+                        1
+                    ]
+                },
+                {
+                    "type": "SelectVariable",
+                    "name": "EarliestStartSourceVariable",
+                    "caption": "Earliest start source variable (unix timestamp, optional)",
+                    "validVariableTypes": [
+                        1
+                    ]
+                },
+                {
+                    "type": "CheckBox",
+                    "name": "SyncTimesToEOS",
+                    "caption": "Write deadline and earliest start to EOS automatically"
+                },
+                {
+                    "type": "SelectVariable",
+                    "name": "CyclesCompletedSourceVariable",
+                    "caption": "Cycles completed today source variable (optional)",
+                    "validVariableTypes": [
+                        1
+                    ]
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "StaleAfterMinutes",
+                    "caption": "Mark plan stale after (min)",
+                    "minimum": 5,
+                    "maximum": 1440,
+                    "suffix": " min"
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "Control",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "Select",
+                    "name": "ControlMode",
+                    "caption": "Control mode",
+                    "options": [
+                        {
+                            "caption": "Display only (no control)",
+                            "value": 0
+                        },
+                        {
+                            "caption": "Simulation (log only, write nothing)",
+                            "value": 1
+                        },
+                        {
+                            "caption": "Active (write to the device)",
+                            "value": 2
+                        }
+                    ]
+                },
+                {
+                    "type": "Label",
+                    "caption": "Three options drive the device. All are optional and can be combined; on a change they run in order 1, 2, 3. Values are written only when they change, the action per mode runs once when entering the mode."
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Option 1: write values to variables on mode change",
+                    "expanded": false,
+                    "items": [
+                        {
+                            "type": "SelectVariable",
+                            "name": "TargetEnableVariable",
+                            "caption": "Release / enable (bool, true = run)",
+                            "requiredAction": 1,
+                            "validVariableTypes": [
+                                0
+                            ]
+                        },
+                        {
+                            "type": "SelectVariable",
+                            "name": "RunningSourceVariable",
+                            "caption": "Running source variable (bool, optional, prevents a second start)",
+                            "validVariableTypes": [
+                                0
+                            ]
+                        },
+                        {
+                            "type": "List",
+                            "name": "ModeMap",
+                            "caption": "Value per EOS mode for the mode variable",
+                            "rowCount": 2,
+                            "add": false,
+                            "delete": false,
+                            "columns": [
+                                {
+                                    "name": "mode",
+                                    "caption": "EOS",
+                                    "width": "170px",
+                                    "visible": true,
+                                    "save": true
+                                },
+                                {
+                                    "name": "caption",
+                                    "caption": "Meaning",
+                                    "width": "160px"
+                                },
+                                {
+                                    "name": "value",
+                                    "caption": "Value for the mode variable",
+                                    "width": "auto",
+                                    "add": "",
+                                    "edit": {
+                                        "type": "ValidationTextBox"
+                                    }
+                                }
+                            ],
+                            "values": []
+                        }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "name": "ModeActions",
+                    "caption": "Option 2: run an instance action per EOS mode",
+                    "expanded": false,
+                    "items": [
+                        {
+                            "type": "SelectObject",
+                            "name": "ActionTarget",
+                            "caption": "Target of the actions (variable or instance, also for option 3; default: the mode variable)",
+                            "onChange": "IPS_RequestAction($id, 'SetActionTarget', json_encode(['target' => $ActionTarget, 'modeVar' => 0]));"
+                        },
+                        {
+                            "type": "Label",
+                            "caption": "Each action runs once when EOS switches into that mode. The picker opens with the target above and lists its actions."
+                        }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Option 3: run an instance action or script on every EOS mode change",
+                    "expanded": false,
+                    "items": [
+                        {
+                            "type": "SelectAction",
+                            "name": "ChangeAction",
+                            "caption": "Action on every change"
+                        },
+                        {
+                            "type": "SelectScript",
+                            "name": "ControlScript",
+                            "caption": "Script on every change ($_IPS parameters, see README)"
+                        }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Fallback and safety",
+                    "expanded": false,
+                    "items": [
+                        {
+                            "type": "Select",
+                            "name": "FallbackMode",
+                            "caption": "Fallback mode (plan stale or expired)",
+                            "options": [
+                                {
+                                    "caption": "No intervention",
+                                    "value": -1
+                                },
+                                {
+                                    "caption": "Release (allow to run)",
+                                    "value": 1
+                                },
+                                {
+                                    "caption": "Block",
+                                    "value": 0
+                                }
+                            ]
+                        },
+                        {
+                            "type": "NumberSpinner",
+                            "name": "StartGraceMinutes",
+                            "caption": "Start only within (min) after the planned start",
+                            "minimum": 1,
+                            "maximum": 720,
+                            "suffix": " min"
+                        },
+                        {
+                            "type": "CheckBox",
+                            "name": "AllowStop",
+                            "caption": "Allow stopping (write OFF / run the OFF action)"
+                        },
+                        {
+                            "type": "NumberSpinner",
+                            "name": "HeartbeatSeconds",
+                            "caption": "Re-send setpoints every (s), 0 = off",
+                            "minimum": 0,
+                            "maximum": 3600,
+                            "suffix": " s"
+                        },
+                        {
+                            "type": "NumberSpinner",
+                            "name": "ManualReturnMinutes",
+                            "caption": "Manual mode returns to automatic after (min), 0 = never",
+                            "minimum": 0,
+                            "maximum": 1440,
+                            "suffix": " min"
+                        },
+                        {
+                            "type": "CheckBox",
+                            "name": "ReleaseOnDisable",
+                            "caption": "Write the fallback once when control is switched off"
+                        }
+                    ]
+                }
             ]
         },
         {
@@ -22,34 +252,100 @@
             "caption": "Appliance parameters (EOS device configuration)",
             "expanded": false,
             "items": [
-                { "type": "NumberSpinner", "name": "ConsumptionWh", "caption": "Energy per run (Wh)", "minimum": 1, "suffix": " Wh" },
-                { "type": "NumberSpinner", "name": "DurationH", "caption": "Run duration (h)", "minimum": 1, "maximum": 24, "suffix": " h" },
-                { "type": "NumberSpinner", "name": "NumCycles", "caption": "Runs per horizon", "minimum": 1, "maximum": 10 },
-                { "type": "NumberSpinner", "name": "MinCycleGapH", "caption": "Minimum gap between runs (h)", "minimum": 0, "maximum": 24, "suffix": " h" },
-                { "type": "Select", "name": "ScheduleMode", "caption": "Schedule mode", "options": [
-                    { "caption": "ONCE (one run within the horizon)", "value": "ONCE" },
-                    { "caption": "DAILY (one run per day)", "value": "DAILY" }
-                ] },
-                { "type": "Select", "name": "DeadlinePolicy", "caption": "Deadline policy", "options": [
-                    { "caption": "BEST_EFFORT", "value": "BEST_EFFORT" },
-                    { "caption": "STRICT", "value": "STRICT" }
-                ] },
                 {
-                    "type": "List", "name": "TimeWindows", "caption": "Allowed time windows", "rowCount": 4, "add": true, "delete": true,
+                    "type": "NumberSpinner",
+                    "name": "ConsumptionWh",
+                    "caption": "Energy per run (Wh)",
+                    "minimum": 1,
+                    "suffix": " Wh"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "DurationH",
+                    "caption": "Run duration (h)",
+                    "minimum": 1,
+                    "maximum": 24,
+                    "suffix": " h"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "NumCycles",
+                    "caption": "Runs per horizon",
+                    "minimum": 1,
+                    "maximum": 10
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "MinCycleGapH",
+                    "caption": "Minimum gap between runs (h)",
+                    "minimum": 0,
+                    "maximum": 24,
+                    "suffix": " h"
+                },
+                {
+                    "type": "Select",
+                    "name": "ScheduleMode",
+                    "caption": "Schedule mode",
+                    "options": [
+                        {
+                            "caption": "ONCE (one run within the horizon)",
+                            "value": "ONCE"
+                        },
+                        {
+                            "caption": "DAILY (one run per day)",
+                            "value": "DAILY"
+                        }
+                    ]
+                },
+                {
+                    "type": "Select",
+                    "name": "DeadlinePolicy",
+                    "caption": "Deadline policy",
+                    "options": [
+                        {
+                            "caption": "BEST_EFFORT",
+                            "value": "BEST_EFFORT"
+                        },
+                        {
+                            "caption": "STRICT",
+                            "value": "STRICT"
+                        }
+                    ]
+                },
+                {
+                    "type": "List",
+                    "name": "TimeWindows",
+                    "caption": "Allowed time windows",
+                    "rowCount": 4,
+                    "add": true,
+                    "delete": true,
                     "columns": [
-                        { "name": "start_time", "caption": "Start", "width": "140px", "add": "08:00", "edit": { "type": "ValidationTextBox" } },
-                        { "name": "duration", "caption": "Duration", "width": "auto", "add": "6 hours", "edit": { "type": "ValidationTextBox" } }
+                        {
+                            "name": "start_time",
+                            "caption": "Start",
+                            "width": "140px",
+                            "add": "08:00",
+                            "edit": {
+                                "type": "ValidationTextBox"
+                            }
+                        },
+                        {
+                            "name": "duration",
+                            "caption": "Duration",
+                            "width": "auto",
+                            "add": "6 hours",
+                            "edit": {
+                                "type": "ValidationTextBox"
+                            }
+                        }
                     ],
                     "values": []
                 },
                 {
-                    "type": "RowLayout",
-                    "items": [
-                        { "type": "Button", "caption": "Read from EOS", "onClick": "EOSHA_ReadConfigFromEOS($id);" },
-                        { "type": "Button", "caption": "Write to EOS", "onClick": "EOSHA_WriteConfigToEOS($id);" }
-                    ]
-                },
-                { "type": "Label", "name": "ConfigInfo", "caption": " " }
+                    "type": "Label",
+                    "name": "ConfigInfo",
+                    "caption": " "
+                }
             ]
         }
     ],
@@ -57,17 +353,59 @@
         {
             "type": "RowLayout",
             "items": [
-                { "type": "Button", "caption": "Refresh plan", "onClick": "EOSHA_RefreshPlan($id);" },
-                { "type": "Button", "caption": "Push cycles completed", "onClick": "EOSHA_PushCyclesCompleted($id);" }
+                {
+                    "type": "Button",
+                    "caption": "Refresh plan",
+                    "onClick": "EOSHA_RefreshPlan($id);"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Push cycles completed",
+                    "onClick": "EOSHA_PushCyclesCompleted($id);"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Apply control now",
+                    "onClick": "EOSHA_ApplyControl($id, true);"
+                }
             ]
         },
-        { "type": "Label", "name": "ActionResult", "caption": " " }
+        {
+            "type": "Label",
+            "name": "ActionResult",
+            "caption": " "
+        },
+        {
+            "type": "Label",
+            "name": "ControlResult",
+            "caption": " "
+        }
     ],
     "status": [
-        { "code": 101, "icon": "inactive", "caption": "Instance is being created" },
-        { "code": 102, "icon": "active", "caption": "Active" },
-        { "code": 104, "icon": "inactive", "caption": "No active EOS Server" },
-        { "code": 201, "icon": "error", "caption": "Device ID missing or invalid" },
-        { "code": 203, "icon": "error", "caption": "Device ID already used by another instance" }
+        {
+            "code": 101,
+            "icon": "inactive",
+            "caption": "Instance is being created"
+        },
+        {
+            "code": 102,
+            "icon": "active",
+            "caption": "Active"
+        },
+        {
+            "code": 104,
+            "icon": "inactive",
+            "caption": "No active EOS Server"
+        },
+        {
+            "code": 201,
+            "icon": "error",
+            "caption": "Device ID missing or invalid"
+        },
+        {
+            "code": 203,
+            "icon": "error",
+            "caption": "Device ID already used by another instance"
+        }
     ]
 }

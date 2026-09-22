@@ -4,21 +4,37 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSPlanDevice.php';
+require_once __DIR__ . '/../libs/EOSControlBindings.php';
+require_once __DIR__ . '/../libs/EOSControl.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
+require_once __DIR__ . '/../libs/EOSApplianceConfig.php';
 
 /**
  * EOS Appliance: a shiftable household appliance (dishwasher, washing machine,
  * dryer) known to EOS. Shows the planned start and the RUN/OFF instruction,
- * reports completed cycles and keeps the appliance parameters (consumption,
- * duration, time windows, deadline) in the EOS configuration.
+ * reports completed cycles, keeps the appliance parameters in the EOS
+ * configuration and - with a control mode enabled - releases/starts the
+ * appliance through vendor-neutral bindings (EOSControl).
+ *
+ * Starting is edge-triggered: a RUN instruction starts the appliance once,
+ * only within the grace period after its planned start, never twice for the
+ * same instruction id. Stopping is off by default (AllowStop).
  */
 class EOSAppliance extends IPSModuleStrict
 {
     use EOSCommon;
     use EOSPlanDevice;
+    use EOSControlBindings;
+    use EOSControl;
+    use EOSDeviceConfigSync;
+    use EOSApplianceConfig;
 
     private const MODULE_GUID = '{A7E2C4D9-3F61-4B8E-B2D5-6C9F0E1A7B34}';
+    private const CONTROL_PREFIX = 'EOSHA';
     private const MODE_OFF = 0;
     private const MODE_RUN = 1;
+    private const RUN_MODES = ['RUN', 'FORCED_RUN', 'RESUME'];
+    private const KNOWN_MODES = ['RUN', 'OFF', 'IDLE', 'DEFER', 'PAUSE', 'RESUME', 'LIMIT_POWER', 'FORCED_RUN', 'FAULT'];
 
     public function Create(): void
     {
@@ -37,13 +53,19 @@ class EOSAppliance extends IPSModuleStrict
         $this->RegisterPropertyInteger('CyclesCompletedSourceVariable', 0);
         $this->RegisterPropertyBoolean('SyncTimesToEOS', true);
         $this->RegisterPropertyInteger('StaleAfterMinutes', 180);
-        $this->RegisterPropertyInteger('ControlMode', 0);
+        $this->RegisterPropertyInteger('RunningSourceVariable', 0);
+        $this->RegisterPropertyInteger('StartGraceMinutes', 30);
+        $this->RegisterPropertyBoolean('AllowStop', false);
+        $this->registerControlProperties(self::FALLBACK_NONE);
 
+        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeInteger('RegisteredDeadlineVar', 0);
         $this->RegisterAttributeInteger('RegisteredEarliestVar', 0);
         $this->RegisterAttributeInteger('RegisteredCyclesVar', 0);
         $this->RegisterAttributeString('LastTimesSent', '');
+        $this->RegisterAttributeString('StartedInstructionIds', '[]');
+        $this->RegisterAttributeString('MissedStartWarned', '');
 
         $this->RegisterVariableInteger('Mode', $this->Translate('Instruction'), [
             'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
@@ -60,10 +82,13 @@ class EOSAppliance extends IPSModuleStrict
         $this->RegisterVariableInteger('Deadline', $this->Translate('Deadline'), $this->eosDateTimePresentation('Alert'), 60);
         $this->RegisterVariableInteger('CyclesCompleted', $this->Translate('Cycles completed today'), $this->eosValuePresentation('Repeat'), 70);
         $this->registerPlanVariables(80);
+        $this->registerControlVariables(200);
 
         $this->RegisterTimer('SlotTimer', 0, 'EOSHA_ProcessPlan($_IPS[\'TARGET\']);');
         // EOS needs a completed-cycles value from the current day; keep it fresh.
         $this->RegisterTimer('CyclesPush', 0, 'EOSHA_PushCyclesCompleted($_IPS[\'TARGET\']);');
+        $this->registerControlTimers();
+        $this->registerFormFillTimer();
     }
 
     public function ApplyChanges(): void
@@ -74,6 +99,7 @@ class EOSAppliance extends IPSModuleStrict
             return;
         }
 
+        $this->setupControl();
         $this->registerOptionalSource('DeadlineSourceVariable', 'RegisteredDeadlineVar');
         $this->registerOptionalSource('EarliestStartSourceVariable', 'RegisteredEarliestVar');
         $this->registerOptionalSource('CyclesCompletedSourceVariable', 'RegisteredCyclesVar');
@@ -96,6 +122,8 @@ class EOSAppliance extends IPSModuleStrict
         $this->SetStatus(IS_ACTIVE);
         $this->SetTimerInterval('CyclesPush', 900 * 1000);
         $this->syncTimes();
+        [$path, $device, $merge] = $this->deviceConfig();
+        $this->syncDeviceConfig($path, $device, $merge, false);
         $this->sendCyclesCompleted();
         $this->RefreshPlan();
     }
@@ -116,6 +144,24 @@ class EOSAppliance extends IPSModuleStrict
         }
     }
 
+    public function RequestAction(string $Ident, mixed $Value): void
+    {
+        if (!$this->handleControlAction($Ident, $Value)) {
+            throw new Exception('Invalid ident: ' . $Ident);
+        }
+    }
+
+    public function GetConfigurationForm(): string
+    {
+        $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
+        $this->fillModeMap($form);
+        [$path, $device] = $this->deviceConfig();
+        $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
+        $this->armFormFillIfDiffers($path, $device);
+        $this->fillDevicePicker($form, dirname($path));
+        return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
     // ------------------------------------------------------------------ public API (prefix EOSHA_)
 
     /** Set the deadline (unix timestamp, 0 = none) and write it to EOS. */
@@ -130,84 +176,39 @@ class EOSAppliance extends IPSModuleStrict
         return $this->sendCyclesCompleted();
     }
 
-    public function WriteConfigToEOS(): bool
+    public function Dispatch(): void
     {
-        $id = $this->ReadPropertyString('DeviceID');
-        $appliance = [
-            'device_id'       => $id,
-            'consumption_wh'  => $this->ReadPropertyInteger('ConsumptionWh'),
-            'duration_h'      => max(1, $this->ReadPropertyInteger('DurationH')),
-            'num_cycles'      => max(1, $this->ReadPropertyInteger('NumCycles')),
-            'min_cycle_gap_h' => $this->ReadPropertyInteger('MinCycleGapH'),
-            'schedule_mode'   => $this->ReadPropertyString('ScheduleMode'),
-            'deadline_policy' => $this->ReadPropertyString('DeadlinePolicy'),
-        ];
-        $windows = [];
-        foreach ($this->eosJsonDecode($this->ReadPropertyString('TimeWindows'), []) ?: [] as $row) {
-            $start = trim((string) ($row['start_time'] ?? ''));
-            $duration = trim((string) ($row['duration'] ?? ''));
-            if ($start !== '' && $duration !== '') {
-                $windows[] = ['start_time' => $start, 'duration' => $duration];
-            }
-        }
-        $appliance['time_windows'] = $windows !== [] ? ['windows' => $windows] : null;
-        $deadline = (int) $this->GetValue('Deadline');
-        $appliance['deadline_datetime'] = $deadline > time() ? $this->eosIsoNow($deadline) : null;
-        $earliest = $this->earliestStart();
-        $appliance['earliest_start_datetime'] = $earliest > time() ? $this->eosIsoNow($earliest) : null;
-
-        $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/max_home_appliances']);
-        $max = (int) ($res['data'] ?? 0);
-        $merge = ['devices' => ['home_appliances' => [$id => $appliance]]];
-        $count = $this->applianceCountInEOS();
-        if ($max < $count) {
-            $merge['devices']['max_home_appliances'] = $count;
-        }
-        $res = $this->forward(['Command' => 'MergeConfig', 'Value' => $merge]);
-        if (($res['ok'] ?? false) !== true) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
-            return false;
-        }
-        $save = $this->forward(['Command' => 'SaveConfig']);
-        $this->UpdateFormField('ConfigInfo', 'caption', ($save['ok'] ?? false) ? $this->Translate('Appliance configuration written to EOS.') : (string) ($save['error'] ?? '?'));
-        return (bool) ($save['ok'] ?? false);
+        $this->runDispatch();
     }
 
-    public function ReadConfigFromEOS(): bool
+    public function Watchdog(): void
     {
-        $id = $this->ReadPropertyString('DeviceID');
-        $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/home_appliances/' . $id]);
-        $ha = $res['data'] ?? null;
-        if (($res['ok'] ?? false) !== true || !is_array($ha)) {
-            $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('No appliance %s in EOS configuration.'), $id));
-            return false;
-        }
-        foreach (['ConsumptionWh' => 'consumption_wh', 'DurationH' => 'duration_h', 'NumCycles' => 'num_cycles', 'MinCycleGapH' => 'min_cycle_gap_h'] as $field => $key) {
-            if (isset($ha[$key])) {
-                $this->UpdateFormField($field, 'value', (int) $ha[$key]);
-            }
-        }
-        foreach (['ScheduleMode' => 'schedule_mode', 'DeadlinePolicy' => 'deadline_policy'] as $field => $key) {
-            if (isset($ha[$key])) {
-                $this->UpdateFormField($field, 'value', (string) $ha[$key]);
-            }
-        }
-        $rows = [];
-        foreach ($ha['time_windows']['windows'] ?? [] as $w) {
-            $rows[] = ['start_time' => (string) ($w['start_time'] ?? ''), 'duration' => (string) ($w['duration'] ?? '')];
-        }
-        $this->UpdateFormField('TimeWindows', 'values', json_encode($rows));
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Appliance configuration loaded from EOS. Press Apply to store.'));
-        return true;
+        $this->runWatchdog();
     }
 
-    // ------------------------------------------------------------------ plan hooks
+    public function ApplyControl(bool $Force): bool
+    {
+        return $this->applyControlNow($Force);
+    }
+
+    /** Manual override: 0 = off, 1 = run now, 100 = automatic. */
+    public function SetManualMode(int $Mode): void
+    {
+        $this->changeManualMode($Mode);
+    }
+
+    public function GetControlState(): string
+    {
+        return json_encode($this->controlState(), JSON_UNESCAPED_UNICODE);
+    }
+
+    // ------------------------------------------------------------------ plan hooks (display)
 
     protected function showInstruction(array $instruction): void
     {
         $modeId = strtoupper((string) ($instruction['operation_mode_id'] ?? ''));
-        $run = $modeId === 'RUN' || $modeId === 'FORCED_RUN' || $modeId === 'RESUME';
-        $known = in_array($modeId, ['RUN', 'OFF', 'IDLE', 'DEFER', 'PAUSE', 'RESUME', 'LIMIT_POWER', 'FORCED_RUN', 'FAULT'], true);
+        $run = in_array($modeId, self::RUN_MODES, true);
+        $known = in_array($modeId, self::KNOWN_MODES, true);
         if (!$known && $modeId !== (string) $this->GetValue('ModeRaw')) {
             $this->LogMessage(sprintf($this->Translate('Unknown operation mode %s'), $modeId), KL_WARNING);
         }
@@ -231,12 +232,129 @@ class EOSAppliance extends IPSModuleStrict
         if ($active === null) {
             $this->updatePlannedStart(null);
         }
-        if ($this->ReadPropertyInteger('ControlMode') !== 0) {
-            // Phase 2: control hook.
+        $this->scheduleControl($active, 'plan');
+    }
+
+    // ------------------------------------------------------------------ control hooks
+
+    protected function controlTargets(): array
+    {
+        return ['Enable' => ['property' => 'TargetEnableVariable']];
+    }
+
+    protected function modeMapRows(): array
+    {
+        return [['mode' => 'RUN', 'caption' => 'Run'], ['mode' => 'OFF', 'caption' => 'Off']];
+    }
+
+    protected function manualModeOptions(): array
+    {
+        return [
+            ['Value' => self::MODE_OFF, 'Caption' => $this->Translate('Off'), 'Icon' => 'Power', 'Color' => 0x9A9A94, 'IconActive' => true],
+            ['Value' => self::MODE_RUN, 'Caption' => $this->Translate('Run'), 'Icon' => 'Execute', 'Color' => 0x008300, 'IconActive' => true],
+        ];
+    }
+
+    protected function desiredFromInstruction(array $instruction): ?array
+    {
+        $modeId = strtoupper((string) ($instruction['operation_mode_id'] ?? ''));
+        if (!in_array($modeId, self::KNOWN_MODES, true)) {
+            return null;
         }
+        $id = (string) ($instruction['id'] ?? ($instruction['execution_time'] ?? ''));
+        if (!in_array($modeId, self::RUN_MODES, true)) {
+            return $this->desiredAppliance(false, false, $id, (string) ($instruction['execution_time'] ?? ''), '');
+        }
+        $ts = (int) ($instruction['ts'] ?? 0);
+        $degraded = '';
+        $start = false;
+        if (in_array($id, $this->startedIds(), true)) {
+            $degraded = $this->Translate('already started');
+        } elseif ($this->isRunning()) {
+            $degraded = $this->Translate('already running');
+        } elseif (time() >= $ts + $this->ReadPropertyInteger('StartGraceMinutes') * 60) {
+            // e.g. Symcon restarted hours after the planned start: do not start late.
+            if ($this->ReadAttributeString('MissedStartWarned') !== $id) {
+                $this->LogMessage(sprintf('Planned start of %s at %s missed (grace period), not starting', $this->ReadPropertyString('DeviceID'), date('H:i', $ts)), KL_WARNING);
+                $this->WriteAttributeString('MissedStartWarned', $id);
+            }
+            return $this->desiredAppliance(false, false, $id, (string) ($instruction['execution_time'] ?? ''), $this->Translate('start missed (grace period)'), 'RUN');
+        } else {
+            $start = true;
+        }
+        return $this->desiredAppliance(true, $start, $id, (string) ($instruction['execution_time'] ?? ''), $degraded);
+    }
+
+    protected function desiredFallback(): ?array
+    {
+        $fallback = $this->ReadPropertyInteger('FallbackMode');
+        if ($fallback === self::FALLBACK_NONE) {
+            return null;
+        }
+        // Release = allow to run without triggering a start pulse.
+        return $this->desiredAppliance($fallback === self::MODE_RUN, false, '', '', '');
+    }
+
+    protected function desiredManual(int $manualMode): array
+    {
+        $run = $manualMode === self::MODE_RUN;
+        return $this->desiredAppliance($run, $run && !$this->isRunning(), 'manual', '', '');
+    }
+
+    /** RUN row action only for a real start; OFF row action only when stopping is allowed (or manual). */
+    protected function rowActionAllowed(array $desired, string $modeRaw): bool
+    {
+        if ($modeRaw === 'RUN') {
+            return !empty($desired['start']);
+        }
+        return $this->ReadPropertyBoolean('AllowStop') || ($desired['source'] ?? '') === 'manual';
+    }
+
+    protected function onDispatched(array $desired, bool $sim): void
+    {
+        $id = (string) ($desired['startId'] ?? '');
+        if (empty($desired['start']) || $id === '' || $id === 'manual') {
+            return;
+        }
+        $ids = $this->startedIds();
+        $ids[] = $id;
+        $this->WriteAttributeString('StartedInstructionIds', json_encode(array_slice(array_values(array_unique($ids)), -50)));
     }
 
     // ------------------------------------------------------------------ internals
+
+    private function desiredAppliance(bool $run, bool $start, string $id, string $executionTime, string $degraded, string $modeRaw = ''): array
+    {
+        $targets = [];
+        if ($run) {
+            $targets['Enable'] = true;
+        } elseif ($this->ReadPropertyBoolean('AllowStop')) {
+            $targets['Enable'] = false;
+        }
+        return [
+            'modeRaw'       => $modeRaw !== '' ? $modeRaw : ($run ? 'RUN' : 'OFF'),
+            'mode'          => $run ? self::MODE_RUN : self::MODE_OFF,
+            'factor'        => 0.0,
+            'executionTime' => $executionTime,
+            'degraded'      => $degraded,
+            'targets'       => $targets,
+            'context'       => ['Run' => $run, 'Start' => $start, 'InstructionId' => $id],
+            'start'         => $start,
+            'startId'       => $id,
+        ];
+    }
+
+    private function startedIds(): array
+    {
+        $ids = $this->eosJsonDecode($this->ReadAttributeString('StartedInstructionIds'), []);
+        return is_array($ids) ? $ids : [];
+    }
+
+    private function isRunning(): bool
+    {
+        $var = $this->ReadPropertyInteger('RunningSourceVariable');
+        return $var > 0 && IPS_VariableExists($var) && (bool) GetValue($var);
+    }
 
     /** Planned start = current RUN start, otherwise the first future RUN instruction. */
     private function updatePlannedStart(?int $activeRunTs): void
@@ -255,90 +373,4 @@ class EOSAppliance extends IPSModuleStrict
         $this->SetValue('PlannedEnd', $start !== null ? $start + $this->ReadPropertyInteger('DurationH') * 3600 : 0);
     }
 
-    private function registerOptionalSource(string $property, string $attribute): void
-    {
-        $old = $this->ReadAttributeInteger($attribute);
-        $src = $this->ReadPropertyInteger($property);
-        if ($old > 0 && $old !== $src) {
-            $this->UnregisterMessage($old, VM_UPDATE);
-        }
-        if ($src > 0 && IPS_VariableExists($src)) {
-            $this->RegisterMessage($src, VM_UPDATE);
-            $this->WriteAttributeInteger($attribute, $src);
-        } else {
-            $this->WriteAttributeInteger($attribute, 0);
-        }
-    }
-
-    private function earliestStart(): int
-    {
-        $var = $this->ReadPropertyInteger('EarliestStartSourceVariable');
-        return ($var > 0 && IPS_VariableExists($var)) ? (int) GetValue($var) : 0;
-    }
-
-    private function syncTimes(): void
-    {
-        $var = $this->ReadPropertyInteger('DeadlineSourceVariable');
-        $deadline = ($var > 0 && IPS_VariableExists($var)) ? (int) GetValue($var) : (int) $this->GetValue('Deadline');
-        $this->SetValue('Deadline', max(0, $deadline));
-        if ($this->ReadPropertyBoolean('SyncTimesToEOS')) {
-            $this->writeTimes($deadline, $this->earliestStart());
-        }
-    }
-
-    private function writeTimes(int $deadline, int $earliest): bool
-    {
-        if (!$this->parentUsable()) {
-            return false;
-        }
-        $payload = [
-            'deadline_datetime'       => $deadline > time() ? $this->eosIsoNow($deadline) : null,
-            'earliest_start_datetime' => $earliest > time() ? $this->eosIsoNow($earliest) : null,
-        ];
-        $signature = json_encode($payload);
-        if ($signature === $this->ReadAttributeString('LastTimesSent')) {
-            return true;
-        }
-        $id = $this->ReadPropertyString('DeviceID');
-        $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['devices' => ['home_appliances' => [$id => ['device_id' => $id] + $payload]]]]);
-        if (($res['ok'] ?? false) !== true) {
-            $this->LogMessage('EOS appliance time update failed: ' . (string) ($res['error'] ?? '?'), KL_WARNING);
-            return false;
-        }
-        $this->WriteAttributeString('LastTimesSent', $signature);
-        return true;
-    }
-
-    /** Without a source variable 0 is reported; EOS rejects runs without a value for the current day. */
-    private function sendCyclesCompleted(): bool
-    {
-        if (!$this->parentUsable()) {
-            return false;
-        }
-        $var = $this->ReadPropertyInteger('CyclesCompletedSourceVariable');
-        $cycles = ($var > 0 && IPS_VariableExists($var)) ? max(0, (int) GetValue($var)) : 0;
-        $cycles = min($cycles, max(1, $this->ReadPropertyInteger('NumCycles')));
-        $this->SetValue('CyclesCompleted', $cycles);
-        $res = $this->forward([
-            'Command'  => 'PutMeasurement',
-            'Key'      => $this->ReadPropertyString('DeviceID') . '.cycles_completed',
-            'Value'    => (float) $cycles,
-            'DateTime' => $this->eosIsoNow(),
-        ]);
-        if (($res['ok'] ?? false) !== true) {
-            $this->LogMessage('cycles push failed: ' . (string) ($res['error'] ?? '?'), KL_WARNING);
-            return false;
-        }
-        return true;
-    }
-
-    private function applianceCountInEOS(): int
-    {
-        $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/home_appliances']);
-        $existing = is_array($res['data'] ?? null) ? array_keys($res['data']) : [];
-        if (!in_array($this->ReadPropertyString('DeviceID'), $existing, true)) {
-            $existing[] = $this->ReadPropertyString('DeviceID');
-        }
-        return count($existing);
-    }
 }

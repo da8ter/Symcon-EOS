@@ -52,6 +52,17 @@ if (!trait_exists('EOSCommon')) {
             return ['value' => self::EOS_MODE_UNKNOWN, 'discharge' => true, 'grid' => false, 'chargeFromFactor' => false, 'color' => 0x808080, 'icon' => 'Warning', 'id' => $key, 'known' => false];
         }
 
+        /** EOS mode id for a Symcon enumeration value, null for unknown values. */
+        protected function eosBatteryModeId(int $value): ?string
+        {
+            foreach (self::BATTERY_MODES as $id => $mode) {
+                if ($mode['value'] === $value) {
+                    return $id;
+                }
+            }
+            return null;
+        }
+
         protected function eosBatteryModeOptions(): array
         {
             $options = [];

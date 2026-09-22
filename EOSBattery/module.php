@@ -5,22 +5,29 @@ declare(strict_types=1);
 require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSPlanDevice.php';
 require_once __DIR__ . '/../libs/EOSSoCPush.php';
+require_once __DIR__ . '/../libs/EOSControlBindings.php';
+require_once __DIR__ . '/../libs/EOSControl.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
 
 /**
  * EOS Battery: represents one stationary battery known to EOS.
  *
- * Pushes the state of charge to EOS through the EOS Server splitter and
- * shows the currently active planner instruction (operation mode, factor,
- * target power) plus the next scheduled change. Phase 1 displays only;
- * ApplyInstruction() is the hook for later control modes.
+ * Pushes the state of charge to EOS through the EOS Server splitter, shows the
+ * currently active planner instruction (operation mode, factor, target power)
+ * plus the next scheduled change and - when a control mode is enabled - drives
+ * the user's inverter through vendor-neutral bindings (EOSControl).
  */
 class EOSBattery extends IPSModuleStrict
 {
     use EOSCommon;
     use EOSPlanDevice;
     use EOSSoCPush;
+    use EOSControlBindings;
+    use EOSControl;
+    use EOSDeviceConfigSync;
 
     private const MODULE_GUID = '{F4B30383-1210-4169-93DA-5C9664447B42}';
+    private const CONTROL_PREFIX = 'EOSBAT';
 
     public function Create(): void
     {
@@ -30,7 +37,6 @@ class EOSBattery extends IPSModuleStrict
         $this->RegisterPropertyString('DeviceID', 'battery1');
         $this->registerSoCProperties();
         $this->RegisterPropertyInteger('StaleAfterMinutes', 180);
-        $this->RegisterPropertyInteger('ControlMode', 0);
         $this->RegisterPropertyInteger('CapacityWh', 10000);
         $this->RegisterPropertyInteger('MaxChargePowerW', 5000);
         $this->RegisterPropertyInteger('MaxDischargePowerW', 5000);
@@ -39,9 +45,14 @@ class EOSBattery extends IPSModuleStrict
         $this->RegisterPropertyFloat('ChargingEfficiency', 0.95);
         $this->RegisterPropertyFloat('DischargingEfficiency', 0.95);
         $this->RegisterPropertyFloat('LcosAmtKwh', 0.0);
+        $this->RegisterPropertyBoolean('AllowGridCharge', true);
+        $this->RegisterPropertyBoolean('AllowGridExport', false);
+        $this->registerControlProperties(self::BATTERY_MODES['SELF_CONSUMPTION']['value']);
 
+        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeString('SolutionSubset', '{}');
+        $this->RegisterAttributeString('PlausibilityWarned', '');
 
         $this->RegisterVariableInteger('Mode', $this->Translate('Operation mode'), [
             'PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION,
@@ -54,9 +65,12 @@ class EOSBattery extends IPSModuleStrict
         $this->RegisterVariableBoolean('GridChargeActive', $this->Translate('Grid charging active'), $this->eosBoolPresentation('No', 'Yes', 0x808080, 0xC000C0, 'Plug'), 60);
         $this->registerPlanVariables(70);
         $this->registerSoCVariables(110);
+        $this->registerControlVariables(200);
 
         $this->RegisterTimer('SoCPush', 0, 'EOSBAT_PushSoC($_IPS[\'TARGET\']);');
         $this->RegisterTimer('SlotTimer', 0, 'EOSBAT_ProcessPlan($_IPS[\'TARGET\']);');
+        $this->registerControlTimers();
+        $this->registerFormFillTimer();
     }
 
     public function ApplyChanges(): void
@@ -67,6 +81,7 @@ class EOSBattery extends IPSModuleStrict
             return;
         }
 
+        $this->setupControl();
         $hasSource = $this->setupSoCSource();
         $deviceId = $this->ReadPropertyString('DeviceID');
         $this->SetTimerInterval('SoCPush', 0);
@@ -90,6 +105,8 @@ class EOSBattery extends IPSModuleStrict
 
         $this->SetStatus(IS_ACTIVE);
         $this->SetTimerInterval('SoCPush', $this->ReadPropertyInteger('PushInterval') * 1000);
+        [$path, $device, $merge] = $this->deviceConfig();
+        $this->syncDeviceConfig($path, $device, $merge, false);
         $this->PushSoC();
         $this->RefreshPlan();
     }
@@ -101,6 +118,55 @@ class EOSBattery extends IPSModuleStrict
             return;
         }
         $this->handleSoCMessage($SenderID, $Message);
+    }
+
+    public function RequestAction(string $Ident, mixed $Value): void
+    {
+        if (!$this->handleControlAction($Ident, $Value)) {
+            throw new Exception('Invalid ident: ' . $Ident);
+        }
+    }
+
+    public function GetConfigurationForm(): string
+    {
+        $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
+        $this->fillModeMap($form);
+        [$path, $device] = $this->deviceConfig();
+        $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
+        $this->armFormFillIfDiffers($path, $device);
+        $this->fillDevicePicker($form, dirname($path));
+        return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    // ------------------------------------------------------------------ public API (prefix EOSBAT_)
+
+    /** Timer: write the stored desired state. */
+    public function Dispatch(): void
+    {
+        $this->runDispatch();
+    }
+
+    /** Timer: stale plan, manual auto-return, heartbeat, retries. */
+    public function Watchdog(): void
+    {
+        $this->runWatchdog();
+    }
+
+    /** Re-evaluate and write now; $Force rewrites every bound target. */
+    public function ApplyControl(bool $Force): bool
+    {
+        return $this->applyControlNow($Force);
+    }
+
+    /** Manual override: an operation mode value (0-6) or 100 = automatic. */
+    public function SetManualMode(int $Mode): void
+    {
+        $this->changeManualMode($Mode);
+    }
+
+    public function GetControlState(): string
+    {
+        return json_encode($this->controlState(), JSON_UNESCAPED_UNICODE);
     }
 
     // ------------------------------------------------------------------ visualization
@@ -119,7 +185,15 @@ class EOSBattery extends IPSModuleStrict
 
     // ------------------------------------------------------------------ device configuration in EOS
 
+    /** Force-write the battery parameters to EOS (ApplyChanges does it automatically when they differ). */
     public function WriteConfigToEOS(): bool
+    {
+        [$path, $device, $merge] = $this->deviceConfig();
+        return $this->syncDeviceConfig($path, $device, $merge, true);
+    }
+
+    /** [config path, device entry, merge payload] for the EOS configuration. */
+    private function deviceConfig(): array
     {
         $id = $this->ReadPropertyString('DeviceID');
         $battery = [
@@ -132,14 +206,7 @@ class EOSBattery extends IPSModuleStrict
             'discharging_efficiency'            => $this->ReadPropertyFloat('DischargingEfficiency'),
             'levelized_cost_of_storage_amt_kwh' => $this->ReadPropertyFloat('LcosAmtKwh'),
         ];
-        $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['devices' => ['batteries' => [$id => $battery]]]]);
-        if (($res['ok'] ?? false) !== true) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
-            return false;
-        }
-        $save = $this->forward(['Command' => 'SaveConfig']);
-        $this->UpdateFormField('ConfigInfo', 'caption', ($save['ok'] ?? false) ? $this->Translate('Battery configuration written to EOS.') : (string) ($save['error'] ?? '?'));
-        return (bool) ($save['ok'] ?? false);
+        return ['devices/batteries/' . $id, $battery, ['devices' => ['batteries' => [$id => $battery]]]];
     }
 
     public function ReadConfigFromEOS(): bool
@@ -165,32 +232,35 @@ class EOSBattery extends IPSModuleStrict
                 $this->UpdateFormField($field, 'value', $type === 'int' ? (int) $bat[$key] : (float) $bat[$key]);
             }
         }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Battery configuration loaded from EOS. Press Apply to store.'));
+        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
         return true;
     }
 
-    // ------------------------------------------------------------------ plan hooks
+    // ------------------------------------------------------------------ plan hooks (display)
 
     protected function showInstruction(array $instruction): void
     {
         $modeId = (string) ($instruction['operation_mode_id'] ?? '');
-        $factor = max(0.0, min(1.0, (float) ($instruction['operation_mode_factor'] ?? 0.0)));
-        $mode = $this->eosBatteryMode($modeId);
-        if (!$mode['known'] && $modeId !== (string) $this->GetValue('ModeRaw')) {
+        $state = $this->batteryState($modeId, (float) ($instruction['operation_mode_factor'] ?? 0.0), false);
+        if (!$state['mode']['known'] && $modeId !== (string) $this->GetValue('ModeRaw')) {
             $this->LogMessage(sprintf($this->Translate('Unknown operation mode %s'), $modeId), KL_WARNING);
         }
-        $this->SetValue('Mode', $mode['value']);
+        $this->SetValue('Mode', $state['mode']['value']);
         $this->SetValue('ModeRaw', $modeId);
-        $this->SetValue('Factor', $factor);
-        $this->SetValue('DischargeAllowed', $mode['discharge']);
-        $this->SetValue('GridChargeActive', $mode['grid']);
-        $this->SetValue('TargetChargePowerW', $mode['chargeFromFactor'] ? round($factor * $this->ReadPropertyInteger('MaxChargePowerW')) : 0.0);
+        $this->SetValue('Factor', $state['factor']);
+        $this->SetValue('DischargeAllowed', $state['mode']['discharge']);
+        $this->SetValue('GridChargeActive', $state['mode']['grid']);
+        $this->SetValue('TargetChargePowerW', $state['chargeW']);
     }
 
     protected function showNoInstruction(): void
     {
         $this->SetValue('Mode', self::EOS_MODE_UNKNOWN);
         $this->SetValue('ModeRaw', '');
+        $this->SetValue('Factor', 0.0);
+        $this->SetValue('DischargeAllowed', false);
+        $this->SetValue('GridChargeActive', false);
+        $this->SetValue('TargetChargePowerW', 0.0);
     }
 
     protected function onPlanStored(): void
@@ -200,15 +270,154 @@ class EOSBattery extends IPSModuleStrict
 
     protected function onPlanProcessed(?array $active): void
     {
-        $this->ApplyInstruction($active);
+        $this->scheduleControl($active, 'plan');
         $this->UpdateVisualizationValue(json_encode($this->tileState(), JSON_UNESCAPED_UNICODE));
     }
 
-    /** Control hook (phase 2). ControlMode 0 = display only. */
-    protected function ApplyInstruction(?array $instruction): void
+    // ------------------------------------------------------------------ control hooks
+
+    protected function controlTargets(): array
     {
-        if ($this->ReadPropertyInteger('ControlMode') === 0) {
+        return [
+            'Mode'             => ['property' => 'TargetModeVariable'],
+            'ChargePowerW'     => ['property' => 'TargetChargePowerVariable'],
+            'DischargePowerW'  => ['property' => 'TargetDischargePowerVariable'],
+            'DischargeAllowed' => ['property' => 'TargetDischargeAllowedVariable'],
+            'GridCharge'       => ['property' => 'TargetGridChargeVariable'],
+        ];
+    }
+
+    protected function modeMapRows(): array
+    {
+        $rows = [];
+        foreach (self::BATTERY_MODE_CAPTIONS as $mode => $caption) {
+            $rows[] = ['mode' => $mode, 'caption' => $caption];
+        }
+        return $rows;
+    }
+
+    protected function manualModeOptions(): array
+    {
+        return array_values(array_filter($this->eosBatteryModeOptions(), static fn (array $o): bool => $o['Value'] !== self::EOS_MODE_UNKNOWN));
+    }
+
+    protected function desiredFromInstruction(array $instruction): ?array
+    {
+        $modeId = (string) ($instruction['operation_mode_id'] ?? '');
+        if (!$this->eosBatteryMode($modeId)['known']) {
+            return null;
+        }
+        $state = $this->batteryState($modeId, (float) ($instruction['operation_mode_factor'] ?? 0.0), true);
+        $this->plausibilityCheck($instruction, $state);
+        return $this->desiredFromState($state, (string) ($instruction['execution_time'] ?? ''));
+    }
+
+    protected function desiredFallback(): ?array
+    {
+        $fallback = $this->ReadPropertyInteger('FallbackMode');
+        if ($fallback === self::FALLBACK_NONE) {
+            return null;
+        }
+        return $this->desiredFromState($this->batteryState($this->eosBatteryModeId($fallback) ?? 'SELF_CONSUMPTION', 1.0, true), '');
+    }
+
+    protected function desiredManual(int $manualMode): array
+    {
+        return $this->desiredFromState($this->batteryState($this->eosBatteryModeId($manualMode) ?? 'SELF_CONSUMPTION', 1.0, true), '');
+    }
+
+    protected function validateControlDevice(): string
+    {
+        if ($this->ReadPropertyInteger('TargetChargePowerVariable') > 0 && $this->ReadPropertyInteger('MaxChargePowerW') <= 0) {
+            return $this->Translate('Max. charge power must be greater than 0 for a charge power target');
+        }
+        if ($this->ReadPropertyInteger('TargetDischargePowerVariable') > 0 && $this->ReadPropertyInteger('MaxDischargePowerW') <= 0) {
+            return $this->Translate('Max. discharge power must be greater than 0 for a discharge power target');
+        }
+        return '';
+    }
+
+    // ------------------------------------------------------------------ state math
+
+    /**
+     * Derived battery state for an EOS mode and factor. With $applyPolicy the
+     * control degradations apply: grid charging with 0 W or forbidden -> NON_EXPORT,
+     * grid export forbidden -> SELF_CONSUMPTION. The display always shows the raw plan.
+     */
+    private function batteryState(string $modeId, float $factor, bool $applyPolicy): array
+    {
+        $factor = (is_nan($factor) || is_infinite($factor)) ? 0.0 : max(0.0, min(1.0, $factor));
+        $mode = $this->eosBatteryMode($modeId);
+        $maxCharge = max(0, $this->ReadPropertyInteger('MaxChargePowerW'));
+        $maxDischarge = max(0, $this->ReadPropertyInteger('MaxDischargePowerW'));
+        $degraded = '';
+        if ($applyPolicy && $mode['known']) {
+            $id = $mode['id'];
+            if ($id === 'GRID_SUPPORT_IMPORT' || $id === 'FORCED_CHARGE') {
+                if (!$this->ReadPropertyBoolean('AllowGridCharge')) {
+                    $degraded = $id . '→NON_EXPORT (' . $this->Translate('grid charging not allowed') . ')';
+                } elseif (round($factor * $maxCharge) < 1) {
+                    $degraded = $id . '→NON_EXPORT (0 W)';
+                }
+                if ($degraded !== '') {
+                    $mode = $this->eosBatteryMode('NON_EXPORT');
+                }
+            } elseif ($id === 'GRID_SUPPORT_EXPORT' && !$this->ReadPropertyBoolean('AllowGridExport')) {
+                $degraded = 'GRID_SUPPORT_EXPORT→SELF_CONSUMPTION (' . $this->Translate('grid export not allowed') . ')';
+                $mode = $this->eosBatteryMode('SELF_CONSUMPTION');
+            }
+        }
+        $chargeW = $mode['chargeFromFactor'] ? round($factor * $maxCharge) : 0.0;
+        if ($mode['id'] === 'GRID_SUPPORT_EXPORT') {
+            $dischargeW = round($factor * $maxDischarge);
+        } else {
+            $dischargeW = $mode['discharge'] ? (float) $maxDischarge : 0.0;
+        }
+        return ['mode' => $mode, 'modeRaw' => $mode['id'], 'factor' => $factor, 'chargeW' => $chargeW, 'dischargeW' => $dischargeW, 'degraded' => $degraded];
+    }
+
+    private function desiredFromState(array $state, string $executionTime): array
+    {
+        $mode = $state['mode'];
+        return [
+            'modeRaw'       => $state['modeRaw'],
+            'mode'          => $mode['value'],
+            'factor'        => $state['factor'],
+            'executionTime' => $executionTime,
+            'degraded'      => $state['degraded'],
+            'targets'       => [
+                'Mode'             => $mode['value'],
+                'ChargePowerW'     => $state['chargeW'],
+                'DischargePowerW'  => $state['dischargeW'],
+                'DischargeAllowed' => $mode['discharge'],
+                'GridCharge'       => $mode['grid'],
+            ],
+            'context'       => [
+                'PowerW'           => $state['chargeW'],
+                'DischargePowerW'  => $state['dischargeW'],
+                'DischargeAllowed' => $mode['discharge'],
+                'GridCharge'       => $mode['grid'],
+            ],
+        ];
+    }
+
+    /** Warn once per instruction when the plan contradicts the SoC limits (config drift EOS vs. Symcon). */
+    private function plausibilityCheck(array $instruction, array $state): void
+    {
+        $soc = (float) $this->GetValue('SoCSent') * 100.0;
+        if ($soc <= 0.0) {
             return;
+        }
+        $message = '';
+        if ($state['mode']['grid'] && $soc >= $this->ReadPropertyInteger('MaxSoC')) {
+            $message = sprintf('SoC %.0f %% is at or above max SoC while %s is planned', $soc, $state['modeRaw']);
+        } elseif (in_array($state['modeRaw'], ['GRID_SUPPORT_EXPORT', 'PEAK_SHAVING'], true) && $soc <= $this->ReadPropertyInteger('MinSoC')) {
+            $message = sprintf('SoC %.0f %% is at or below min SoC while %s is planned', $soc, $state['modeRaw']);
+        }
+        $id = (string) ($instruction['id'] ?? ($instruction['execution_time'] ?? ''));
+        if ($message !== '' && $id !== $this->ReadAttributeString('PlausibilityWarned')) {
+            $this->LogMessage($message . ' - battery limits in EOS and Symcon may differ, press "Write to EOS"', KL_WARNING);
+            $this->WriteAttributeString('PlausibilityWarned', $id);
         }
     }
 
@@ -254,6 +463,15 @@ class EOSBattery extends IPSModuleStrict
             'nextMode'     => (string) $this->GetValue('NextMode'),
             'planStale'    => (bool) $this->GetValue('PlanStale'),
             'socSent'      => (float) $this->GetValue('SoCSent'),
+            'control'      => [
+                'mode'     => $this->ReadPropertyInteger('ControlMode'),
+                'active'   => (bool) $this->GetValue('ControlActive'),
+                'fallback' => (bool) $this->GetValue('FallbackActive'),
+                'manual'   => (int) $this->GetValue('ManualMode'),
+                'manualId' => $this->eosBatteryModeId((int) $this->GetValue('ManualMode')) ?? '',
+                'result'   => (string) $this->GetValue('LastControlResult'),
+                'ts'       => (int) $this->GetValue('LastControl'),
+            ],
             'instructions' => array_map(static fn (array $i): array => [
                 'ts'     => (int) $i['ts'],
                 'mode'   => (string) ($i['operation_mode_id'] ?? ''),

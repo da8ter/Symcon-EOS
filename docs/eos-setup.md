@@ -1,38 +1,48 @@
-# EOS auf dem Mac in Docker einrichten
+# EOS in Docker einrichten
 
-Anleitung für Docker Desktop auf macOS (Intel und Apple Silicon). Ziel ist eine laufende
-Akkudoktor-EOS-Instanz (v0.4.0rc1) im LAN, die Symcon später per REST anspricht.
+Anleitung für macOS (Docker Desktop, Intel und Apple Silicon), Linux (Docker Engine, z. B. Mini-PC oder
+Raspberry Pi 5 mit 64 Bit) und NAS mit Docker. Ziel ist eine laufende Akkudoktor-EOS-Instanz (v0.4.0rc1) im
+LAN, die Symcon per REST anspricht. Für den Dauerbetrieb ist ein Linux-Rechner oder ein NAS die bessere Wahl,
+der Mac eignet sich zum Ausprobieren.
 
 ## Voraussetzungen
 
-- macOS 13 oder neuer, mindestens 8 GB RAM (EOS selbst braucht 1 bis 2 GB, der Build kurzzeitig mehr).
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installiert und gestartet
-  (alternativ `brew install --cask docker`). In den Docker-Desktop-Einstellungen unter *Resources*
-  mindestens 2 CPUs und 4 GB RAM freigeben, sonst dauert die Optimierung sehr lange.
+- 64-Bit-System (amd64 oder arm64), mindestens 4 GB RAM für EOS (1 bis 2 GB im Betrieb, der Build kurzzeitig mehr),
+  2 CPU-Kerne, sonst dauert die Optimierung sehr lange.
+- Docker mit Compose v2: macOS [Docker Desktop](https://www.docker.com/products/docker-desktop/) (alternativ
+  `brew install --cask docker`), Linux [Docker Engine](https://docs.docker.com/engine/install/) plus
+  `docker-compose-plugin`, Nutzer in der Gruppe `docker`. NAS: Container-Manager (Synology) oder Container Station
+  (QNAP) mit Compose-Unterstützung, alternativ die Compose-Datei per SSH nutzen.
+- Optional `python3` (für JSON-Prüfung und hübsche Ausgaben des Skripts) und `openssl` (zufälliger EOSdash-Schlüssel).
 - Internetzugang während des Builds (GitHub, Docker Hub, PyPI) und im Betrieb (Prognose-Provider).
 - Dieses Repository geklont: `git clone https://github.com/da8ter/Symcon-EOS.git`
 
-## Warum ein eigener Build?
+## Fertiges Image oder eigener Build?
 
-Für den Release-Kandidaten 0.4.0rc1 veröffentlicht das EOS-Projekt kein Docker-Image. Die
-Compose-Datei in `docker/` baut das Image deshalb direkt aus dem GitHub-Tag. Ein Checkout des
-EOS-Repos ist nicht nötig. Sobald 0.4.0 final erscheint, genügt es, `EOS_GIT_REF` und
-`EOS_VERSION` in `docker/.env` zu ändern und `./setup-mac.sh update` auszuführen.
+Das Skript versucht zuerst, das veröffentlichte Image `akkudoktor/eos:<EOS_VERSION>` von Docker Hub zu
+holen. Gibt es das nicht (für den Release-Kandidaten 0.4.0rc1 veröffentlicht das EOS-Projekt keines), baut
+Compose das Image direkt aus dem GitHub-Tag (`EOS_GIT_REF=v0.4.0rc1`) mit dem Dockerfile des EOS-Projekts;
+das gewählte Image steht danach als `EOS_IMAGE` in `.env`. Ein Checkout des EOS-Repos ist nicht nötig. **Am EOS-Code wird nichts geändert**: kein Patch, kein Bind-Mount über `/opt/eos`, nur
+Umgebungsvariablen (Host/Port, Thread-Limits, Zeitzone). Alle Umgehungen für Eigenheiten des
+Release-Kandidaten stecken im Symcon-Modul. Sobald 0.4.0 final erscheint, genügt es, `EOS_VERSION` (und `EOS_GIT_REF`) in `.docker/.env` zu ändern
+und `./setup.sh update` auszuführen; dann wird das fertige Image gezogen und nichts mehr gebaut.
 
 ## Schnellstart
 
 ```bash
-cd Symcon-EOS/docker
-./setup-mac.sh
+cd Symcon-EOS/.docker
+./setup.sh
 ```
 
 Das Skript
 
-1. prüft Docker,
+1. prüft Docker und Compose,
 2. legt `.env` aus `.env.example` an und erzeugt einen zufälligen EOSdash-Sitzungsschlüssel,
-3. baut das Image (erster Lauf 5 bis 15 Minuten, danach aus dem Cache),
+3. holt das fertige Image von Docker Hub oder baut es aus dem Git-Tag (erster Build 5 bis 15 Minuten, danach aus dem Cache),
 4. startet den Container und wartet, bis `GET /v1/health` antwortet,
-5. gibt die URLs aus.
+5. gibt die URLs und den Hinweis für die Symcon-Seite aus.
+
+Ohne Skript: `docker compose up -d --build` im Ordner `.docker/` nach Anlegen der `.env`.
 
 Danach erreichbar:
 
@@ -48,7 +58,7 @@ Konfiguration, Messwerte und Cache liegen im Docker-Volume `eos_eos-data` und ü
 
 ## Konfiguration laden
 
-`docker/eos-config-poc.json` ist eine Minimalkonfiguration für den Proof of Concept:
+`.docker/eos-config-poc.json` ist eine Minimalkonfiguration für den Proof of Concept:
 ein Wechselrichter, eine Batterie (`battery1`), GENETIC im 15-Minuten-Raster, automatische
 Optimierung alle 15 Minuten, Strompreis von Energy-Charts, PV-Prognose von Akkudoktor,
 Lastprofil nach Jahresverbrauch, Wetter von Open-Meteo.
@@ -58,12 +68,37 @@ kWp, Azimut, Neigung), Batterie (`capacity_wh`, `max_charge_power_w`, SoC-Grenze
 Wechselrichterleistung, Jahresverbrauch, Einspeisevergütung und Netzentgelte (`elecfee`).
 
 ```bash
-./setup-mac.sh config                  # lädt eos-config-poc.json
-./setup-mac.sh config meine-anlage.json
+./setup.sh config                  # lädt eos-config-poc.json
+./setup.sh config meine-anlage.json
 ```
 
-Eigene Konfigurationen als `docker/eos-config-local.json` ablegen, die Datei ist in `.gitignore`
-eingetragen und landet nicht im Repo. Zeitzonentarife (z. B. Octopus Heat mit drei Preiszonen)
+Die gleichen Einstellungen lassen sich auch ohne Datei aus Symcon setzen: Instanz „EOS Server“, „Aus EOS
+laden“, Standort/Provider/Tarif eintragen, „Nach EOS schreiben“, „In EOS speichern“. Geräte (Batterie, E-Auto,
+Haushaltsgerät) legen ihre Symcon-Instanzen beim Übernehmen selbst in EOS an.
+
+Eigene Konfigurationen als `.docker/eos-config-local.json` ablegen, die Datei ist in `.gitignore`
+eingetragen und landet nicht im Repo.
+
+Dynamischer Börsenstromtarif (Energy-Charts, 15-Minuten-Raster) mit den festen Bestandteilen des eigenen
+Tarifblatts als Netto-Aufschlag und 19 % Mehrwertsteuer:
+
+```bash
+curl -X PUT http://localhost:8503/v1/config/elecprice/provider -H 'Content-Type: application/json' -d '"ElecPriceEnergyCharts"'
+curl -X PUT http://localhost:8503/v1/config/elecprice/energycharts/bidding_zone -H 'Content-Type: application/json' -d '"DE-LU"'
+curl -X PUT http://localhost:8503/v1/config/elecfee/provider -H 'Content-Type: application/json' -d '"ElecFeeFixed"'
+curl -X PUT http://localhost:8503/v1/config/elecfee/elecfeefixed/consumption_amt_kwh -H 'Content-Type: application/json' \
+  -d '{"windows":[{"start_time":"00:00:00","duration":"1 day","value":0.1772}]}'
+curl -X PUT http://localhost:8503/v1/config/elecfee/elecfeefixed/consumption_percent_amt -H 'Content-Type: application/json' \
+  -d '{"windows":[{"start_time":"00:00:00","duration":"1 day","value":19}]}'
+curl -X PUT http://localhost:8503/v1/config/file
+curl -X POST http://localhost:8503/v1/prediction/update
+```
+
+`value` bei `consumption_amt_kwh` ist EUR/kWh netto (hier 17,72 ct = Beschaffung 1,81 + Netz 8,82 + Konzession
+2,39 + Stromsteuer 2,05 + Umlagen 2,65), bei `consumption_percent_amt` Prozent. Kontrolle:
+`GET /v1/prediction/series?key=elecprice_marketprice_wh` muss (Spot + Aufschlag) × 1,19 ergeben; der reine
+Spotpreis steht unter `elecprice_marketprice_raw_wh`. Dieselben Felder gibt es im Formular des Symcon
+EOS Servers (Strompreis, Gebühren). Zeitzonentarife (z. B. Octopus Heat mit drei Preiszonen)
 werden mit `ElecPriceFixed` und Zeitfenstern abgebildet, Bruttopreise direkt eintragen und
 `elecfee.provider` auf `null` lassen.
 
@@ -89,23 +124,28 @@ JSON mit `detail` zurück, zum Beispiel bei fehlender Prognose oder veraltetem S
 ## Weitere Befehle
 
 ```bash
-./setup-mac.sh status    # Health, Version, letzter Lauf
-./setup-mac.sh logs      # Log verfolgen (Strg+C beendet nur die Anzeige)
-./setup-mac.sh stop      # Container stoppen, Daten bleiben
-./setup-mac.sh update    # nach Änderung von EOS_GIT_REF neu bauen
-./setup-mac.sh reset     # Container und Datenvolume löschen
+./setup.sh status    # Health, Version, letzter Lauf
+./setup.sh logs      # Log verfolgen (Strg+C beendet nur die Anzeige)
+./setup.sh stop      # Container stoppen, Daten bleiben
+./setup.sh update    # nach Änderung von EOS_VERSION/EOS_GIT_REF neu holen bzw. neu bauen
+./setup.sh reset     # Container und Datenvolume löschen
 ```
+
+`setup-mac.sh` bleibt als Alias für bestehende Anleitungen erhalten.
 
 ## Zugriff aus Symcon
 
-Symcon spricht EOS über die IP des Mac an, zum Beispiel `http://192.168.1.50:8503`. Dafür
+Symcon spricht EOS über die IP des Docker-Rechners an, zum Beispiel `http://192.168.1.50:8503`. Dafür
 
-- dem Mac eine feste IP oder DHCP-Reservierung geben,
-- die macOS-Firewall für Docker Desktop freigeben, falls aktiv,
+- dem Rechner eine feste IP oder DHCP-Reservierung geben,
+- eine Firewall (macOS, `ufw`, NAS) für Port 8503 im LAN freigeben,
 - keine Portfreigabe ins Internet einrichten: die EOS-API hat keine Authentifizierung.
 
-Läuft Symcon selbst als Docker-Container auf demselben Mac, lässt sich der Container in dasselbe
-Compose-Netz (`eos_default`) hängen und EOS unter `http://akkudoktoreos:8503` ansprechen.
+Läuft Symcon selbst als Docker-Container auf demselben Rechner: unter macOS und Windows heißt der Host aus dem
+Container heraus `host.docker.internal`. Unter Linux gibt es diesen Namen nicht; dort die IP des Rechners
+eintragen oder dem Symcon-Container `extra_hosts: ["host.docker.internal:host-gateway"]` geben. Alternativ
+beide Container in dasselbe Compose-Netz (`eos_default`) hängen und EOS unter `http://akkudoktoreos:8503`
+ansprechen.
 
 ## Typische Probleme
 
@@ -113,14 +153,17 @@ Compose-Netz (`eos_default`) hängen und EOS unter `http://akkudoktoreos:8503` a
 | --- | --- |
 | `docker info` schlägt fehl | Docker Desktop läuft nicht. Starten und warten, bis das Symbol in der Menüleiste ruhig ist. |
 | Build bricht bei `uv sync` ab | Netzwerk/Proxy. Erneut starten, der Build setzt am Cache auf. |
-| Port 8503/8504 belegt | Ports in `docker/.env` ändern und `./setup-mac.sh` erneut ausführen. |
-| `/v1/energy-management/plan` liefert 404 | Noch kein erfolgreicher Lauf. `./setup-mac.sh logs` prüfen, SoC-Messwert setzen. |
+| Port 8503/8504 belegt | Ports in `.docker/.env` ändern und `./setup.sh` erneut ausführen. |
+| `/v1/energy-management/plan` liefert 404 | Noch kein erfolgreicher Lauf. `./setup.sh logs` prüfen, SoC-Messwert setzen. |
 | Lauf bricht mit „stale“ / „missing measurement“ ab | Batterie-SoC älter als 300 s. Symcon (oder Test-curl) muss ihn zyklisch liefern. |
-| `POST /v1/optimize` liefert 503 „No new solution was produced“ | Meist fehlt eine Prognose. Log prüfen: `docker compose logs eos \| grep -i "fails on update"`. |
+| `POST /v1/optimize` liefert 503 „No new solution was produced“ | Meist fehlt eine Prognose oder ein Messwert. Log prüfen: `docker compose logs eos \| grep -iE "fails on update\|canceling"`. |
+| Jeder Lauf endet mit „devices.home_appliances exceeds configured maximum 0“ | `devices/max_home_appliances` ist kleiner als die Anzahl konfigurierter Geräte. Wert anheben: `curl -X PUT .../v1/config/devices/max_home_appliances -d '1'` und `PUT /v1/config/file`. Die Haushaltsgerät-Instanz in Symcon hebt ihn beim Übernehmen automatisch an. |
+| `EOS.config.json` enthält einen gesetzten Wert nicht | Die Datei speichert nur Abweichungen vom Standard (z. B. fehlt `energycharts.bidding_zone: DE-LU`, weil es der Standard ist). Maßgeblich ist `GET /v1/config`. |
 | `PVForecastAkkudoktor fails on update ... 500 Server Error` | Die Akkudoktor-Cloud-API ist nicht erreichbar. Auf das lokale Backend umschalten (siehe unten). |
 | Lauf bricht mit „Fresh SoC missing“ ab, obwohl der SoC frisch ist | Bug in 0.4.0rc1: Die SoC-Suche (`configrequest.py`, `key_to_lists(..., dropna=False)`) nimmt den jüngsten Messwert-Datensatz, auch wenn er nur einen anderen Key (EV-SoC, Zählerstand) enthält und der Batterie-SoC darin NaN ist. Gleiches gilt für `<gerät>.cycles_completed` bei Haushaltsgeräten („Invalid completed cycle count“). Das Symcon-Modul umgeht das, indem der EOS Server bei jedem anderen Messwert alle bekannten SoC- und Zyklus-Werte mit demselben Zeitstempel erneut sendet. Upstream-Fix: `dropna=True` in `configrequest.py`. |
 | Optimierung dauert sehr lange | In Docker Desktop mehr CPUs freigeben oder `individuals`/`generations` in `optimization.genetic` senken. |
-| Apple Silicon: Build kompiliert lange | Für einzelne Pakete gibt es keine arm64-Wheels, der Build kompiliert sie (gcc ist im Builder-Image). Einmalig, danach aus dem Cache. |
+| Apple Silicon / Raspberry Pi: Build kompiliert lange | Für einzelne Pakete gibt es keine arm64-Wheels, der Build kompiliert sie (gcc ist im Builder-Image). Einmalig, danach aus dem Cache; mit dem fertigen Image entfällt das. |
+| Linux: `permission denied` beim Docker-Socket | Nutzer in die Gruppe `docker` aufnehmen (`sudo usermod -aG docker $USER`, neu anmelden) oder das Skript mit `sudo` starten. |
 
 ## PV-Prognose lokal berechnen
 
