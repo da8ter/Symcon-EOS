@@ -364,22 +364,35 @@ class EOSServer extends IPSModuleStrict
         switch ($command) {
             case 'PutMeasurement':
                 $key = (string) ($data['Key'] ?? '');
+                $value = (float) ($data['Value'] ?? 0);
                 $dateTime = (string) ($data['DateTime'] ?? $this->eosIsoNow());
-                $res = $this->client()->putMeasurementValue($key, (float) ($data['Value'] ?? 0), $dateTime);
+                $this->rememberSticky($key, $value);
+                // One request for the value plus all cached sticky values (PUT /v1/measurement/data
+                // accepts any key): EOS then sees a complete record at this timestamp, never a
+                // half-written one that a run in between would reject as "stale SoC".
+                $bundle = $this->stickyBundle($key);
+                if ($bundle === []) {
+                    $res = $this->client()->putMeasurementValue($key, $value, $dateTime);
+                } else {
+                    $res = $this->client()->putMeasurementData(['start_datetime' => $dateTime, 'interval' => '1 minute', $key => [$value]] + array_map(static fn (float $v): array => [$v], $bundle));
+                }
                 if (!$res['ok']) {
                     $this->SetValue('LastError', 'measurement: ' . (string) $res['error']);
-                } else {
-                    $this->afterMeasurement($key, (float) ($data['Value'] ?? 0), $dateTime);
                 }
                 return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
 
             case 'PutSamples':
                 $samples = is_array($data['Samples'] ?? null) ? $data['Samples'] : [];
+                // Meter readings carry no SoC/cycle keys. Write the cached sticky values for the
+                // same timestamp FIRST, so the newest record is never a meter-only record.
+                $bundle = $this->stickyBundle('');
+                if ($bundle !== [] && $samples !== []) {
+                    $stamp = (string) (end($samples)['date_time'] ?? $this->eosIsoNow());
+                    $this->client()->putMeasurementData(['start_datetime' => $stamp, 'interval' => '1 minute'] + array_map(static fn (float $v): array => [$v], $bundle));
+                }
                 $res = $this->client()->putMeasurementSamples($samples);
                 if (!$res['ok']) {
                     $this->SetValue('LastError', 'samples: ' . (string) $res['error']);
-                } else {
-                    $this->afterMeasurement('', 0.0, $this->eosIsoNow());
                 }
                 return json_encode(['ok' => $res['ok'], 'error' => $res['error'], 'data' => $res['data']]);
 
@@ -440,26 +453,41 @@ class EOSServer extends IPSModuleStrict
      * these "sticky" keys and re-send all of them whenever a different key is
      * written, so the newest record always carries every device value.
      */
-    private function afterMeasurement(string $key, float $value, string $dateTime): void
+    /** Remember SoC / cycle values so they can be re-sent with every other measurement. */
+    private function rememberSticky(string $key, float $value): void
+    {
+        if (!$this->isStickyKey($key)) {
+            return;
+        }
+        $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
+        $cache = is_array($cache) ? $cache : [];
+        $cache[$key] = ['value' => $value, 'ts' => time()];
+        $this->WriteAttributeString('SoCCache', json_encode($cache));
+    }
+
+    /**
+     * EOS 0.4.0rc1 looks up SoC and cycle counts in the newest measurement record
+     * only (configrequest.py, dropna=False). Every record we write therefore has to
+     * carry all known sticky values; this returns them as key => value, without
+     * $exceptKey. SoC values expire with the EOS freshness limit, cycle counts do not.
+     */
+    private function stickyBundle(string $exceptKey): array
     {
         $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
         $cache = is_array($cache) ? $cache : [];
         $now = time();
-        if ($this->isStickyKey($key)) {
-            $cache[$key] = ['value' => $value, 'ts' => $now];
-            $this->WriteAttributeString('SoCCache', json_encode($cache));
-        }
         $maxAge = max(60, (int) ($this->ReadPropertyInteger('OptMeasurementMaxAge') ?: 300));
+        $bundle = [];
         foreach ($cache as $stickyKey => $entry) {
-            if ($stickyKey === $key) {
+            if ($stickyKey === $exceptKey) {
                 continue;
             }
-            // SoC values expire with the EOS freshness limit; cycle counts stay valid for the day.
             if (str_ends_with((string) $stickyKey, '-soc-factor') && $now - (int) ($entry['ts'] ?? 0) > $maxAge) {
                 continue;
             }
-            $this->client()->putMeasurementValue((string) $stickyKey, (float) $entry['value'], $dateTime);
+            $bundle[(string) $stickyKey] = (float) $entry['value'];
         }
+        return $bundle;
     }
 
     private function isStickyKey(string $key): bool
