@@ -104,7 +104,10 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
 2. Im Bereich **EOS-Konfiguration** „Aus EOS laden“ drücken, dann „Übernehmen“. Die Felder (Standort,
    Energiemanagement, Optimierung, Provider für Strompreis, Gebühren, Einspeisung, PV-Flächen, Last, Wetter,
    Messwert-Keys) spiegeln jetzt die EOS-Konfiguration. Änderungen mit „Nach EOS schreiben“ übertragen und mit
-   „In EOS speichern“ dauerhaft sichern. Symcon schreibt nur auf Knopfdruck nach EOS.
+   „In EOS speichern“ dauerhaft sichern. Diese globale EOS-Konfiguration schreibt Symcon nur auf Knopfdruck.
+   Automatisch nach EOS gehen dagegen die Geräteeinträge der Geräte-Instanzen (beim Übernehmen, nur bei
+   Abweichung), Abfahrtszeit und Ziel-SoC des E-Autos, Frist und frühester Start des Haushaltsgeräts sowie
+   laufend alle Messwerte.
    Dynamischer Tarif: Strompreis-Provider `ElecPriceEnergyCharts` (Gebotszone `DE-LU`, 15-Minuten-Raster) und
    unter Gebühren `ElecFeeFixed` mit dem festen Netto-Aufschlag des Tarifs in EUR/kWh (Beschaffung, Netzentgelt,
    Konzession, Stromsteuer, Umlagen) plus 19 % Aufschlag für die Mehrwertsteuer. EOS rechnet dann mit
