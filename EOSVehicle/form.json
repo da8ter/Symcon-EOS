@@ -44,7 +44,7 @@
                         { "name": "mode", "caption": "EOS", "width": "170px", "visible": true, "save": true },
                         { "name": "caption", "caption": "Meaning", "width": "160px" },
                         { "name": "value", "caption": "Value for the mode variable", "width": "200px", "add": "", "edit": { "type": "ValidationTextBox" } },
-                        { "name": "action", "caption": "Action when switching to this mode", "width": "auto", "add": "", "edit": { "type": "SelectAction" } }
+                        { "name": "action", "caption": "Action when switching to this mode", "width": "auto", "add": "{}", "edit": { "type": "SelectAction" } }
                     ],
                     "values": []
                 },

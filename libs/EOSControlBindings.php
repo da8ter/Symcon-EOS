@@ -118,8 +118,11 @@ if (!trait_exists('EOSControlBindings')) {
                 return ['ok' => true, 'skipped' => true, 'norm' => '', 'text' => ''];
             }
             $action = json_decode($json, true);
-            if (!is_array($action) || trim((string) ($action['actionID'] ?? '')) === '') {
+            if (!is_array($action)) {
                 return ['ok' => false, 'skipped' => true, 'norm' => '', 'text' => $label . ': ' . $this->Translate('invalid action')];
+            }
+            if (trim((string) ($action['actionID'] ?? '')) === '') {
+                return ['ok' => true, 'skipped' => true, 'norm' => '', 'text' => '']; // "{}" = no action selected
             }
             if ($sim) {
                 return ['ok' => true, 'skipped' => false, 'norm' => '', 'text' => 'SIM ' . $label];
@@ -212,6 +215,20 @@ if (!trait_exists('EOSControlBindings')) {
 
         // ---------------------------------------------------------------- mode map (form list)
 
+        /** '' for "no action" (empty string or JSON without actionID), otherwise the JSON unchanged. */
+        protected function normalizeActionJson(string $json): string
+        {
+            $json = trim($json);
+            if ($json === '') {
+                return '';
+            }
+            $decoded = json_decode($json, true);
+            if (is_array($decoded) && trim((string) ($decoded['actionID'] ?? '')) === '') {
+                return '';
+            }
+            return $json;
+        }
+
         /** Saved rows of the mode mapping table keyed by EOS mode id. */
         protected function modeMapSaved(): array
         {
@@ -221,7 +238,7 @@ if (!trait_exists('EOSControlBindings')) {
                 if (is_array($row) && trim((string) ($row['mode'] ?? '')) !== '') {
                     $map[strtoupper(trim((string) $row['mode']))] = [
                         'value'  => (string) ($row['value'] ?? ''),
-                        'action' => (string) ($row['action'] ?? ''),
+                        'action' => $this->normalizeActionJson((string) ($row['action'] ?? '')),
                     ];
                 }
             }
@@ -248,7 +265,8 @@ if (!trait_exists('EOSControlBindings')) {
                     'mode'    => $mode,
                     'caption' => $this->Translate((string) $row['caption']),
                     'value'   => $saved[$mode]['value'] ?? '',
-                    'action'  => $saved[$mode]['action'] ?? '',
+                    // The SelectAction cell needs parseable JSON; "" shows "invalid action".
+                    'action'  => ($saved[$mode]['action'] ?? '') !== '' ? $saved[$mode]['action'] : '{}',
                 ];
             }
             $this->fillFormList($form['elements'], 'ModeMap', $values);
@@ -282,7 +300,7 @@ if (!trait_exists('EOSControlBindings')) {
                     return true;
                 }
             }
-            if (trim($this->ReadPropertyString('ChangeAction')) !== '' || $this->ReadPropertyInteger('ControlScript') > 0) {
+            if ($this->normalizeActionJson($this->ReadPropertyString('ChangeAction')) !== '' || $this->ReadPropertyInteger('ControlScript') > 0) {
                 return true;
             }
             foreach ($this->modeMapSaved() as $row) {
@@ -313,19 +331,13 @@ if (!trait_exists('EOSControlBindings')) {
                     return $key . ': ' . $this->Translate('target variable not actionable');
                 }
             }
-            $change = trim($this->ReadPropertyString('ChangeAction'));
-            if ($change !== '') {
-                $decoded = json_decode($change, true);
-                if (!is_array($decoded) || trim((string) ($decoded['actionID'] ?? '')) === '') {
-                    return $this->Translate('Action on change') . ': ' . $this->Translate('invalid action');
-                }
+            $change = $this->normalizeActionJson($this->ReadPropertyString('ChangeAction'));
+            if ($change !== '' && !is_array(json_decode($change, true))) {
+                return $this->Translate('Action on change') . ': ' . $this->Translate('invalid action');
             }
             foreach ($this->modeMapSaved() as $mode => $row) {
-                if ($row['action'] !== '') {
-                    $decoded = json_decode($row['action'], true);
-                    if (!is_array($decoded) || trim((string) ($decoded['actionID'] ?? '')) === '') {
-                        return $mode . ': ' . $this->Translate('invalid action');
-                    }
+                if ($row['action'] !== '' && !is_array(json_decode($row['action'], true))) {
+                    return $mode . ': ' . $this->Translate('invalid action');
                 }
             }
             $script = $this->ReadPropertyInteger('ControlScript');
