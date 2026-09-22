@@ -25,29 +25,50 @@ Details: [docs/integrationsplan.md](docs/integrationsplan.md), Beispiele für di
 ## EOS in Docker installieren
 
 EOS läuft als eigener Container neben Symcon, nicht auf der SymBox: die genetische Optimierung ist
-CPU-intensiv. Das Repo bringt unter [`.docker/`](.docker/) eine Compose-Datei und ein Skript für Docker Desktop
-auf dem Mac mit; auf einem Linux-Host funktionieren dieselben Dateien mit `docker compose`.
+CPU-intensiv. Geeignet sind ein Linux-Mini-PC, ein NAS mit Docker oder ein Raspberry Pi 5 (64 Bit); ein Mac mit
+Docker Desktop eignet sich zum Ausprobieren. Das Repo bringt unter [`.docker/`](.docker/) eine Compose-Datei
+und das Skript `setup.sh` mit, das auf macOS, Linux und NAS gleich funktioniert.
 
-**EOS wird unverändert aus dem offiziellen Tag gebaut.** Für den Release-Kandidaten 0.4.0rc1 gibt es kein
-veröffentlichtes Image, deshalb baut Compose direkt aus `https://github.com/Akkudoktor-EOS/EOS.git#v0.4.0rc1`
-mit dem Dockerfile des EOS-Projekts. Es gibt keine Patches am EOS-Code; die Eigenheiten des
-Release-Kandidaten (siehe unten) umgeht das Symcon-Modul auf seiner Seite.
+**EOS bleibt das offizielle Programm.** Das Skript holt das veröffentlichte Image `akkudoktor/eos:<Version>`
+von Docker Hub. Gibt es das nicht (für den Release-Kandidaten 0.4.0rc1 ist das so), baut Compose das Image aus
+`https://github.com/Akkudoktor-EOS/EOS.git#v0.4.0rc1` mit dem Dockerfile des EOS-Projekts. Es gibt keine
+Patches am EOS-Code; die Eigenheiten des Release-Kandidaten (siehe unten) umgeht das Symcon-Modul auf seiner Seite.
 
 ```bash
 git clone https://github.com/da8ter/Symcon-EOS.git
 cd Symcon-EOS/.docker
-./setup-mac.sh            # prüft Docker, legt .env an, baut das Image (5-15 min), startet, wartet auf /v1/health
-./setup-mac.sh config     # lädt die PoC-Konfiguration eos-config-poc.json (vorher Standort, PV, Batterie anpassen)
-./setup-mac.sh status     # Version und letzter Lauf
+./setup.sh                # prüft Docker, legt .env an, holt oder baut das Image, startet, wartet auf /v1/health
+./setup.sh status         # Version und letzter Lauf
 ```
 
-Danach: Swagger-UI `http://localhost:8503/docs`, EOSdash `http://localhost:8504`. Konfiguration und Messwerte
-liegen im Volume `eos_eos-data` und überleben Rebuilds. Für ein Update auf eine neue EOS-Version `EOS_GIT_REF`
-und `EOS_VERSION` in `.docker/.env` ändern und `./setup-mac.sh update` ausführen.
+Danach: Swagger-UI `http://<rechner>:8503/docs`, EOSdash `http://<rechner>:8504`. Konfiguration und Messwerte
+liegen im Volume `eos_eos-data` und überleben Rebuilds. Für ein Update auf eine neue EOS-Version `EOS_VERSION`
+(und `EOS_GIT_REF`) in `.docker/.env` ändern und `./setup.sh update` ausführen. Details, Fehlerbilder und die
+lokale PV-Prognose ohne Cloud: [docs/eos-setup.md](docs/eos-setup.md).
 
-Läuft Symcon ebenfalls als Container auf demselben Rechner, trägt man im EOS Server `host.docker.internal` als
-Host ein. Sonst die IP des Docker-Hosts; die EOS-API hat keine Authentifizierung, also nicht ins Internet
-freigeben. Details, Fehlerbilder und die lokale PV-Prognose ohne Cloud: [docs/eos-setup.md](docs/eos-setup.md).
+## Von null zum ersten Plan
+
+1. **EOS starten** wie oben. `./setup.sh status` zeigt Version und „last_run_datetime“ (anfangs `null`).
+2. **Modul installieren**: Module Control in der Symcon-Konsole, URL `https://github.com/da8ter/Symcon-EOS`.
+3. **EOS Server anlegen**: Host = IP des Docker-Rechners (Symcon im Container auf demselben Mac/Windows:
+   `host.docker.internal`; unter Linux die IP), Port 8503. „Verbindung testen“ muss die Version zeigen.
+4. **EOS-Grundkonfiguration** im EOS Server: „Aus EOS laden“, dann Standort (Button „Standort aus Symcon“),
+   Strompreis (z. B. Energy-Charts, Zone DE-LU), Gebühren (fester Netto-Aufschlag plus 19 %), Einspeisevergütung,
+   PV-Flächen, Lastprofil (Jahresverbrauch), Wetter. „Nach EOS schreiben“, „In EOS speichern“.
+5. **EOS Batterie anlegen**: Geräte-ID (z. B. `battery1`), SoC-Quellvariable, unter „Batterieparameter“
+   Kapazität, Leistung und SoC-Grenzen. Übernehmen legt die Batterie in EOS an. Ohne echten Speicher eignet sich
+   die Symcon-Bibliothek „Virtual Devices“ (nächster Abschnitt).
+6. **EOS Zähler anlegen**: kumulierte Zählerstände für Hauslast, Netzbezug und Einspeisung, dann „Historie aus
+   Archiv importieren“. Ohne Zähler nutzt EOS das Lastprofil aus Schritt 4.
+7. **Optional E-Auto und Haushaltsgerät** anlegen; sie legen sich ebenfalls beim Übernehmen in EOS an.
+8. **Ersten Lauf abwarten**: EOS rechnet alle 15 Minuten (`ems.interval`), oder „Jetzt optimieren“ im EOS Server.
+   Nach dem Lauf zeigt der EOS Server Plan-ID und Gültigkeit, die Batterie den Modus und die Kachel den Fahrplan.
+   Läuft nichts: `./setup.sh logs` zeigt den Grund, meist fehlender frischer SoC (max. 300 s alt) oder ein
+   `max_home_appliances` unter der Gerätezahl.
+9. **Steuerung anschließen**: im Panel „Steuerung“ der Batterie die Zielvariablen des Wechselrichters binden
+   (Option 1) oder Aktionen/Skript (Option 2/3), erst Steuerungsmodus „Simulation“ und den Ergebnis-Text beobachten.
+10. **Aktiv schalten**, Fallback-Modus und bei Geräten mit Timeout den Heartbeat setzen. Ab jetzt schaltet Symcon
+    den Speicher zu jeder Slot-Grenze nach EOS-Plan.
 
 ## Prüfstand mit virtuellen Geräten
 
