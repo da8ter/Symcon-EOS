@@ -247,10 +247,18 @@ if (!trait_exists('EOSControl')) {
             // Row action: pending until it ran successfully for this mode (or nothing is configured).
             $row = is_array($last['row'] ?? null) ? $last['row'] : ['modeRaw' => null, 'fail' => 0, 'failTs' => 0];
             $rowPending = $modeRaw !== '' && $modeRaw !== (string) ($row['modeRaw'] ?? '');
-            $rowDue = $rowPending && ((int) $row['fail'] === 0 || $backoff((int) $row['fail'], (int) $row['failTs']));
+            // Backoff only for retrying the mode that failed; a new mode fires at once.
+            $rowDue = $rowPending && ((int) ($row['fail'] ?? 0) === 0 || ($row['failMode'] ?? null) !== $modeRaw || $backoff((int) $row['fail'], (int) $row['failTs']));
             $heartbeatSeconds = $this->ReadPropertyInteger('HeartbeatSeconds');
             $heartbeat = $heartbeatSeconds > 0 && $last !== [] && $now - (int) ($last['ts'] ?? 0) >= $heartbeatSeconds;
             if (!$force && $changed === [] && !$modeChanged && !$heartbeat && $retry === [] && !$rowDue) {
+                // Nothing to write, but a changed policy degradation must stay visible.
+                $degraded = (string) ($desired['degraded'] ?? '');
+                if ($degraded !== (string) ($last['degraded'] ?? '')) {
+                    $last['degraded'] = $degraded;
+                    $this->WriteAttributeString('LastSent', json_encode($last));
+                    $this->recordResult('[' . (string) ($desired['source'] ?? 'plan') . '] ' . $this->Translate('nothing to write') . ($degraded !== '' ? ' · ' . $degraded : ''), false);
+                }
                 return;
             }
             $reason = ($changed === [] && !$modeChanged && !$force && $retry === [] && !$rowDue) ? 'heartbeat' : (string) ($desired['source'] ?? 'plan');
@@ -291,7 +299,8 @@ if (!trait_exists('EOSControl')) {
                         $rowSucceeded = true;
                     } else {
                         $failed[] = $result['text'];
-                        $row = ['modeRaw' => $row['modeRaw'] ?? null, 'fail' => (int) ($row['fail'] ?? 0) + 1, 'failTs' => $now];
+                        $sameMode = ($row['failMode'] ?? null) === $modeRaw;
+                        $row = ['modeRaw' => $row['modeRaw'] ?? null, 'fail' => $sameMode ? (int) ($row['fail'] ?? 0) + 1 : 1, 'failTs' => $now, 'failMode' => $modeRaw];
                     }
                 } else {
                     $rowSucceeded = true; // nothing to fire for this mode
@@ -313,11 +322,12 @@ if (!trait_exists('EOSControl')) {
             }
 
             $this->WriteAttributeString('LastSent', json_encode([
-                'targets' => $lastTargets,
-                'modeRaw' => $modeRaw,
-                'row'     => $row,
-                'ts'      => $now,
-                'source'  => $reason,
+                'targets'  => $lastTargets,
+                'modeRaw'  => $modeRaw,
+                'row'      => $row,
+                'ts'       => $now,
+                'source'   => $reason,
+                'degraded' => (string) ($desired['degraded'] ?? ''),
             ]));
             $durationMs = (int) round((microtime(true) - $started) * 1000);
             $text = ($sim ? 'SIM ' : '') . '[' . $reason . '] ' . ($fragments !== [] ? implode(' · ', $fragments) : $this->Translate('nothing to write'));
@@ -422,23 +432,6 @@ if (!trait_exists('EOSControl')) {
             $this->runDispatch($force);
             $this->UpdateFormField('ControlResult', 'caption', (string) $this->GetValue('LastControlResult'));
             return true;
-        }
-
-        protected function controlState(): array
-        {
-            return [
-                'controlMode'    => $this->ReadPropertyInteger('ControlMode'),
-                'controlActive'  => (bool) $this->GetValue('ControlActive'),
-                'controlReady'   => $this->ReadAttributeBoolean('ControlReady'),
-                'problem'        => $this->ReadAttributeString('ControlProblem'),
-                'manualMode'     => (int) $this->GetValue('ManualMode'),
-                'manualUntil'    => $this->ReadAttributeInteger('ManualUntil'),
-                'fallbackActive' => (bool) $this->GetValue('FallbackActive'),
-                'lastControl'    => (int) $this->GetValue('LastControl'),
-                'lastResult'     => (string) $this->GetValue('LastControlResult'),
-                'desired'        => $this->eosJsonDecode($this->ReadAttributeString('Desired'), []),
-                'lastSent'       => $this->eosJsonDecode($this->ReadAttributeString('LastSent'), []),
-            ];
         }
 
         // ---------------------------------------------------------------- helpers / hooks

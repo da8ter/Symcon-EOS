@@ -344,6 +344,26 @@ if (!trait_exists('EOSControlBindings')) {
             unset($node);
         }
 
+        // ---------------------------------------------------------------- diagnostics
+
+        /** Snapshot for <PREFIX>_GetControlState() and debugging. */
+        protected function controlState(): array
+        {
+            return [
+                'controlMode'    => $this->ReadPropertyInteger('ControlMode'),
+                'controlActive'  => (bool) $this->GetValue('ControlActive'),
+                'controlReady'   => $this->ReadAttributeBoolean('ControlReady'),
+                'problem'        => $this->ReadAttributeString('ControlProblem'),
+                'manualMode'     => (int) $this->GetValue('ManualMode'),
+                'manualUntil'    => $this->ReadAttributeInteger('ManualUntil'),
+                'fallbackActive' => (bool) $this->GetValue('FallbackActive'),
+                'lastControl'    => (int) $this->GetValue('LastControl'),
+                'lastResult'     => (string) $this->GetValue('LastControlResult'),
+                'desired'        => $this->eosJsonDecode($this->ReadAttributeString('Desired'), []),
+                'lastSent'       => $this->eosJsonDecode($this->ReadAttributeString('LastSent'), []),
+            ];
+        }
+
         // ---------------------------------------------------------------- form callbacks (RequestAction idents)
 
         /** onChange/timer callbacks of the configuration form; false for unknown idents. */

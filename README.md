@@ -245,6 +245,7 @@ EOSMTR_ImportHistory($id, 48);      // Historie der letzten 48 h importieren
 ## Entwicklung
 
 - Standards: `declare(strict_types=1)`, `IPSModuleStrict`, Presentation-Arrays statt Variablenprofile.
-- Lint: `php -l` über alle PHP-Dateien, JSON mit `python3 -m json.tool`.
+- Prüfstand ohne Symcon: `tests/run.sh` prüft Syntax und JSON und führt die Regressionstests der Steuerung,
+  des Konfigurationsabgleichs und des Zählers gegen ein SDK-Double aus ([tests/README.md](tests/README.md)).
 - Test gegen Symcon in Docker (`symcon-91-rust`, Port 3778) und EOS in Docker (Port 8503), siehe
   [docs/eos-setup.md](docs/eos-setup.md).
