@@ -97,7 +97,10 @@
             "Minimum time between charging on/off switches (s)": "Minimum time between charging on/off switches (s)",
             "Max. charge power must be greater than 0 for a current or power target": "Max. charge power must be greater than 0 for a current or power target",
             "unplugged": "unplugged",
-            "switch held back (minimum interval)": "switch held back (minimum interval)"
+            "switch held back (minimum interval)": "switch held back (minimum interval)",
+            "EOS mode → value for the mode variable": "EOS mode → value for the mode variable",
+            "Target for actions (variable or instance; default: the mode variable)": "Target for actions (variable or instance; default: the mode variable)",
+            "Action per EOS mode (runs once when switching into the mode)": "Action per EOS mode (runs once when switching into the mode)"
         },
         "de": {
             "EOS Vehicle": "EOS E-Auto",
@@ -229,7 +232,10 @@
             "Minimum time between charging on/off switches (s)": "Mindestabstand zwischen Laden Ein/Aus (s)",
             "Max. charge power must be greater than 0 for a current or power target": "Max. Ladeleistung muss größer 0 sein, wenn ein Strom- oder Leistungsziel gebunden ist",
             "unplugged": "nicht angesteckt",
-            "switch held back (minimum interval)": "Umschalten zurückgehalten (Mindestabstand)"
+            "switch held back (minimum interval)": "Umschalten zurückgehalten (Mindestabstand)",
+            "EOS mode → value for the mode variable": "EOS-Modus → Wert für die Modus-Variable",
+            "Target for actions (variable or instance; default: the mode variable)": "Ziel für Aktionen (Variable oder Instanz; Standard: die Modus-Variable)",
+            "Action per EOS mode (runs once when switching into the mode)": "Aktion je EOS-Modus (läuft einmal beim Wechsel in den Modus)"
         }
     }
 }

@@ -50,6 +50,10 @@ if (!trait_exists('EOSControl')) {
             $this->RegisterPropertyInteger('ManualReturnMinutes', 0);
             $this->RegisterPropertyBoolean('ReleaseOnDisable', true);
             $this->RegisterPropertyString('ModeMap', '[]');
+            $this->RegisterPropertyInteger('ActionTarget', 0);
+            foreach ($this->modeMapRows() as $row) {
+                $this->RegisterPropertyString('ModeAction_' . strtoupper((string) $row['mode']), '');
+            }
             $this->RegisterPropertyString('ChangeAction', '');
             $this->RegisterPropertyInteger('ControlScript', 0);
             foreach ($this->controlTargets() as $target) {

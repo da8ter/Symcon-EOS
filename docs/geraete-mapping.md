@@ -7,11 +7,11 @@ fest. Drei Mechanismen stehen zur Verfügung und lassen sich kombinieren:
 | Mechanismus | Formularfeld | Wann sinnvoll |
 | --- | --- | --- |
 | **Zielvariablen** | „Betriebsmodus“, „Soll-Ladeleistung“, „Entladen erlaubt“ … (nur schaltbare Variablen wählbar) | Das Hersteller-Modul hat schaltbare Variablen (evcc, openWB, Modbus, MQTT, Shelly …). Der Wert wird auf den Typ der Variable umgewandelt (Bool/Int/Float/String) und per `RequestAction` geschrieben. |
-| **Symcon-Aktionen** | Tabelle „EOS-Modus → Wert / Aktion“ (je Modus) und „Aktion bei jedem Wechsel“ | Das Modul bietet Aktionen an (z. B. „Ladestrom setzen“), oder ein fertiger Ablauf soll beim Wechsel laufen. Kontext (Modus, Leistung …) wird als Parameter mitgegeben, eigene Parameter der Aktion (TARGET, VALUE) gewinnen. |
+| **Symcon-Aktionen** | „Aktion je EOS-Modus“ (ein Auswahlfeld pro Modus) und „Aktion bei jedem Wechsel“ | Das Modul bietet Aktionen an (z. B. „Ladestrom setzen“), oder ein fertiger Ablauf soll beim Wechsel laufen. Das Feld „Ziel für Aktionen“ (Variable oder Instanz, Standard: die Modus-Variable) öffnet die Auswahl direkt mit den Aktionen dieses Geräts. Kontext (Modus, Leistung …) wird als Parameter mitgegeben, eigene Parameter der Aktion (TARGET, VALUE) gewinnen. |
 | **Skript** | „Skript bei jedem Wechsel“ | Alles andere. Das Skript bekommt den Kontext in `$_IPS` (siehe unten). |
 
-Reihenfolge je Wechsel: Zielvariablen → Aktion der Modus-Zeile → Aktion bei Wechsel → Skript. Geschrieben wird
-nur, was sich geändert hat; der Modus-Zeilen-Aktion feuert nur beim Wechsel in den Modus (Flanke), nie beim
+Reihenfolge je Wechsel: Zielvariablen → Aktion des neuen Modus → Aktion bei Wechsel → Skript. Geschrieben wird
+nur, was sich geändert hat; die Aktion je Modus feuert nur beim Wechsel in den Modus (Flanke), nie beim
 Heartbeat.
 
 ## Kontext für Aktionen und Skripte (`$_IPS`)
@@ -131,7 +131,7 @@ wenn **Stoppen erlauben** aktiv ist (Spülmaschinen nicht mitten im Programm aus
 
 ### Gerät mit Start-API (Home Connect, Miele …)
 
-Aktion in der Tabellenzeile `RUN` („Aktion beim Wechsel in diesen Modus“) auf die Start-Aktion des Moduls
+Die „Aktion je EOS-Modus“ für `RUN` auf die Start-Aktion des Moduls
 legen. Der Startimpuls kommt genau einmal je EOS-Anweisung, nur innerhalb der **Gnadenfrist** (Standard 30 min
 nach geplantem Start) und nicht, wenn die optionale Quellvariable „läuft“ schon wahr ist.
 

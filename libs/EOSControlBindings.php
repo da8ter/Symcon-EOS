@@ -234,12 +234,14 @@ if (!trait_exists('EOSControlBindings')) {
         {
             $rows = $this->eosJsonDecode($this->ReadPropertyString('ModeMap'), []);
             $map = [];
+            foreach ($this->modeMapRows() as $row) {
+                $mode = strtoupper((string) $row['mode']);
+                $map[$mode] = ['value' => '', 'action' => $this->normalizeActionJson($this->ReadPropertyString('ModeAction_' . $mode))];
+            }
             foreach (is_array($rows) ? $rows : [] as $row) {
-                if (is_array($row) && trim((string) ($row['mode'] ?? '')) !== '') {
-                    $map[strtoupper(trim((string) $row['mode']))] = [
-                        'value'  => (string) ($row['value'] ?? ''),
-                        'action' => $this->normalizeActionJson((string) ($row['action'] ?? '')),
-                    ];
+                $mode = strtoupper(trim((string) ($row['mode'] ?? '')));
+                if (is_array($row) && isset($map[$mode])) {
+                    $map[$mode]['value'] = (string) ($row['value'] ?? '');
                 }
             }
             return $map;
@@ -251,25 +253,76 @@ if (!trait_exists('EOSControlBindings')) {
         }
 
         /**
-         * Fill the ModeMap list in the configuration form: canonical row order from
-         * modeMapRows(), translated captions, saved value/action merged by mode id.
-         * The rows are sent as 'values' so that missing modes (older configs) appear.
+         * Configuration form: fill the ModeMap list (canonical row order, translated
+         * captions, saved values) and generate one SelectAction per EOS mode inside the
+         * panel named ModeActions. The action pickers get the chosen action target as
+         * targetID, so the dialog opens with that variable/instance and lists its actions.
          */
         protected function fillModeMap(array &$form): void
         {
             $saved = $this->modeMapSaved();
             $values = [];
+            $pickers = [];
+            $target = $this->actionTargetId();
             foreach ($this->modeMapRows() as $row) {
                 $mode = strtoupper((string) $row['mode']);
-                $values[] = [
-                    'mode'    => $mode,
-                    'caption' => $this->Translate((string) $row['caption']),
-                    'value'   => $saved[$mode]['value'] ?? '',
-                    // The SelectAction cell needs parseable JSON; "" shows "invalid action".
-                    'action'  => ($saved[$mode]['action'] ?? '') !== '' ? $saved[$mode]['action'] : '{}',
-                ];
+                $caption = $this->Translate((string) $row['caption']);
+                $values[] = ['mode' => $mode, 'caption' => $caption, 'value' => $saved[$mode]['value'] ?? ''];
+                $picker = ['type' => 'SelectAction', 'name' => 'ModeAction_' . $mode, 'caption' => $caption . ' (' . $mode . ')'];
+                if ($target > 0) {
+                    $picker['targetID'] = $target;
+                }
+                $pickers[] = $picker;
             }
             $this->fillFormList($form['elements'], 'ModeMap', $values);
+            $this->fillFormItems($form['elements'], 'ModeActions', $pickers);
+            if ($target > 0) {
+                $this->setFormAttribute($form['elements'], 'ChangeAction', 'targetID', $target);
+            }
+        }
+
+        /** Object the action pickers open with: explicit ActionTarget, else the bound mode variable. */
+        protected function actionTargetId(): int
+        {
+            $target = $this->ReadPropertyInteger('ActionTarget');
+            if ($target <= 0 && isset($this->controlTargets()['Mode'])) {
+                $target = $this->ReadPropertyInteger($this->controlTargets()['Mode']['property']);
+            }
+            return ($target > 0 && IPS_ObjectExists($target)) ? $target : 0;
+        }
+
+        protected function fillFormItems(array &$nodes, string $name, array $items): void
+        {
+            foreach ($nodes as &$node) {
+                if (!is_array($node)) {
+                    continue;
+                }
+                if (($node['name'] ?? '') === $name) {
+                    $node['items'] = $items;
+                    return;
+                }
+                if (isset($node['items']) && is_array($node['items'])) {
+                    $this->fillFormItems($node['items'], $name, $items);
+                }
+            }
+            unset($node);
+        }
+
+        protected function setFormAttribute(array &$nodes, string $name, string $attribute, mixed $value): void
+        {
+            foreach ($nodes as &$node) {
+                if (!is_array($node)) {
+                    continue;
+                }
+                if (($node['name'] ?? '') === $name) {
+                    $node[$attribute] = $value;
+                    return;
+                }
+                if (isset($node['items']) && is_array($node['items'])) {
+                    $this->setFormAttribute($node['items'], $name, $attribute, $value);
+                }
+            }
+            unset($node);
         }
 
         protected function fillFormList(array &$nodes, string $name, array $values): void

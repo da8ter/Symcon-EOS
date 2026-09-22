@@ -119,7 +119,8 @@ herstellerneutral und kombinierbar:
    wird auf den Variablentyp umgewandelt und per `RequestAction` geschrieben. Für die Modus-Variable legt die
    Tabelle „EOS-Modus → Wert“ fest, welcher Wert je EOS-Modus geschrieben wird (z. B. evcc `off`/`pv`/`now`).
 2. **Symcon-Aktionen** – je EOS-Modus eine Aktion (feuert beim Wechsel in den Modus) und eine Aktion bei jedem
-   Wechsel. Der Kontext wird als Parameter mitgegeben.
+   Wechsel. „Ziel für Aktionen“ (Variable oder Instanz, Standard: die Modus-Variable) öffnet die Auswahl direkt
+   mit den Aktionen dieses Geräts. Der Kontext wird als Parameter mitgegeben.
 3. **Skript** – bei jedem Wechsel mit dem Kontext in `$_IPS` (`Reason`, `ModeRaw`, `Factor`, `PowerW`,
    `ChargeAllowed`, `CurrentA`, `Run` …, vollständige Liste in [docs/geraete-mapping.md](docs/geraete-mapping.md)).
 

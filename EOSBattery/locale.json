@@ -95,7 +95,10 @@
             "grid charging not allowed": "grid charging not allowed",
             "grid export not allowed": "grid export not allowed",
             "Max. charge power must be greater than 0 for a charge power target": "Max. charge power must be greater than 0 for a charge power target",
-            "Max. discharge power must be greater than 0 for a discharge power target": "Max. discharge power must be greater than 0 for a discharge power target"
+            "Max. discharge power must be greater than 0 for a discharge power target": "Max. discharge power must be greater than 0 for a discharge power target",
+            "EOS mode → value for the mode variable": "EOS mode → value for the mode variable",
+            "Target for actions (variable or instance; default: the mode variable)": "Target for actions (variable or instance; default: the mode variable)",
+            "Action per EOS mode (runs once when switching into the mode)": "Action per EOS mode (runs once when switching into the mode)"
         },
         "de": {
             "EOS Battery": "EOS Batterie",
@@ -222,7 +225,10 @@
             "grid charging not allowed": "Netzladen nicht erlaubt",
             "grid export not allowed": "Netzeinspeisung nicht erlaubt",
             "Max. charge power must be greater than 0 for a charge power target": "Max. Ladeleistung muss größer 0 sein, wenn ein Leistungsziel gebunden ist",
-            "Max. discharge power must be greater than 0 for a discharge power target": "Max. Entladeleistung muss größer 0 sein, wenn ein Entladeleistungs-Ziel gebunden ist"
+            "Max. discharge power must be greater than 0 for a discharge power target": "Max. Entladeleistung muss größer 0 sein, wenn ein Entladeleistungs-Ziel gebunden ist",
+            "EOS mode → value for the mode variable": "EOS-Modus → Wert für die Modus-Variable",
+            "Target for actions (variable or instance; default: the mode variable)": "Ziel für Aktionen (Variable oder Instanz; Standard: die Modus-Variable)",
+            "Action per EOS mode (runs once when switching into the mode)": "Aktion je EOS-Modus (läuft einmal beim Wechsel in den Modus)"
         }
     }
 }

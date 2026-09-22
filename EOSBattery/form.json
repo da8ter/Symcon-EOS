@@ -36,15 +36,16 @@
                 { "type": "SelectVariable", "name": "TargetDischargeAllowedVariable", "caption": "Discharge allowed (bool)", "requiredAction": 1, "validVariableTypes": [0] },
                 { "type": "SelectVariable", "name": "TargetGridChargeVariable", "caption": "Grid charging (bool)", "requiredAction": 1, "validVariableTypes": [0] },
                 {
-                    "type": "List", "name": "ModeMap", "caption": "EOS mode → value / action", "rowCount": 7, "add": false, "delete": false,
+                    "type": "List", "name": "ModeMap", "caption": "EOS mode → value for the mode variable", "rowCount": 7, "add": false, "delete": false,
                     "columns": [
                         { "name": "mode", "caption": "EOS", "width": "170px", "visible": true, "save": true },
                         { "name": "caption", "caption": "Meaning", "width": "160px" },
-                        { "name": "value", "caption": "Value for the mode variable", "width": "200px", "add": "", "edit": { "type": "ValidationTextBox" } },
-                        { "name": "action", "caption": "Action when switching to this mode", "width": "auto", "add": "{}", "edit": { "type": "SelectAction" } }
+                        { "name": "value", "caption": "Value for the mode variable", "width": "auto", "add": "", "edit": { "type": "ValidationTextBox" } }
                     ],
                     "values": []
                 },
+                { "type": "SelectObject", "name": "ActionTarget", "caption": "Target for actions (variable or instance; default: the mode variable)" },
+                { "type": "ExpansionPanel", "name": "ModeActions", "caption": "Action per EOS mode (runs once when switching into the mode)", "expanded": false, "items": [] },
                 { "type": "SelectAction", "name": "ChangeAction", "caption": "Action on every change" },
                 { "type": "SelectScript", "name": "ControlScript", "caption": "Script on every change ($_IPS parameters, see README)" },
                 { "type": "Label", "bold": true, "caption": "Fallback and safety" },
