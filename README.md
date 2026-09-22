@@ -63,8 +63,8 @@ der EOS Batterie klein halten (z. B. 800 W), dann entlädt der virtuelle Speiche
 - Laufende EOS-Instanz ≥ 0.4.0rc1, erreichbar über HTTP (Standard-Port 8503). Wer noch keine hat:
   Abschnitt [EOS in Docker installieren](#eos-in-docker-installieren).
 - IP-Symcon ≥ 8.1.
-- In EOS konfigurierte Geräte (`devices/batteries/<id>`), wahlweise über EOSdash oder über das Formular des
-  Batterie-Moduls.
+- Geräte in EOS (`devices/batteries/<id>` …) legen die Geräte-Instanzen beim Übernehmen selbst an und halten sie
+  mit ihren Parametern abgeglichen; alternativ in EOSdash pflegen und mit „Werte aus EOS übernehmen“ ins Formular holen.
 
 ## Installation
 
@@ -91,19 +91,22 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
 3. **EOS Batterie** anlegen, mit dem Server verbinden, Geräte-ID (wie in EOS, z. B. `battery1`) und die
    SoC-Quellvariable wählen (Prozent oder Faktor). Der SoC wird im eingestellten Intervall und bei Wertänderung
    an EOS gesendet. EOS verwirft SoC-Werte, die älter als 300 s sind.
-4. Optional unter **Batterieparameter** Kapazität, Leistung, SoC-Grenzen und Wirkungsgrade eintragen und
-   „Nach EOS schreiben“.
+4. Unter **Batterieparameter** Kapazität, Leistung, SoC-Grenzen und Wirkungsgrade eintragen. Beim Übernehmen
+   gleicht die Instanz den Geräteeintrag in EOS automatisch ab und schreibt nur, was abweicht (das Ergebnis steht
+   im Meldungsfenster und unter den Parametern). Wer das Gerät zuerst in EOSdash angelegt hat, holt die Werte mit
+   „Werte aus EOS übernehmen“ ins Formular und drückt dann Übernehmen.
 
 ### E-Auto, Haushaltsgerät, Zähler
 
 - **E-Auto**: Geräte-ID wie in EOS (`devices/electric_vehicles/<id>`), SoC-Quellvariable, optional Variablen für
   „angesteckt“ und Abfahrtszeit (Unix-Zeitstempel). Die Abfahrt wird als `min_soc_deadline_datetime` zusammen mit dem
   Ziel-SoC nach EOS geschrieben. Angezeigt werden Laden geplant, Soll-Ladeleistung und Soll-Ladestrom (aus Phasen und
-  Spannung). Mit „Nach EOS schreiben“ wird das Fahrzeug in EOS angelegt (`max_electric_vehicles` wird auf 1 gesetzt).
+  Spannung). Beim Übernehmen wird das Fahrzeug in EOS angelegt bzw. abgeglichen (`max_electric_vehicles` wird auf 1
+  gesetzt).
 - **Haushaltsgerät**: Energie je Lauf, Dauer, Zeitfenster, Planungsmodus ONCE/DAILY, optional Frist und frühester
   Start aus Variablen sowie „heute erledigte Läufe“. Angezeigt werden geplanter Start und Ende sowie RUN/OFF.
-  „Nach EOS schreiben“ hebt `devices/max_home_appliances` bei Bedarf an. Steht der Wert unter der Anzahl der
-  Geräte, bricht EOS jeden Lauf ab („home_appliances exceeds configured maximum“).
+  Beim Übernehmen wird das Gerät in EOS abgeglichen und `devices/max_home_appliances` bei Bedarf angehoben. Steht
+  der Wert unter der Anzahl der Geräte, bricht EOS jeden Lauf ab („home_appliances exceeds configured maximum“).
 - **Zähler**: Liste von Symcon-Variablen mit kumulierten Zählerständen (kWh oder Wh), EOS-Key und Kategorie. Beim
   Übernehmen werden die Keys in `measurement.*_emr_keys` eingetragen. „Historie aus Archiv importieren“ überträgt die
   geloggten Werte der letzten Stunden, damit die Lastprognose sofort auf Messdaten aufsetzt.

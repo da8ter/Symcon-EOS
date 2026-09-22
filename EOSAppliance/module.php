@@ -118,6 +118,8 @@ class EOSAppliance extends IPSModuleStrict
         $this->SetStatus(IS_ACTIVE);
         $this->SetTimerInterval('CyclesPush', 900 * 1000);
         $this->syncTimes();
+        [$path, $device, $merge] = $this->deviceConfig();
+        $this->syncDeviceConfig($path, $device, $merge, false);
         $this->sendCyclesCompleted();
         $this->RefreshPlan();
     }
@@ -149,6 +151,8 @@ class EOSAppliance extends IPSModuleStrict
     {
         $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
         $this->fillModeMap($form);
+        [$path, $device] = $this->deviceConfig();
+        $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
@@ -363,18 +367,4 @@ class EOSAppliance extends IPSModuleStrict
         $this->SetValue('PlannedEnd', $start !== null ? $start + $this->ReadPropertyInteger('DurationH') * 3600 : 0);
     }
 
-    private function registerOptionalSource(string $property, string $attribute): void
-    {
-        $old = $this->ReadAttributeInteger($attribute);
-        $src = $this->ReadPropertyInteger($property);
-        if ($old > 0 && $old !== $src) {
-            $this->UnregisterMessage($old, VM_UPDATE);
-        }
-        if ($src > 0 && IPS_VariableExists($src)) {
-            $this->RegisterMessage($src, VM_UPDATE);
-            $this->WriteAttributeInteger($attribute, $src);
-        } else {
-            $this->WriteAttributeInteger($attribute, 0);
-        }
-    }
 }

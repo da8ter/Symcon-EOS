@@ -31,8 +31,6 @@
             "SoC push failed: %s": "SoC push failed: %s",
             "Plan refreshed: %d instructions": "Plan refreshed: %d instructions",
             "Plan refresh failed: %s": "Plan refresh failed: %s",
-            "Battery configuration written to EOS.": "Battery configuration written to EOS.",
-            "Battery configuration loaded from EOS. Press Apply to store.": "Battery configuration loaded from EOS. Press Apply to store.",
             "No battery %s in EOS configuration.": "No battery %s in EOS configuration.",
             "Control active": "Control active",
             "On": "On",
@@ -99,7 +97,17 @@
             "Each action runs once when EOS switches into that mode. The picker opens with the target above and lists its actions.": "Each action runs once when EOS switches into that mode. The picker opens with the target above and lists its actions.",
             "Value per EOS mode for the mode variable": "Value per EOS mode for the mode variable",
             "Mode variable (value per EOS mode from the table below)": "Mode variable (value per EOS mode from the table below)",
-            "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)": "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)"
+            "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)": "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)",
+            "Take over values from EOS (fill form)": "Take over values from EOS (fill form)",
+            "Values taken over from EOS. Press Apply to store them.": "Values taken over from EOS. Press Apply to store them.",
+            "EOS Server not available, configuration not compared.": "EOS Server not available, configuration not compared.",
+            "EOS configuration matches this instance.": "EOS configuration matches this instance.",
+            "Writing device configuration to EOS failed: %s": "Writing device configuration to EOS failed: %s",
+            "all fields": "all fields",
+            "Device configuration written to EOS (%s)": "Device configuration written to EOS (%s)",
+            "Written to EOS: %s": "Written to EOS: %s",
+            "Device not in EOS yet; it is created on Apply.": "Device not in EOS yet; it is created on Apply.",
+            "Differs from EOS, written on Apply:": "Differs from EOS, written on Apply:"
         },
         "de": {
             "EOS Battery": "EOS Batterie",
@@ -132,8 +140,6 @@
             "SoC push failed: %s": "SoC-Push fehlgeschlagen: %s",
             "Plan refreshed: %d instructions": "Plan aktualisiert: %d Anweisungen",
             "Plan refresh failed: %s": "Plan-Abruf fehlgeschlagen: %s",
-            "Battery configuration written to EOS.": "Batteriekonfiguration nach EOS geschrieben.",
-            "Battery configuration loaded from EOS. Press Apply to store.": "Batteriekonfiguration aus EOS geladen. Mit Übernehmen speichern.",
             "No battery %s in EOS configuration.": "Keine Batterie %s in der EOS-Konfiguration.",
             "Device": "Gerät",
             "The device ID must match the battery key in the EOS configuration (devices/batteries/<id>).": "Die Geräte-ID muss dem Batterie-Schlüssel in der EOS-Konfiguration entsprechen (devices/batteries/<id>).",
@@ -157,8 +163,6 @@
             "Charging efficiency (0-1)": "Ladewirkungsgrad (0-1)",
             "Discharging efficiency (0-1)": "Entladewirkungsgrad (0-1)",
             "Levelized cost of storage (EUR/kWh)": "Speicherkosten LCOS (EUR/kWh)",
-            "Read from EOS": "Aus EOS lesen",
-            "Write to EOS": "Nach EOS schreiben",
             "Push SoC now": "SoC jetzt senden",
             "Refresh plan": "Plan aktualisieren",
             "Instance is being created": "Instanz wird erstellt",
@@ -230,7 +234,17 @@
             "Each action runs once when EOS switches into that mode. The picker opens with the target above and lists its actions.": "Jede Aktion läuft einmal, wenn EOS in diesen Modus wechselt. Die Auswahl öffnet mit dem Ziel oben und zeigt dessen Aktionen.",
             "Value per EOS mode for the mode variable": "Wert je EOS-Modus für die Modus-Variable",
             "Mode variable (value per EOS mode from the table below)": "Modus-Variable (Wert je EOS-Modus aus der Tabelle unten)",
-            "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)": "Lademodus-Variable (Wert je EOS-Modus aus der Tabelle unten, z. B. evcc off/pv/now)"
+            "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)": "Lademodus-Variable (Wert je EOS-Modus aus der Tabelle unten, z. B. evcc off/pv/now)",
+            "Take over values from EOS (fill form)": "Werte aus EOS übernehmen (Formular füllen)",
+            "Values taken over from EOS. Press Apply to store them.": "Werte aus EOS übernommen. Mit Übernehmen speichern.",
+            "EOS Server not available, configuration not compared.": "EOS Server nicht verfügbar, Konfiguration nicht verglichen.",
+            "EOS configuration matches this instance.": "EOS-Konfiguration entspricht dieser Instanz.",
+            "Writing device configuration to EOS failed: %s": "Gerätekonfiguration nach EOS schreiben fehlgeschlagen: %s",
+            "all fields": "alle Felder",
+            "Device configuration written to EOS (%s)": "Gerätekonfiguration nach EOS geschrieben (%s)",
+            "Written to EOS: %s": "Nach EOS geschrieben: %s",
+            "Device not in EOS yet; it is created on Apply.": "Gerät noch nicht in EOS; wird beim Übernehmen angelegt.",
+            "Differs from EOS, written on Apply:": "Weicht von EOS ab, wird beim Übernehmen geschrieben:"
         }
     }
 }

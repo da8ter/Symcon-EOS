@@ -101,6 +101,8 @@ class EOSBattery extends IPSModuleStrict
 
         $this->SetStatus(IS_ACTIVE);
         $this->SetTimerInterval('SoCPush', $this->ReadPropertyInteger('PushInterval') * 1000);
+        [$path, $device, $merge] = $this->deviceConfig();
+        $this->syncDeviceConfig($path, $device, $merge, false);
         $this->PushSoC();
         $this->RefreshPlan();
     }
@@ -125,6 +127,8 @@ class EOSBattery extends IPSModuleStrict
     {
         $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
         $this->fillModeMap($form);
+        [$path, $device] = $this->deviceConfig();
+        $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
@@ -175,7 +179,15 @@ class EOSBattery extends IPSModuleStrict
 
     // ------------------------------------------------------------------ device configuration in EOS
 
+    /** Force-write the battery parameters to EOS (ApplyChanges does it automatically when they differ). */
     public function WriteConfigToEOS(): bool
+    {
+        [$path, $device, $merge] = $this->deviceConfig();
+        return $this->syncDeviceConfig($path, $device, $merge, true);
+    }
+
+    /** [config path, device entry, merge payload] for the EOS configuration. */
+    private function deviceConfig(): array
     {
         $id = $this->ReadPropertyString('DeviceID');
         $battery = [
@@ -188,14 +200,7 @@ class EOSBattery extends IPSModuleStrict
             'discharging_efficiency'            => $this->ReadPropertyFloat('DischargingEfficiency'),
             'levelized_cost_of_storage_amt_kwh' => $this->ReadPropertyFloat('LcosAmtKwh'),
         ];
-        $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['devices' => ['batteries' => [$id => $battery]]]]);
-        if (($res['ok'] ?? false) !== true) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
-            return false;
-        }
-        $save = $this->forward(['Command' => 'SaveConfig']);
-        $this->UpdateFormField('ConfigInfo', 'caption', ($save['ok'] ?? false) ? $this->Translate('Battery configuration written to EOS.') : (string) ($save['error'] ?? '?'));
-        return (bool) ($save['ok'] ?? false);
+        return ['devices/batteries/' . $id, $battery, ['devices' => ['batteries' => [$id => $battery]]]];
     }
 
     public function ReadConfigFromEOS(): bool
@@ -221,7 +226,7 @@ class EOSBattery extends IPSModuleStrict
                 $this->UpdateFormField($field, 'value', $type === 'int' ? (int) $bat[$key] : (float) $bat[$key]);
             }
         }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Battery configuration loaded from EOS. Press Apply to store.'));
+        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values taken over from EOS. Press Apply to store them.'));
         return true;
     }
 

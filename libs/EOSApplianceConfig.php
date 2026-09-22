@@ -10,7 +10,15 @@ declare(strict_types=1);
 if (!trait_exists('EOSApplianceConfig')) {
     trait EOSApplianceConfig
     {
+        /** Force-write the appliance parameters to EOS (ApplyChanges does it automatically when they differ). */
         public function WriteConfigToEOS(): bool
+        {
+            [$path, $device, $merge] = $this->deviceConfig();
+            return $this->syncDeviceConfig($path, $device, $merge, true);
+        }
+
+        /** [config path, device entry, merge payload]; raises devices/max_home_appliances when needed. */
+        private function deviceConfig(): array
         {
             $id = $this->ReadPropertyString('DeviceID');
             $appliance = [
@@ -36,21 +44,15 @@ if (!trait_exists('EOSApplianceConfig')) {
             $earliest = $this->earliestStart();
             $appliance['earliest_start_datetime'] = $earliest > time() ? $this->eosIsoNow($earliest) : null;
 
-            $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/max_home_appliances']);
-            $max = (int) ($res['data'] ?? 0);
             $merge = ['devices' => ['home_appliances' => [$id => $appliance]]];
-            $count = $this->applianceCountInEOS();
-            if ($max < $count) {
-                $merge['devices']['max_home_appliances'] = $count;
+            if ($this->parentUsable()) {
+                $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/max_home_appliances']);
+                $count = $this->applianceCountInEOS();
+                if ((int) ($res['data'] ?? 0) < $count) {
+                    $merge['devices']['max_home_appliances'] = $count;
+                }
             }
-            $res = $this->forward(['Command' => 'MergeConfig', 'Value' => $merge]);
-            if (($res['ok'] ?? false) !== true) {
-                $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
-                return false;
-            }
-            $save = $this->forward(['Command' => 'SaveConfig']);
-            $this->UpdateFormField('ConfigInfo', 'caption', ($save['ok'] ?? false) ? $this->Translate('Appliance configuration written to EOS.') : (string) ($save['error'] ?? '?'));
-            return (bool) ($save['ok'] ?? false);
+            return ['devices/home_appliances/' . $id, $appliance, $merge];
         }
 
         public function ReadConfigFromEOS(): bool
@@ -77,7 +79,7 @@ if (!trait_exists('EOSApplianceConfig')) {
                 $rows[] = ['start_time' => (string) ($w['start_time'] ?? ''), 'duration' => (string) ($w['duration'] ?? '')];
             }
             $this->UpdateFormField('TimeWindows', 'values', json_encode($rows));
-            $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Appliance configuration loaded from EOS. Press Apply to store.'));
+            $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values taken over from EOS. Press Apply to store them.'));
             return true;
         }
 

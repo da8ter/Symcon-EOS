@@ -114,6 +114,8 @@ class EOSVehicle extends IPSModuleStrict
         $this->SetStatus(IS_ACTIVE);
         $this->SetTimerInterval('SoCPush', $this->ReadPropertyInteger('PushInterval') * 1000);
         $this->updateDeparture();
+        [$path, $device, $merge] = $this->deviceConfig();
+        $this->syncDeviceConfig($path, $device, $merge, false);
         $this->PushSoC();
         $this->RefreshPlan();
     }
@@ -152,6 +154,8 @@ class EOSVehicle extends IPSModuleStrict
     {
         $form = json_decode((string) file_get_contents(__DIR__ . '/form.json'), true);
         $this->fillModeMap($form);
+        [$path, $device] = $this->deviceConfig();
+        $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
@@ -190,7 +194,15 @@ class EOSVehicle extends IPSModuleStrict
         return json_encode($this->controlState(), JSON_UNESCAPED_UNICODE);
     }
 
+    /** Force-write the vehicle parameters to EOS (ApplyChanges does it automatically when they differ). */
     public function WriteConfigToEOS(): bool
+    {
+        [$path, $device, $merge] = $this->deviceConfig();
+        return $this->syncDeviceConfig($path, $device, $merge, true);
+    }
+
+    /** [config path, device entry, merge payload] for the EOS configuration. */
+    private function deviceConfig(): array
     {
         $id = $this->ReadPropertyString('DeviceID');
         $rates = array_values(array_filter(array_map(
@@ -211,15 +223,7 @@ class EOSVehicle extends IPSModuleStrict
         }
         $departure = (int) $this->GetValue('Departure');
         $ev['min_soc_deadline_datetime'] = $departure > time() ? $this->eosIsoNow($departure) : null;
-
-        $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['devices' => ['max_electric_vehicles' => 1, 'electric_vehicles' => [$id => $ev]]]]);
-        if (($res['ok'] ?? false) !== true) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
-            return false;
-        }
-        $save = $this->forward(['Command' => 'SaveConfig']);
-        $this->UpdateFormField('ConfigInfo', 'caption', ($save['ok'] ?? false) ? $this->Translate('Vehicle configuration written to EOS.') : (string) ($save['error'] ?? '?'));
-        return (bool) ($save['ok'] ?? false);
+        return ['devices/electric_vehicles/' . $id, $ev, ['devices' => ['max_electric_vehicles' => 1, 'electric_vehicles' => [$id => $ev]]]];
     }
 
     public function ReadConfigFromEOS(): bool
@@ -246,7 +250,7 @@ class EOSVehicle extends IPSModuleStrict
         if (is_array($ev['charge_rates'] ?? null)) {
             $this->UpdateFormField('ChargeRates', 'value', implode(', ', $ev['charge_rates']));
         }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Vehicle configuration loaded from EOS. Press Apply to store.'));
+        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values taken over from EOS. Press Apply to store them.'));
         return true;
     }
 
@@ -432,21 +436,6 @@ class EOSVehicle extends IPSModuleStrict
             return true; // unknown: assume plugged in
         }
         return (bool) GetValue($var);
-    }
-
-    private function registerOptionalSource(string $property, string $attribute): void
-    {
-        $old = $this->ReadAttributeInteger($attribute);
-        $src = $this->ReadPropertyInteger($property);
-        if ($old > 0 && $old !== $src) {
-            $this->UnregisterMessage($old, VM_UPDATE);
-        }
-        if ($src > 0 && IPS_VariableExists($src)) {
-            $this->RegisterMessage($src, VM_UPDATE);
-            $this->WriteAttributeInteger($attribute, $src);
-        } else {
-            $this->WriteAttributeInteger($attribute, 0);
-        }
     }
 
     /** Read the departure source variable (unix timestamp) and sync it to EOS if changed. */

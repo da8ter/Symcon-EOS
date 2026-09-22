@@ -353,13 +353,8 @@
                     "items": [
                         {
                             "type": "Button",
-                            "caption": "Read from EOS",
+                            "caption": "Take over values from EOS (fill form)",
                             "onClick": "EOSBAT_ReadConfigFromEOS($id);"
-                        },
-                        {
-                            "type": "Button",
-                            "caption": "Write to EOS",
-                            "onClick": "EOSBAT_WriteConfigToEOS($id);"
                         }
                     ]
                 },
