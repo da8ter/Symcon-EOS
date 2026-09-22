@@ -34,7 +34,7 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('EOS configuration matches this instance.'));
                 return true;
             }
-            $res = $this->forward(['Command' => 'MergeConfig', 'Value' => $merge]);
+            $res = $this->forward(['Command' => 'MergeConfig', 'Value' => $this->withoutNulls($merge)]);
             if (($res['ok'] ?? false) !== true) {
                 $this->LogMessage(sprintf($this->Translate('Writing device configuration to EOS failed: %s'), (string) ($res['error'] ?? '?')), KL_WARNING);
                 $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
@@ -68,6 +68,19 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             if ($eos !== null && $this->configDiff($eos, $device) !== []) {
                 $this->SetTimerInterval('FormFill', 1500);
             }
+        }
+
+        /** Same rule as the comparison: a null never reaches EOS, so it cannot delete a value kept there. */
+        private function withoutNulls(array $data): array
+        {
+            $clean = [];
+            foreach ($data as $key => $value) {
+                if ($value === null) {
+                    continue;
+                }
+                $clean[$key] = (is_array($value) && !array_is_list($value)) ? $this->withoutNulls($value) : $value;
+            }
+            return $clean;
         }
 
         /** Text for the form: does EOS hold the same values as this instance? */

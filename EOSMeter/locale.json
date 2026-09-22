@@ -7,7 +7,8 @@
             "Last error": "Last error",
             "%d meter readings sent.": "%d meter readings sent.",
             "%d history values imported.": "%d history values imported.",
-            "No archive control found.": "No archive control found."
+            "No archive control found.": "No archive control found.",
+            "could not read measurement configuration from EOS": "could not read measurement configuration from EOS"
         },
         "de": {
             "EOS Meter": "EOS Zähler",
@@ -17,7 +18,6 @@
             "%d meter readings sent.": "%d Zählerstände gesendet.",
             "%d history values imported.": "%d Historienwerte importiert.",
             "No archive control found.": "Kein Archiv gefunden.",
-
             "Cumulative meter readings in kWh (or Wh) as your meters report them, not consumption per interval. EOS uses them to adapt the load forecast.": "Kumulierte Zählerstände in kWh (oder Wh), wie die Zähler sie liefern, kein Verbrauch je Intervall. EOS passt damit die Lastprognose an.",
             "Meters": "Zähler",
             "Variable": "Variable",
@@ -34,11 +34,11 @@
             "Push now": "Jetzt senden",
             "Register keys in EOS": "Keys in EOS registrieren",
             "Import history from archive": "Historie aus Archiv importieren",
-
             "Instance is being created": "Instanz wird erstellt",
             "Active": "Aktiv",
             "No active EOS Server": "Kein aktiver EOS Server",
-            "No meter configured": "Kein Zähler konfiguriert"
+            "No meter configured": "Kein Zähler konfiguriert",
+            "could not read measurement configuration from EOS": "Messwert-Konfiguration konnte nicht aus EOS gelesen werden"
         }
     }
 }

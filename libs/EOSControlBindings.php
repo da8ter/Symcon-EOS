@@ -344,6 +344,39 @@ if (!trait_exists('EOSControlBindings')) {
             unset($node);
         }
 
+        // ---------------------------------------------------------------- form callbacks (RequestAction idents)
+
+        /** onChange/timer callbacks of the configuration form; false for unknown idents. */
+        protected function handleFormAction(string $ident, mixed $value): bool
+        {
+            switch ($ident) {
+                case 'PickDeviceId':
+                    if (trim((string) $value) !== '') {
+                        $this->UpdateFormField('DeviceID', 'value', trim((string) $value));
+                    }
+                    return true;
+                case 'FillFormFromEOS':
+                    $this->SetTimerInterval('FormFill', 0);
+                    $this->ReadConfigFromEOS();
+                    return true;
+                case 'SetActionTarget':
+                    // Form onChange: point the open action pickers at the newly chosen target.
+                    $data = json_decode((string) $value, true);
+                    $target = (int) ($data['target'] ?? 0);
+                    if ($target <= 0) {
+                        $target = (int) ($data['modeVar'] ?? 0);
+                    }
+                    if ($target > 0 && IPS_ObjectExists($target)) {
+                        foreach ($this->modeMapRows() as $row) {
+                            $this->UpdateFormField('ModeAction_' . strtoupper((string) $row['mode']), 'targetID', $target);
+                        }
+                        $this->UpdateFormField('ChangeAction', 'targetID', $target);
+                    }
+                    return true;
+            }
+            return false;
+        }
+
         // ---------------------------------------------------------------- validation
 
         /** Any binding configured at all? */

@@ -310,10 +310,11 @@ class EOSAppliance extends IPSModuleStrict
         return $this->ReadPropertyBoolean('AllowStop') || ($desired['source'] ?? '') === 'manual';
     }
 
-    protected function onDispatched(array $desired, bool $sim): void
+    protected function onDispatched(array $desired, bool $success): void
     {
         $id = (string) ($desired['startId'] ?? '');
-        if (empty($desired['start']) || $id === '' || $id === 'manual') {
+        // A failed write or start action must not count as "started"; the next dispatch retries.
+        if (!$success || empty($desired['start']) || $id === '' || $id === 'manual') {
             return;
         }
         $ids = $this->startedIds();
