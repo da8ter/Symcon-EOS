@@ -22,10 +22,46 @@ Anzeige und **Steuerung** (herstellerneutral über Zielvariablen, Symcon-Aktione
 Details: [docs/integrationsplan.md](docs/integrationsplan.md), Beispiele für die Geräte-Anbindung:
 [docs/geraete-mapping.md](docs/geraete-mapping.md).
 
+## EOS in Docker installieren
+
+EOS läuft als eigener Container neben Symcon, nicht auf der SymBox: die genetische Optimierung ist
+CPU-intensiv. Das Repo bringt unter [`.docker/`](.docker/) eine Compose-Datei und ein Skript für Docker Desktop
+auf dem Mac mit; auf einem Linux-Host funktionieren dieselben Dateien mit `docker compose`.
+
+**EOS wird unverändert aus dem offiziellen Tag gebaut.** Für den Release-Kandidaten 0.4.0rc1 gibt es kein
+veröffentlichtes Image, deshalb baut Compose direkt aus `https://github.com/Akkudoktor-EOS/EOS.git#v0.4.0rc1`
+mit dem Dockerfile des EOS-Projekts. Es gibt keine Patches am EOS-Code; die Eigenheiten des
+Release-Kandidaten (siehe unten) umgeht das Symcon-Modul auf seiner Seite.
+
+```bash
+git clone https://github.com/da8ter/Symcon-EOS.git
+cd Symcon-EOS/.docker
+./setup-mac.sh            # prüft Docker, legt .env an, baut das Image (5-15 min), startet, wartet auf /v1/health
+./setup-mac.sh config     # lädt die PoC-Konfiguration eos-config-poc.json (vorher Standort, PV, Batterie anpassen)
+./setup-mac.sh status     # Version und letzter Lauf
+```
+
+Danach: Swagger-UI `http://localhost:8503/docs`, EOSdash `http://localhost:8504`. Konfiguration und Messwerte
+liegen im Volume `eos_eos-data` und überleben Rebuilds. Für ein Update auf eine neue EOS-Version `EOS_GIT_REF`
+und `EOS_VERSION` in `.docker/.env` ändern und `./setup-mac.sh update` ausführen.
+
+Läuft Symcon ebenfalls als Container auf demselben Rechner, trägt man im EOS Server `host.docker.internal` als
+Host ein. Sonst die IP des Docker-Hosts; die EOS-API hat keine Authentifizierung, also nicht ins Internet
+freigeben. Details, Fehlerbilder und die lokale PV-Prognose ohne Cloud: [docs/eos-setup.md](docs/eos-setup.md).
+
+## Prüfstand mit virtuellen Geräten
+
+Zum Testen ohne echte Hardware eignet sich die Symcon-Bibliothek „Virtual Devices“
+(`https://github.com/symcon/VirtuelleGeraete`, über Module Control installieren): Batteriespeicher (`ChargePower`,
+`DischargePower` in W, `SoCPercentage` als Faktor), E-Auto im Wallbox-Modus (`CurrentL123` in A, `SoC` in %),
+Heizstab (`Status` als Freigabe) und Virtual Counter (kumulierte kWh mit Stundenhistorie im Archiv). Die Variablen
+sind schaltbar und lassen sich direkt als Quellen und Ziele in die EOS-Instanzen eintragen; die max. Entladeleistung
+der EOS Batterie klein halten (z. B. 800 W), dann entlädt der virtuelle Speicher wie eine Hauslast.
+
 ## Voraussetzungen
 
-- Laufende EOS-Instanz ≥ 0.4.0rc1, erreichbar über HTTP (Standard-Port 8503). Setup in Docker auf dem Mac:
-  [docs/eos-setup.md](docs/eos-setup.md).
+- Laufende EOS-Instanz ≥ 0.4.0rc1, erreichbar über HTTP (Standard-Port 8503). Wer noch keine hat:
+  Abschnitt [EOS in Docker installieren](#eos-in-docker-installieren).
 - IP-Symcon ≥ 8.1.
 - In EOS konfigurierte Geräte (`devices/batteries/<id>`), wahlweise über EOSdash oder über das Formular des
   Batterie-Moduls.
@@ -48,6 +84,10 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
    Energiemanagement, Optimierung, Provider für Strompreis, Gebühren, Einspeisung, PV-Flächen, Last, Wetter,
    Messwert-Keys) spiegeln jetzt die EOS-Konfiguration. Änderungen mit „Nach EOS schreiben“ übertragen und mit
    „In EOS speichern“ dauerhaft sichern. Symcon schreibt nur auf Knopfdruck nach EOS.
+   Dynamischer Tarif: Strompreis-Provider `ElecPriceEnergyCharts` (Gebotszone `DE-LU`, 15-Minuten-Raster) und
+   unter Gebühren `ElecFeeFixed` mit dem festen Netto-Aufschlag des Tarifs in EUR/kWh (Beschaffung, Netzentgelt,
+   Konzession, Stromsteuer, Umlagen) plus 19 % Aufschlag für die Mehrwertsteuer. EOS rechnet dann mit
+   (Börsenpreis + Aufschlag) × 1,19 je Viertelstunde.
 3. **EOS Batterie** anlegen, mit dem Server verbinden, Geräte-ID (wie in EOS, z. B. `battery1`) und die
    SoC-Quellvariable wählen (Prozent oder Faktor). Der SoC wird im eingestellten Intervall und bei Wertänderung
    an EOS gesendet. EOS verwirft SoC-Werte, die älter als 300 s sind.
@@ -62,6 +102,8 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
   Spannung). Mit „Nach EOS schreiben“ wird das Fahrzeug in EOS angelegt (`max_electric_vehicles` wird auf 1 gesetzt).
 - **Haushaltsgerät**: Energie je Lauf, Dauer, Zeitfenster, Planungsmodus ONCE/DAILY, optional Frist und frühester
   Start aus Variablen sowie „heute erledigte Läufe“. Angezeigt werden geplanter Start und Ende sowie RUN/OFF.
+  „Nach EOS schreiben“ hebt `devices/max_home_appliances` bei Bedarf an. Steht der Wert unter der Anzahl der
+  Geräte, bricht EOS jeden Lauf ab („home_appliances exceeds configured maximum“).
 - **Zähler**: Liste von Symcon-Variablen mit kumulierten Zählerständen (kWh oder Wh), EOS-Key und Kategorie. Beim
   Übernehmen werden die Keys in `measurement.*_emr_keys` eingetragen. „Historie aus Archiv importieren“ überträgt die
   geloggten Werte der letzten Stunden, damit die Lastprognose sofort auf Messdaten aufsetzt.
@@ -163,6 +205,12 @@ EOSMTR_ImportHistory($id, 48);      // Historie der letzten 48 h importieren
   ohne Quellvariable den Wert 0.
 - Nach einem EOS-Neustart gibt es bis zum ersten erfolgreichen Lauf keinen Plan (Server-Status 203). Die
   Geräte senden trotzdem weiter, damit EOS rechnen kann.
+- `devices/max_home_appliances` muss mindestens der Anzahl konfigurierter Haushaltsgeräte entsprechen, sonst
+  scheitert die Parametervorbereitung von GENETIC still (nur im Container-Log sichtbar, `LastError` zeigt es nicht).
+- Die EOS-Konfigurationsdatei speichert nur Werte, die vom Standard abweichen. Ein fehlender Schlüssel in
+  `EOS.config.json` heißt „Standardwert“, nicht „nicht gesetzt“.
+- Prognosen manuell neu laden: `POST /v1/prediction/update` (alle Provider) oder
+  `POST /v1/prediction/update/<ProviderId>`.
 
 ## Entwicklung
 

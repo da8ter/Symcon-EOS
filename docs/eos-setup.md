@@ -15,8 +15,11 @@ Akkudoktor-EOS-Instanz (v0.4.0rc1) im LAN, die Symcon später per REST anspricht
 ## Warum ein eigener Build?
 
 Für den Release-Kandidaten 0.4.0rc1 veröffentlicht das EOS-Projekt kein Docker-Image. Die
-Compose-Datei in `.docker/` baut das Image deshalb direkt aus dem GitHub-Tag. Ein Checkout des
-EOS-Repos ist nicht nötig. Sobald 0.4.0 final erscheint, genügt es, `EOS_GIT_REF` und
+Compose-Datei in `.docker/` baut das Image deshalb direkt aus dem GitHub-Tag
+(`EOS_GIT_REF=v0.4.0rc1`) mit dem Dockerfile des EOS-Projekts. Ein Checkout des EOS-Repos ist nicht
+nötig. **Am EOS-Code wird nichts geändert**: kein Patch, kein Bind-Mount über `/opt/eos`, nur
+Umgebungsvariablen (Host/Port, Thread-Limits, Zeitzone). Alle Umgehungen für Eigenheiten des
+Release-Kandidaten stecken im Symcon-Modul. Sobald 0.4.0 final erscheint, genügt es, `EOS_GIT_REF` und
 `EOS_VERSION` in `.docker/.env` zu ändern und `./setup-mac.sh update` auszuführen.
 
 ## Schnellstart
@@ -63,7 +66,28 @@ Wechselrichterleistung, Jahresverbrauch, Einspeisevergütung und Netzentgelte (`
 ```
 
 Eigene Konfigurationen als `.docker/eos-config-local.json` ablegen, die Datei ist in `.gitignore`
-eingetragen und landet nicht im Repo. Zeitzonentarife (z. B. Octopus Heat mit drei Preiszonen)
+eingetragen und landet nicht im Repo.
+
+Dynamischer Börsenstromtarif (Energy-Charts, 15-Minuten-Raster) mit den festen Bestandteilen des eigenen
+Tarifblatts als Netto-Aufschlag und 19 % Mehrwertsteuer:
+
+```bash
+curl -X PUT http://localhost:8503/v1/config/elecprice/provider -H 'Content-Type: application/json' -d '"ElecPriceEnergyCharts"'
+curl -X PUT http://localhost:8503/v1/config/elecprice/energycharts/bidding_zone -H 'Content-Type: application/json' -d '"DE-LU"'
+curl -X PUT http://localhost:8503/v1/config/elecfee/provider -H 'Content-Type: application/json' -d '"ElecFeeFixed"'
+curl -X PUT http://localhost:8503/v1/config/elecfee/elecfeefixed/consumption_amt_kwh -H 'Content-Type: application/json' \
+  -d '{"windows":[{"start_time":"00:00:00","duration":"1 day","value":0.1772}]}'
+curl -X PUT http://localhost:8503/v1/config/elecfee/elecfeefixed/consumption_percent_amt -H 'Content-Type: application/json' \
+  -d '{"windows":[{"start_time":"00:00:00","duration":"1 day","value":19}]}'
+curl -X PUT http://localhost:8503/v1/config/file
+curl -X POST http://localhost:8503/v1/prediction/update
+```
+
+`value` bei `consumption_amt_kwh` ist EUR/kWh netto (hier 17,72 ct = Beschaffung 1,81 + Netz 8,82 + Konzession
+2,39 + Stromsteuer 2,05 + Umlagen 2,65), bei `consumption_percent_amt` Prozent. Kontrolle:
+`GET /v1/prediction/series?key=elecprice_marketprice_wh` muss (Spot + Aufschlag) × 1,19 ergeben; der reine
+Spotpreis steht unter `elecprice_marketprice_raw_wh`. Dieselben Felder gibt es im Formular des Symcon
+EOS Servers (Strompreis, Gebühren). Zeitzonentarife (z. B. Octopus Heat mit drei Preiszonen)
 werden mit `ElecPriceFixed` und Zeitfenstern abgebildet, Bruttopreise direkt eintragen und
 `elecfee.provider` auf `null` lassen.
 
@@ -116,7 +140,9 @@ Compose-Netz (`eos_default`) hängen und EOS unter `http://akkudoktoreos:8503` a
 | Port 8503/8504 belegt | Ports in `.docker/.env` ändern und `./setup-mac.sh` erneut ausführen. |
 | `/v1/energy-management/plan` liefert 404 | Noch kein erfolgreicher Lauf. `./setup-mac.sh logs` prüfen, SoC-Messwert setzen. |
 | Lauf bricht mit „stale“ / „missing measurement“ ab | Batterie-SoC älter als 300 s. Symcon (oder Test-curl) muss ihn zyklisch liefern. |
-| `POST /v1/optimize` liefert 503 „No new solution was produced“ | Meist fehlt eine Prognose. Log prüfen: `docker compose logs eos \| grep -i "fails on update"`. |
+| `POST /v1/optimize` liefert 503 „No new solution was produced“ | Meist fehlt eine Prognose oder ein Messwert. Log prüfen: `docker compose logs eos \| grep -iE "fails on update\|canceling"`. |
+| Jeder Lauf endet mit „devices.home_appliances exceeds configured maximum 0“ | `devices/max_home_appliances` ist kleiner als die Anzahl konfigurierter Geräte. Wert anheben: `curl -X PUT .../v1/config/devices/max_home_appliances -d '1'` und `PUT /v1/config/file`. Das Symcon-Modul setzt ihn beim „Nach EOS schreiben“ des Haushaltsgeräts. |
+| `EOS.config.json` enthält einen gesetzten Wert nicht | Die Datei speichert nur Abweichungen vom Standard (z. B. fehlt `energycharts.bidding_zone: DE-LU`, weil es der Standard ist). Maßgeblich ist `GET /v1/config`. |
 | `PVForecastAkkudoktor fails on update ... 500 Server Error` | Die Akkudoktor-Cloud-API ist nicht erreichbar. Auf das lokale Backend umschalten (siehe unten). |
 | Lauf bricht mit „Fresh SoC missing“ ab, obwohl der SoC frisch ist | Bug in 0.4.0rc1: Die SoC-Suche (`configrequest.py`, `key_to_lists(..., dropna=False)`) nimmt den jüngsten Messwert-Datensatz, auch wenn er nur einen anderen Key (EV-SoC, Zählerstand) enthält und der Batterie-SoC darin NaN ist. Gleiches gilt für `<gerät>.cycles_completed` bei Haushaltsgeräten („Invalid completed cycle count“). Das Symcon-Modul umgeht das, indem der EOS Server bei jedem anderen Messwert alle bekannten SoC- und Zyklus-Werte mit demselben Zeitstempel erneut sendet. Upstream-Fix: `dropna=True` in `configrequest.py`. |
 | Optimierung dauert sehr lange | In Docker Desktop mehr CPUs freigeben oder `individuals`/`generations` in `optimization.genetic` senken. |
