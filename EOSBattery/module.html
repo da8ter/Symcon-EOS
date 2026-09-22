@@ -38,7 +38,8 @@
         --ink-3: color-mix(in srgb, currentColor 34%, transparent);
         --grid: color-mix(in srgb, currentColor 12%, transparent);
     }
-    #root { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 8px 10px 6px; gap: 6px; }
+    /* Symcon draws the tile title and the expand icon over the top ~40px: keep that strip free. */
+    #root { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 42px 10px 8px; gap: 6px; }
     header { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-height: 22px; }
     .mode { font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 6px; }
     .mode i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; background: var(--mode-color, var(--m-unknown)); }
