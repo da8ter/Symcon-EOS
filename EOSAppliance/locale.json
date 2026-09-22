@@ -89,7 +89,7 @@
             "EOS mode → value for the mode variable": "EOS mode → value for the mode variable",
             "Target for actions (variable or instance; default: the mode variable)": "Target for actions (variable or instance; default: the mode variable)",
             "Action per EOS mode (runs once when switching into the mode)": "Action per EOS mode (runs once when switching into the mode)",
-            "Action on every change (optional)": "Action on every change (optional)"
+            "Action and script on every change (optional)": "Action and script on every change (optional)"
         },
         "de": {
             "EOS Appliance": "EOS Haushaltsgerät",
@@ -209,7 +209,7 @@
             "EOS mode → value for the mode variable": "EOS-Modus → Wert für die Modus-Variable",
             "Target for actions (variable or instance; default: the mode variable)": "Ziel für Aktionen (Variable oder Instanz; Standard: die Modus-Variable)",
             "Action per EOS mode (runs once when switching into the mode)": "Aktion je EOS-Modus (läuft einmal beim Wechsel in den Modus)",
-            "Action on every change (optional)": "Aktion bei jedem Wechsel (optional)"
+            "Action and script on every change (optional)": "Aktion und Skript bei jedem Wechsel (optional)"
         }
     }
 }
