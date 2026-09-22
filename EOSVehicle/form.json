@@ -10,9 +10,21 @@
                     "caption": "The device ID must match the vehicle key in the EOS configuration (devices/electric_vehicles/<id>)."
                 },
                 {
+                    "type": "Select",
+                    "name": "EOSDevicePick",
+                    "caption": "Device in EOS",
+                    "options": [
+                        {
+                            "caption": "- select from EOS -",
+                            "value": ""
+                        }
+                    ],
+                    "onChange": "IPS_RequestAction($id, 'PickDeviceId', $EOSDevicePick);"
+                },
+                {
                     "type": "ValidationTextBox",
                     "name": "DeviceID",
-                    "caption": "EOS device ID",
+                    "caption": "EOS device ID (free text; a new device is created in EOS on Apply)",
                     "validate": "^[A-Za-z0-9_-]+$"
                 },
                 {

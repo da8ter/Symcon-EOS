@@ -333,6 +333,11 @@ if (!trait_exists('EOSControl')) {
                 case 'ManualMode':
                     $this->changeManualMode((int) $value);
                     return true;
+                case 'PickDeviceId':
+                    if (trim((string) $value) !== '') {
+                        $this->UpdateFormField('DeviceID', 'value', trim((string) $value));
+                    }
+                    return true;
                 case 'FillFormFromEOS':
                     $this->SetTimerInterval('FormFill', 0);
                     $this->ReadConfigFromEOS();

@@ -7,6 +7,7 @@ require_once __DIR__ . '/../libs/EOSPlanDevice.php';
 require_once __DIR__ . '/../libs/EOSSoCPush.php';
 require_once __DIR__ . '/../libs/EOSControlBindings.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
 
 /**
  * EOS Vehicle: the battery of an electric vehicle known to EOS.
@@ -23,6 +24,7 @@ class EOSVehicle extends IPSModuleStrict
     use EOSSoCPush;
     use EOSControlBindings;
     use EOSControl;
+    use EOSDeviceConfigSync;
 
     private const MODULE_GUID = '{5D0C0E3A-7B1F-4E7A-9C7E-2E6E4B1A8F21}';
     private const CONTROL_PREFIX = 'EOSEV';
@@ -53,6 +55,7 @@ class EOSVehicle extends IPSModuleStrict
         $this->RegisterPropertyInteger('MinSwitchIntervalSec', 300);
         $this->registerControlProperties(self::CHARGE_NOW);
 
+        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeInteger('RegisteredPluggedVar', 0);
         $this->RegisterAttributeInteger('RegisteredDepartureVar', 0);
@@ -158,6 +161,7 @@ class EOSVehicle extends IPSModuleStrict
         [$path, $device] = $this->deviceConfig();
         $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
         $this->armFormFillIfDiffers($path, $device);
+        $this->fillDevicePicker($form, dirname($path));
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 

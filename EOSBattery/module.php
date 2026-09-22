@@ -7,6 +7,7 @@ require_once __DIR__ . '/../libs/EOSPlanDevice.php';
 require_once __DIR__ . '/../libs/EOSSoCPush.php';
 require_once __DIR__ . '/../libs/EOSControlBindings.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
 
 /**
  * EOS Battery: represents one stationary battery known to EOS.
@@ -23,6 +24,7 @@ class EOSBattery extends IPSModuleStrict
     use EOSSoCPush;
     use EOSControlBindings;
     use EOSControl;
+    use EOSDeviceConfigSync;
 
     private const MODULE_GUID = '{F4B30383-1210-4169-93DA-5C9664447B42}';
     private const CONTROL_PREFIX = 'EOSBAT';
@@ -47,6 +49,7 @@ class EOSBattery extends IPSModuleStrict
         $this->RegisterPropertyBoolean('AllowGridExport', false);
         $this->registerControlProperties(self::BATTERY_MODES['SELF_CONSUMPTION']['value']);
 
+        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeString('SolutionSubset', '{}');
         $this->RegisterAttributeString('PlausibilityWarned', '');
@@ -131,6 +134,7 @@ class EOSBattery extends IPSModuleStrict
         [$path, $device] = $this->deviceConfig();
         $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
         $this->armFormFillIfDiffers($path, $device);
+        $this->fillDevicePicker($form, dirname($path));
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 

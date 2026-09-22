@@ -6,6 +6,7 @@ require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSPlanDevice.php';
 require_once __DIR__ . '/../libs/EOSControlBindings.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
 require_once __DIR__ . '/../libs/EOSApplianceConfig.php';
 
 /**
@@ -25,6 +26,7 @@ class EOSAppliance extends IPSModuleStrict
     use EOSPlanDevice;
     use EOSControlBindings;
     use EOSControl;
+    use EOSDeviceConfigSync;
     use EOSApplianceConfig;
 
     private const MODULE_GUID = '{A7E2C4D9-3F61-4B8E-B2D5-6C9F0E1A7B34}';
@@ -56,6 +58,7 @@ class EOSAppliance extends IPSModuleStrict
         $this->RegisterPropertyBoolean('AllowStop', false);
         $this->registerControlProperties(self::FALLBACK_NONE);
 
+        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeInteger('RegisteredDeadlineVar', 0);
         $this->RegisterAttributeInteger('RegisteredEarliestVar', 0);
@@ -155,6 +158,7 @@ class EOSAppliance extends IPSModuleStrict
         [$path, $device] = $this->deviceConfig();
         $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
         $this->armFormFillIfDiffers($path, $device);
+        $this->fillDevicePicker($form, dirname($path));
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
