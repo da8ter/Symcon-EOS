@@ -367,8 +367,11 @@ class EOSVehicle extends IPSModuleStrict
         return $this->desiredFromVehicleState($state, '', '');
     }
 
-    protected function onDispatched(array $desired, bool $sim): void
+    protected function onDispatched(array $desired, bool $success): void
     {
+        if (!$success) {
+            return; // the wallbox did not take the new state; keep the dwell clock as it was
+        }
         $charging = !empty($desired['targets']['ChargeAllowed']) ? 1 : 0;
         if ($this->ReadAttributeInteger('LastChargeState') !== $charging) {
             $this->WriteAttributeInteger('LastChargeState', $charging);

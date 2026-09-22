@@ -98,6 +98,12 @@ class EOSMeter extends IPSModuleStrict
 
     public function ReceiveData(string $JSONString): string
     {
+        // The server broadcasts every plan to its children. If this instance went to
+        // status 104 because the server came up later, redo ApplyChanges (deferred: we
+        // are inside the parent's SendDataToChildren call) so timers and pushes resume.
+        if ($this->GetStatus() === self::STATUS_NO_PARENT && $this->parentUsable()) {
+            $this->RegisterOnceTimer('ApplyLater', 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
+        }
         return '';
     }
 
@@ -138,7 +144,12 @@ class EOSMeter extends IPSModuleStrict
             return false;
         }
         $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'measurement']);
-        $current = is_array($res['data'] ?? null) ? $res['data'] : [];
+        if (($res['ok'] ?? false) !== true || !is_array($res['data'] ?? null)) {
+            // Never extend an unknown list: writing without the current keys would drop them.
+            $this->SetValue('LastError', 'keys: ' . $this->Translate('could not read measurement configuration from EOS') . ' (' . (string) ($res['error'] ?? '?') . ')');
+            return false;
+        }
+        $current = $res['data'];
         $merge = [];
         foreach (self::CATEGORY_FIELD as $category => $field) {
             $keys = is_array($current[$field] ?? null) ? $current[$field] : [];

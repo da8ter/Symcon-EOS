@@ -20,7 +20,7 @@ declare(strict_types=1);
  *   modeMapRows(): array                        [['mode' => 'IDLE', 'caption' => 'Locked'], ...]
  *   manualModeOptions(): array                  enumeration options without "Automatic"
  * Optional hooks: rowActionAllowed(array $desired, string $modeRaw): bool,
- * onDispatched(array $desired, bool $sim): void, validateControlDevice(): string.
+ * onDispatched(array $desired, bool $success): void, validateControlDevice(): string.
  *
  * Desired state: ['modeRaw', 'mode', 'factor', 'targets' => [Key => value], 'context' => [...],
  *                 'executionTime', 'degraded'] (+ 'source', 'trigger' added here).
@@ -227,55 +227,88 @@ if (!trait_exists('EOSControl')) {
 
             $changed = [];
             $retry = [];
+            $backoff = static fn (int $fail, int $failTs): bool => $now - $failTs >= 60 * min(max(1, $fail), self::MAX_RETRY_BACKOFF);
             foreach ($resolved as $key => $target) {
                 $entry = $lastTargets[$key] ?? null;
+                $fail = (int) ($entry['fail'] ?? 0);
+                if ($fail > 0 && ($entry['fv'] ?? null) === $target['norm']) {
+                    // The same value failed before: retry only after the backoff, never on every dispatch.
+                    if ($backoff($fail, (int) ($entry['failTs'] ?? 0))) {
+                        $retry[$key] = $target;
+                    }
+                    continue;
+                }
                 if ($entry === null || ($entry['v'] ?? null) !== $target['norm']) {
                     $changed[$key] = $target;
-                } elseif ((int) ($entry['fail'] ?? 0) > 0 && $now - (int) ($entry['failTs'] ?? 0) >= 60 * min((int) $entry['fail'], self::MAX_RETRY_BACKOFF)) {
-                    $retry[$key] = $target;
                 }
             }
             $modeRaw = (string) ($desired['modeRaw'] ?? '');
             $modeChanged = $last === [] || $modeRaw !== (string) ($last['modeRaw'] ?? '');
+            // Row action: pending until it ran successfully for this mode (or nothing is configured).
+            $row = is_array($last['row'] ?? null) ? $last['row'] : ['modeRaw' => null, 'fail' => 0, 'failTs' => 0];
+            $rowPending = $modeRaw !== '' && $modeRaw !== (string) ($row['modeRaw'] ?? '');
+            // Backoff only for retrying the mode that failed; a new mode fires at once.
+            $rowDue = $rowPending && ((int) ($row['fail'] ?? 0) === 0 || ($row['failMode'] ?? null) !== $modeRaw || $backoff((int) $row['fail'], (int) $row['failTs']));
             $heartbeatSeconds = $this->ReadPropertyInteger('HeartbeatSeconds');
             $heartbeat = $heartbeatSeconds > 0 && $last !== [] && $now - (int) ($last['ts'] ?? 0) >= $heartbeatSeconds;
-            if (!$force && $changed === [] && !$modeChanged && !$heartbeat && $retry === []) {
+            if (!$force && $changed === [] && !$modeChanged && !$heartbeat && $retry === [] && !$rowDue) {
+                // Nothing to write, but a changed policy degradation must stay visible.
+                $degraded = (string) ($desired['degraded'] ?? '');
+                if ($degraded !== (string) ($last['degraded'] ?? '')) {
+                    $last['degraded'] = $degraded;
+                    $this->WriteAttributeString('LastSent', json_encode($last));
+                    $this->recordResult('[' . (string) ($desired['source'] ?? 'plan') . '] ' . $this->Translate('nothing to write') . ($degraded !== '' ? ' · ' . $degraded : ''), false);
+                }
                 return;
             }
-            $reason = ($changed === [] && !$modeChanged && !$force && $retry === []) ? 'heartbeat' : (string) ($desired['source'] ?? 'plan');
+            $reason = ($changed === [] && !$modeChanged && !$force && $retry === [] && !$rowDue) ? 'heartbeat' : (string) ($desired['source'] ?? 'plan');
             $context = $this->buildContext($desired, $reason, $sim, array_keys($changed));
 
             $fragments = [];
             $failed = [];
             $started = microtime(true);
-            $toWrite = ($force || $heartbeat) ? $resolved : $changed + $retry;
+            // Heartbeat re-sends everything except targets whose failed value is still in its backoff.
+            $inBackoff = static fn (?array $entry, string $norm): bool => $entry !== null && (int) ($entry['fail'] ?? 0) > 0 && ($entry['fv'] ?? null) === $norm && !$backoff((int) $entry['fail'], (int) ($entry['failTs'] ?? 0));
+            $toWrite = $force ? $resolved : ($heartbeat ? array_filter($resolved, fn ($t, $k) => !$inBackoff($lastTargets[$k] ?? null, $t['norm']), ARRAY_FILTER_USE_BOTH) : $changed + $retry);
             foreach ($toWrite as $key => $target) {
                 $result = $this->writeTarget($key, $target['varId'], $target['value'], $sim);
                 if ($result['text'] !== '') {
                     $fragments[] = $result['text'];
                 }
-                $entry = $lastTargets[$key] ?? ['v' => null, 'ts' => 0, 'fail' => 0, 'failTs' => 0];
+                $entry = $lastTargets[$key] ?? ['v' => null, 'ts' => 0, 'fail' => 0, 'failTs' => 0, 'fv' => null];
                 if ($result['ok']) {
-                    $entry = ['v' => $target['norm'], 'ts' => $now, 'fail' => 0, 'failTs' => 0];
+                    $entry = ['v' => $target['norm'], 'ts' => $now, 'fail' => 0, 'failTs' => 0, 'fv' => null];
                 } else {
                     $failed[] = $result['text'];
                     if (!$result['skipped']) {
                         $entry['fail'] = (int) ($entry['fail'] ?? 0) + 1;
                         $entry['failTs'] = $now;
+                        $entry['fv'] = $target['norm']; // remember what failed; a different value may be written at once
                     }
                 }
                 $lastTargets[$key] = $entry;
             }
 
-            // Mode-row action: edge-triggered, never repeated by the heartbeat.
-            if (($modeChanged || $force) && $modeRaw !== '' && $this->rowActionAllowed($desired, $modeRaw)) {
-                $row = $this->modeMapRow($modeRaw);
-                $result = $this->runAction($row['action'], $context, $sim, $this->Translate('Action') . ' ' . $modeRaw);
-                if ($result['text'] !== '') {
-                    $fragments[] = $result['text'];
-                    if (!$result['ok']) {
-                        $failed[] = $result['text'];
+            // Mode-row action: edge-triggered (once per mode), retried with backoff after a failure, never by the heartbeat.
+            $rowSucceeded = false;
+            if (($rowDue || $force) && $modeRaw !== '') {
+                if ($this->rowActionAllowed($desired, $modeRaw)) {
+                    $result = $this->runAction($this->modeMapRow($modeRaw)['action'], $context, $sim, $this->Translate('Action') . ' ' . $modeRaw);
+                    if ($result['text'] !== '') {
+                        $fragments[] = $result['text'];
                     }
+                    if ($result['ok']) {
+                        $rowSucceeded = true;
+                    } else {
+                        $failed[] = $result['text'];
+                        $sameMode = ($row['failMode'] ?? null) === $modeRaw;
+                        $row = ['modeRaw' => $row['modeRaw'] ?? null, 'fail' => $sameMode ? (int) ($row['fail'] ?? 0) + 1 : 1, 'failTs' => $now, 'failMode' => $modeRaw];
+                    }
+                } else {
+                    $rowSucceeded = true; // nothing to fire for this mode
+                }
+                if ($rowSucceeded) {
+                    $row = ['modeRaw' => $modeRaw, 'fail' => 0, 'failTs' => 0];
                 }
             }
             foreach ([
@@ -291,10 +324,12 @@ if (!trait_exists('EOSControl')) {
             }
 
             $this->WriteAttributeString('LastSent', json_encode([
-                'targets' => $lastTargets,
-                'modeRaw' => $modeRaw,
-                'ts'      => $now,
-                'source'  => $reason,
+                'targets'  => $lastTargets,
+                'modeRaw'  => $modeRaw,
+                'row'      => $row,
+                'ts'       => $now,
+                'source'   => $reason,
+                'degraded' => (string) ($desired['degraded'] ?? ''),
             ]));
             $durationMs = (int) round((microtime(true) - $started) * 1000);
             $text = ($sim ? 'SIM ' : '') . '[' . $reason . '] ' . ($fragments !== [] ? implode(' · ', $fragments) : $this->Translate('nothing to write'));
@@ -308,7 +343,14 @@ if (!trait_exists('EOSControl')) {
                 $this->LogMessage(sprintf($this->Translate('Control writes took %d ms - consider a script binding for slow devices'), $durationMs), KL_WARNING);
             }
             if (!$sim) {
-                $this->onDispatched($desired, $sim);
+                // Success means: nothing failed now AND no bound target or the mode action is still in a failed state.
+                $pending = $modeRaw !== '' && $modeRaw !== (string) ($row['modeRaw'] ?? '') && (int) ($row['fail'] ?? 0) > 0;
+                foreach ($resolved as $key => $target) {
+                    if ((int) ($lastTargets[$key]['fail'] ?? 0) > 0) {
+                        $pending = true;
+                    }
+                }
+                $this->onDispatched($desired, $failed === [] && !$pending);
             }
         }
 
@@ -322,8 +364,10 @@ if (!trait_exists('EOSControl')) {
                     $on = (bool) $value;
                     $this->SetValue('ControlActive', $on);
                     if (!$on) {
-                        if ($this->ReadPropertyBoolean('ReleaseOnDisable')) {
-                            $this->releaseDevice('disable', $this->ReadPropertyInteger('ControlMode') === self::CONTROL_SIMULATE);
+                        // Release only from a control mode that actually writes; "display only" never touches the device.
+                        $mode = $this->ReadPropertyInteger('ControlMode');
+                        if ($mode !== self::CONTROL_DISPLAY && $this->ReadPropertyBoolean('ReleaseOnDisable')) {
+                            $this->releaseDevice('disable', $mode === self::CONTROL_SIMULATE);
                         }
                     } else {
                         $this->WriteAttributeString('LastSent', '{}');
@@ -333,29 +377,8 @@ if (!trait_exists('EOSControl')) {
                 case 'ManualMode':
                     $this->changeManualMode((int) $value);
                     return true;
-                case 'PickDeviceId':
-                    if (trim((string) $value) !== '') {
-                        $this->UpdateFormField('DeviceID', 'value', trim((string) $value));
-                    }
-                    return true;
-                case 'FillFormFromEOS':
-                    $this->SetTimerInterval('FormFill', 0);
-                    $this->ReadConfigFromEOS();
-                    return true;
-                case 'SetActionTarget':
-                    // Form onChange: point the open action pickers at the newly chosen target.
-                    $data = json_decode((string) $value, true);
-                    $target = (int) ($data['target'] ?? 0);
-                    if ($target <= 0) {
-                        $target = (int) ($data['modeVar'] ?? 0);
-                    }
-                    if ($target > 0 && IPS_ObjectExists($target)) {
-                        foreach ($this->modeMapRows() as $row) {
-                            $this->UpdateFormField('ModeAction_' . strtoupper((string) $row['mode']), 'targetID', $target);
-                        }
-                        $this->UpdateFormField('ChangeAction', 'targetID', $target);
-                    }
-                    return true;
+                default:
+                    return $this->handleFormAction($ident, $value);
             }
             return false;
         }
@@ -420,23 +443,6 @@ if (!trait_exists('EOSControl')) {
             return true;
         }
 
-        protected function controlState(): array
-        {
-            return [
-                'controlMode'    => $this->ReadPropertyInteger('ControlMode'),
-                'controlActive'  => (bool) $this->GetValue('ControlActive'),
-                'controlReady'   => $this->ReadAttributeBoolean('ControlReady'),
-                'problem'        => $this->ReadAttributeString('ControlProblem'),
-                'manualMode'     => (int) $this->GetValue('ManualMode'),
-                'manualUntil'    => $this->ReadAttributeInteger('ManualUntil'),
-                'fallbackActive' => (bool) $this->GetValue('FallbackActive'),
-                'lastControl'    => (int) $this->GetValue('LastControl'),
-                'lastResult'     => (string) $this->GetValue('LastControlResult'),
-                'desired'        => $this->eosJsonDecode($this->ReadAttributeString('Desired'), []),
-                'lastSent'       => $this->eosJsonDecode($this->ReadAttributeString('LastSent'), []),
-            ];
-        }
-
         // ---------------------------------------------------------------- helpers / hooks
 
         protected function recordResult(string $text, bool $touchTime = true): void
@@ -468,8 +474,8 @@ if (!trait_exists('EOSControl')) {
             return true;
         }
 
-        /** Hook: a desired state was written (not in simulation). */
-        protected function onDispatched(array $desired, bool $sim): void
+        /** Hook: a desired state was dispatched (not in simulation); $success = every write and action succeeded. */
+        protected function onDispatched(array $desired, bool $success): void
         {
         }
 

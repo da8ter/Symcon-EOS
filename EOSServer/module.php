@@ -78,8 +78,10 @@ class EOSServer extends IPSModuleStrict
         $this->SetTimerInterval('PlanRefresh', $this->ReadPropertyInteger('PlanRefreshInterval') * 1000);
 
         $this->PollHealth();
-        // Re-distribute the cached plan so children can rebuild their schedule after a restart.
+        // Re-distribute the cached plan so children can rebuild their schedule after a restart,
+        // and always send the status so children waiting for the server recover even without a plan.
         $this->BroadcastPlan(false);
+        $this->broadcastStatus((bool) $this->GetValue('Connected'));
     }
 
     public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
@@ -498,6 +500,7 @@ class EOSServer extends IPSModuleStrict
     private function applyHealth(array $health): void
     {
         $version = (string) ($health['version'] ?? '');
+        $wasConnected = (bool) $this->GetValue('Connected');
         $this->SetValue('Connected', true);
         $this->SetValue('Version', $version);
         $this->SetValue('LastRun', $this->eosParseTime($health['energy-management']['last_run_datetime'] ?? null));
@@ -511,6 +514,16 @@ class EOSServer extends IPSModuleStrict
         if ($this->GetStatus() !== self::STATUS_NO_PLAN) {
             $this->SetStatus(IS_ACTIVE);
         }
+        if (!$wasConnected) {
+            // Children that went to "no active server" re-run ApplyChanges on any event;
+            // a plan may not exist yet (203), so tell them explicitly.
+            $this->broadcastStatus(true);
+        }
+    }
+
+    private function broadcastStatus(bool $connected): void
+    {
+        $this->SendDataToChildren(json_encode(['DataID' => self::EOS_RX_GUID, 'Event' => 'Status', 'Connected' => $connected]));
     }
 
     private function markUnreachable(string $error): void
@@ -521,7 +534,7 @@ class EOSServer extends IPSModuleStrict
         $this->SetStatus(self::STATUS_UNREACHABLE);
         if ($wasConnected) {
             $this->LogMessage('EOS not reachable: ' . $error, KL_WARNING);
-            $this->SendDataToChildren(json_encode(['DataID' => self::EOS_RX_GUID, 'Event' => 'Status', 'Connected' => false]));
+            $this->broadcastStatus(false);
         }
     }
 
