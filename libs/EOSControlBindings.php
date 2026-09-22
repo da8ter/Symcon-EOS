@@ -268,11 +268,12 @@ if (!trait_exists('EOSControlBindings')) {
                 $mode = strtoupper((string) $row['mode']);
                 $caption = $this->Translate((string) $row['caption']);
                 $values[] = ['mode' => $mode, 'caption' => $caption, 'value' => $saved[$mode]['value'] ?? ''];
-                $picker = ['type' => 'SelectAction', 'name' => 'ModeAction_' . $mode, 'caption' => $caption . ' (' . $mode . ')'];
+                $picker = ['type' => 'SelectAction', 'name' => 'ModeAction_' . $mode, 'caption' => $this->Translate('Action')];
                 if ($target > 0) {
                     $picker['targetID'] = $target;
                 }
-                $pickers[] = $picker;
+                // One collapsed panel per mode keeps the option short until a mode is opened.
+                $pickers[] = ['type' => 'ExpansionPanel', 'caption' => $caption . ' (' . $mode . ')', 'expanded' => false, 'items' => [$picker]];
             }
             $this->fillFormList($form['elements'], 'ModeMap', $values);
             $this->fillFormItems($form['elements'], 'ModeActions', $pickers);
