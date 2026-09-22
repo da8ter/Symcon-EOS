@@ -64,7 +64,7 @@ der EOS Batterie klein halten (z. B. 800 W), dann entlädt der virtuelle Speiche
   Abschnitt [EOS in Docker installieren](#eos-in-docker-installieren).
 - IP-Symcon ≥ 8.1.
 - Geräte in EOS (`devices/batteries/<id>` …) legen die Geräte-Instanzen beim Übernehmen selbst an und halten sie
-  mit ihren Parametern abgeglichen; alternativ in EOSdash pflegen und mit „Werte aus EOS übernehmen“ ins Formular holen.
+  mit ihren Parametern abgeglichen; Änderungen aus EOSdash erscheinen beim Öffnen des Formulars in den Feldern.
 
 ## Installation
 
@@ -93,8 +93,8 @@ Für die Entwicklung liegt das Repo direkt im Modulverzeichnis (`/Library/Applic
    an EOS gesendet. EOS verwirft SoC-Werte, die älter als 300 s sind.
 4. Unter **Batterieparameter** Kapazität, Leistung, SoC-Grenzen und Wirkungsgrade eintragen. Beim Übernehmen
    gleicht die Instanz den Geräteeintrag in EOS automatisch ab und schreibt nur, was abweicht (das Ergebnis steht
-   im Meldungsfenster und unter den Parametern). Wer das Gerät zuerst in EOSdash angelegt hat, holt die Werte mit
-   „Werte aus EOS übernehmen“ ins Formular und drückt dann Übernehmen.
+   im Meldungsfenster und unter den Parametern). Wurde das Gerät in EOSdash geändert, lädt das Formular beim Öffnen
+   die EOS-Werte in die Felder: Übernehmen speichert sie in Symcon, Abbrechen behält die Symcon-Werte.
 
 ### E-Auto, Haushaltsgerät, Zähler
 

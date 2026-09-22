@@ -100,8 +100,6 @@
             "Value per EOS mode for the mode variable": "Value per EOS mode for the mode variable",
             "Mode variable (value per EOS mode from the table below)": "Mode variable (value per EOS mode from the table below)",
             "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)": "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)",
-            "Take over values from EOS (fill form)": "Take over values from EOS (fill form)",
-            "Values taken over from EOS. Press Apply to store them.": "Values taken over from EOS. Press Apply to store them.",
             "EOS Server not available, configuration not compared.": "EOS Server not available, configuration not compared.",
             "EOS configuration matches this instance.": "EOS configuration matches this instance.",
             "Writing device configuration to EOS failed: %s": "Writing device configuration to EOS failed: %s",
@@ -109,7 +107,8 @@
             "Device configuration written to EOS (%s)": "Device configuration written to EOS (%s)",
             "Written to EOS: %s": "Written to EOS: %s",
             "Device not in EOS yet; it is created on Apply.": "Device not in EOS yet; it is created on Apply.",
-            "Differs from EOS, written on Apply:": "Differs from EOS, written on Apply:"
+            "EOS differs; its values are loaded into the form. Apply stores them in Symcon, Cancel keeps the Symcon values:": "EOS differs; its values are loaded into the form. Apply stores them in Symcon, Cancel keeps the Symcon values:",
+            "Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.": "Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values."
         },
         "de": {
             "EOS Vehicle": "EOS E-Auto",
@@ -242,8 +241,6 @@
             "Value per EOS mode for the mode variable": "Wert je EOS-Modus für die Modus-Variable",
             "Mode variable (value per EOS mode from the table below)": "Modus-Variable (Wert je EOS-Modus aus der Tabelle unten)",
             "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)": "Lademodus-Variable (Wert je EOS-Modus aus der Tabelle unten, z. B. evcc off/pv/now)",
-            "Take over values from EOS (fill form)": "Werte aus EOS übernehmen (Formular füllen)",
-            "Values taken over from EOS. Press Apply to store them.": "Werte aus EOS übernommen. Mit Übernehmen speichern.",
             "EOS Server not available, configuration not compared.": "EOS Server nicht verfügbar, Konfiguration nicht verglichen.",
             "EOS configuration matches this instance.": "EOS-Konfiguration entspricht dieser Instanz.",
             "Writing device configuration to EOS failed: %s": "Gerätekonfiguration nach EOS schreiben fehlgeschlagen: %s",
@@ -251,7 +248,8 @@
             "Device configuration written to EOS (%s)": "Gerätekonfiguration nach EOS geschrieben (%s)",
             "Written to EOS: %s": "Nach EOS geschrieben: %s",
             "Device not in EOS yet; it is created on Apply.": "Gerät noch nicht in EOS; wird beim Übernehmen angelegt.",
-            "Differs from EOS, written on Apply:": "Weicht von EOS ab, wird beim Übernehmen geschrieben:"
+            "EOS differs; its values are loaded into the form. Apply stores them in Symcon, Cancel keeps the Symcon values:": "EOS weicht ab; die EOS-Werte werden ins Formular geladen. Übernehmen speichert sie in Symcon, Abbrechen behält die Symcon-Werte:",
+            "Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.": "Werte aus EOS ins Formular geladen, weil sie abweichen. Übernehmen speichert sie in Symcon, Abbrechen behält die Symcon-Werte."
         }
     }
 }

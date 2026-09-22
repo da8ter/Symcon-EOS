@@ -77,6 +77,7 @@ class EOSVehicle extends IPSModuleStrict
         $this->RegisterTimer('SoCPush', 0, 'EOSEV_PushSoC($_IPS[\'TARGET\']);');
         $this->RegisterTimer('SlotTimer', 0, 'EOSEV_ProcessPlan($_IPS[\'TARGET\']);');
         $this->registerControlTimers();
+        $this->registerFormFillTimer();
     }
 
     public function ApplyChanges(): void
@@ -156,6 +157,7 @@ class EOSVehicle extends IPSModuleStrict
         $this->fillModeMap($form);
         [$path, $device] = $this->deviceConfig();
         $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
+        $this->armFormFillIfDiffers($path, $device);
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
@@ -250,7 +252,7 @@ class EOSVehicle extends IPSModuleStrict
         if (is_array($ev['charge_rates'] ?? null)) {
             $this->UpdateFormField('ChargeRates', 'value', implode(', ', $ev['charge_rates']));
         }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values taken over from EOS. Press Apply to store them.'));
+        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
         return true;
     }
 

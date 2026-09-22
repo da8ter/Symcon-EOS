@@ -330,16 +330,6 @@
                     "values": []
                 },
                 {
-                    "type": "RowLayout",
-                    "items": [
-                        {
-                            "type": "Button",
-                            "caption": "Take over values from EOS (fill form)",
-                            "onClick": "EOSHA_ReadConfigFromEOS($id);"
-                        }
-                    ]
-                },
-                {
                     "type": "Label",
                     "name": "ConfigInfo",
                     "caption": " "

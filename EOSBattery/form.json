@@ -349,16 +349,6 @@
                     "minimum": 0
                 },
                 {
-                    "type": "RowLayout",
-                    "items": [
-                        {
-                            "type": "Button",
-                            "caption": "Take over values from EOS (fill form)",
-                            "onClick": "EOSBAT_ReadConfigFromEOS($id);"
-                        }
-                    ]
-                },
-                {
                     "type": "Label",
                     "name": "ConfigInfo",
                     "caption": " "

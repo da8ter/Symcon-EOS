@@ -333,6 +333,10 @@ if (!trait_exists('EOSControl')) {
                 case 'ManualMode':
                     $this->changeManualMode((int) $value);
                     return true;
+                case 'FillFormFromEOS':
+                    $this->SetTimerInterval('FormFill', 0);
+                    $this->ReadConfigFromEOS();
+                    return true;
                 case 'SetActionTarget':
                     // Form onChange: point the open action pickers at the newly chosen target.
                     $data = json_decode((string) $value, true);

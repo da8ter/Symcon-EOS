@@ -85,6 +85,7 @@ class EOSAppliance extends IPSModuleStrict
         // EOS needs a completed-cycles value from the current day; keep it fresh.
         $this->RegisterTimer('CyclesPush', 0, 'EOSHA_PushCyclesCompleted($_IPS[\'TARGET\']);');
         $this->registerControlTimers();
+        $this->registerFormFillTimer();
     }
 
     public function ApplyChanges(): void
@@ -153,6 +154,7 @@ class EOSAppliance extends IPSModuleStrict
         $this->fillModeMap($form);
         [$path, $device] = $this->deviceConfig();
         $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
+        $this->armFormFillIfDiffers($path, $device);
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 

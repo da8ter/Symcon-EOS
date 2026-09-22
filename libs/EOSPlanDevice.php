@@ -350,6 +350,29 @@ if (!trait_exists('EOSPlanDevice')) {
             return (bool) ($save['ok'] ?? false);
         }
 
+        /**
+         * Form open: when EOS differs, pull its values into the open form shortly after
+         * it appeared (UpdateFormField needs the form to be open, GetConfigurationForm runs
+         * before that). Apply then stores them in Symcon, Cancel keeps the Symcon values.
+         */
+        protected function registerFormFillTimer(): void
+        {
+            $this->RegisterTimer('FormFill', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], \'FillFormFromEOS\', \'\');');
+        }
+
+        protected function armFormFillIfDiffers(string $path, array $device): void
+        {
+            $device = array_filter($device, static fn ($v): bool => $v !== null);
+            if (!$this->parentUsable()) {
+                return;
+            }
+            $current = $this->forward(['Command' => 'GetConfig', 'Path' => $path]);
+            $eos = is_array($current['data'] ?? null) ? $current['data'] : null;
+            if ($eos !== null && $this->configDiff($eos, $device) !== []) {
+                $this->SetTimerInterval('FormFill', 1500);
+            }
+        }
+
         /** Text for the form: does EOS hold the same values as this instance? */
         protected function eosConfigSummary(string $path, array $device): string
         {
@@ -370,7 +393,7 @@ if (!trait_exists('EOSPlanDevice')) {
             foreach ($diff as $key) {
                 $parts[] = $key . ': EOS ' . $this->eosShorten(json_encode($eos[$key] ?? null, JSON_UNESCAPED_UNICODE), 40) . ' / Symcon ' . $this->eosShorten(json_encode($device[$key], JSON_UNESCAPED_UNICODE), 40);
             }
-            return $this->Translate('Differs from EOS, written on Apply:') . ' ' . implode(' · ', $parts);
+            return $this->Translate('EOS differs; its values are loaded into the form. Apply stores them in Symcon, Cancel keeps the Symcon values:') . ' ' . implode(' · ', $parts);
         }
 
         /** Keys of $device whose value differs from the EOS entry (all keys when EOS has no entry). */

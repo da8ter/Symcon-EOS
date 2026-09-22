@@ -358,16 +358,6 @@
                     "maximum": 1
                 },
                 {
-                    "type": "RowLayout",
-                    "items": [
-                        {
-                            "type": "Button",
-                            "caption": "Take over values from EOS (fill form)",
-                            "onClick": "EOSEV_ReadConfigFromEOS($id);"
-                        }
-                    ]
-                },
-                {
                     "type": "Label",
                     "name": "ConfigInfo",
                     "caption": " "

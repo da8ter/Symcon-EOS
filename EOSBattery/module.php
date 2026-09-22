@@ -67,6 +67,7 @@ class EOSBattery extends IPSModuleStrict
         $this->RegisterTimer('SoCPush', 0, 'EOSBAT_PushSoC($_IPS[\'TARGET\']);');
         $this->RegisterTimer('SlotTimer', 0, 'EOSBAT_ProcessPlan($_IPS[\'TARGET\']);');
         $this->registerControlTimers();
+        $this->registerFormFillTimer();
     }
 
     public function ApplyChanges(): void
@@ -129,6 +130,7 @@ class EOSBattery extends IPSModuleStrict
         $this->fillModeMap($form);
         [$path, $device] = $this->deviceConfig();
         $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
+        $this->armFormFillIfDiffers($path, $device);
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
@@ -226,7 +228,7 @@ class EOSBattery extends IPSModuleStrict
                 $this->UpdateFormField($field, 'value', $type === 'int' ? (int) $bat[$key] : (float) $bat[$key]);
             }
         }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values taken over from EOS. Press Apply to store them.'));
+        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
         return true;
     }
 

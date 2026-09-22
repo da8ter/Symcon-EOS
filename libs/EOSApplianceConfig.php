@@ -79,7 +79,7 @@ if (!trait_exists('EOSApplianceConfig')) {
                 $rows[] = ['start_time' => (string) ($w['start_time'] ?? ''), 'duration' => (string) ($w['duration'] ?? '')];
             }
             $this->UpdateFormField('TimeWindows', 'values', json_encode($rows));
-            $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values taken over from EOS. Press Apply to store them.'));
+            $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
             return true;
         }
 
