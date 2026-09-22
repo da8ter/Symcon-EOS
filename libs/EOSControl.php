@@ -267,7 +267,9 @@ if (!trait_exists('EOSControl')) {
             $fragments = [];
             $failed = [];
             $started = microtime(true);
-            $toWrite = ($force || $heartbeat) ? $resolved : $changed + $retry;
+            // Heartbeat re-sends everything except targets whose failed value is still in its backoff.
+            $inBackoff = static fn (?array $entry, string $norm): bool => $entry !== null && (int) ($entry['fail'] ?? 0) > 0 && ($entry['fv'] ?? null) === $norm && !$backoff((int) $entry['fail'], (int) ($entry['failTs'] ?? 0));
+            $toWrite = $force ? $resolved : ($heartbeat ? array_filter($resolved, fn ($t, $k) => !$inBackoff($lastTargets[$k] ?? null, $t['norm']), ARRAY_FILTER_USE_BOTH) : $changed + $retry);
             foreach ($toWrite as $key => $target) {
                 $result = $this->writeTarget($key, $target['varId'], $target['value'], $sim);
                 if ($result['text'] !== '') {
@@ -341,7 +343,14 @@ if (!trait_exists('EOSControl')) {
                 $this->LogMessage(sprintf($this->Translate('Control writes took %d ms - consider a script binding for slow devices'), $durationMs), KL_WARNING);
             }
             if (!$sim) {
-                $this->onDispatched($desired, $failed === []);
+                // Success means: nothing failed now AND no bound target or the mode action is still in a failed state.
+                $pending = $modeRaw !== '' && $modeRaw !== (string) ($row['modeRaw'] ?? '') && (int) ($row['fail'] ?? 0) > 0;
+                foreach ($resolved as $key => $target) {
+                    if ((int) ($lastTargets[$key]['fail'] ?? 0) > 0) {
+                        $pending = true;
+                    }
+                }
+                $this->onDispatched($desired, $failed === [] && !$pending);
             }
         }
 

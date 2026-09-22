@@ -210,4 +210,38 @@ check($GLOBALS['actions'] === [], 'OFF without AllowStop writes nothing');
 $a->properties['AllowStop'] = true; $a->ApplyChanges(); $a->fireOnce();
 check(writesTo(40) === [false], 'OFF with AllowStop writes enable=false');
 
+// ---------------------------------------------------------------- T12 heartbeat respects the backoff (review round 2)
+echo "== Heartbeat und Backoff\n";
+$m = battery(2); $m->properties['HeartbeatSeconds'] = 30; $m->ApplyChanges(); $m->fireOnce(); resetWorld();
+$GLOBALS['world'][21]['fail'] = true;
+$eos->instructions = []; $eos->instruction('battery1', $now - 5, 'FORCED_CHARGE', 1.0); $eos->freshPlan($now - 30); $m->RefreshPlan(); $m->fireOnce();
+check((lastSent($m)['targets']['ChargePowerW']['fail'] ?? 0) === 1, 'charge power write failed once');
+$ls = lastSent($m); $ls['ts'] = $now - 3600; $m->attributes['LastSent'] = json_encode($ls); resetWorld();
+$m->Dispatch();
+check(writesTo(20) === ['now'] && writesTo(23) === [false] && writesTo(21) === [] && lastSent($m)['targets']['ChargePowerW']['fail'] === 1, 'heartbeat re-sends the healthy targets but not the value in backoff: ' . json_encode($GLOBALS['actions']));
+$ls = lastSent($m); $ls['ts'] = $now - 3600; $ls['targets']['ChargePowerW']['failTs'] = $now - 120; $m->attributes['LastSent'] = json_encode($ls); resetWorld();
+$m->Dispatch();
+check(lastSent($m)['targets']['ChargePowerW']['fail'] === 2, 'after the backoff the heartbeat retries the failed value');
+$GLOBALS['world'][21]['fail'] = false;
+
+// ---------------------------------------------------------------- T13 appliance start only counts when nothing is still failing
+echo "== Gerätestart mit offenem Schreibfehler\n";
+worldVar(41, 0, false, true, true);
+$a2 = new EOSAppliance(1004); $a2->Create(); connectToServer($a2);
+$a2->properties['ControlMode'] = 2; $a2->properties['TargetEnableVariable'] = 41;
+$a2->properties['ModeAction_RUN'] = json_encode(['actionID' => '{FAIL}', 'parameters' => ['TARGET' => 41]]);
+$eos->instructions = []; $eos->instruction('dishwasher1', $now - 60, 'RUN'); $eos->freshPlan($now - 30);
+$a2->ApplyChanges(); $a2->fireOnce();
+check(json_decode($a2->attributes['StartedInstructionIds'], true) === [] && lastSent($a2)['row']['fail'] === 1 && lastSent($a2)['targets']['Enable']['fail'] === 1, 'enable write and start action failed: nothing recorded');
+// start action now works, enable write still failing and inside its backoff
+$a2->properties['ModeAction_RUN'] = json_encode(['actionID' => '{START}', 'parameters' => ['TARGET' => 41]]);
+$ls = lastSent($a2); $ls['row']['failTs'] = $now - 120; $a2->attributes['LastSent'] = json_encode($ls); resetWorld();
+$a2->Dispatch();
+check(count($GLOBALS['runActions']) === 1 && lastSent($a2)['row']['modeRaw'] === 'RUN', 'start action retried and succeeded');
+check(json_decode($a2->attributes['StartedInstructionIds'], true) === [], 'start not recorded while the enable write is still failing (review round 2)');
+$GLOBALS['world'][41]['fail'] = false;
+$ls = lastSent($a2); $ls['targets']['Enable']['failTs'] = $now - 120; $a2->attributes['LastSent'] = json_encode($ls);
+$a2->Dispatch();
+check(json_decode($a2->attributes['StartedInstructionIds'], true) === ['dishwasher1@' . ($now - 60)] && $GLOBALS['world'][41]['value'] === true, 'once the enable write succeeds the start is recorded');
+
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
