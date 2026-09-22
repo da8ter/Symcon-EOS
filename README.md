@@ -114,15 +114,17 @@ Jede Geräte-Instanz hat ein Panel **Steuerung** mit dem Steuerungsmodus *Nur an
 (protokolliert, was geschrieben würde, schreibt nichts) und *Aktiv*. Die Anbindung an die Hardware ist
 herstellerneutral und kombinierbar:
 
-1. **Zielvariablen** – schaltbare Variablen anderer Module (Betriebsmodus, Soll-Ladeleistung, Entladen
-   erlaubt, Netzladen; E-Auto: Laden erlaubt, Ladestrom, Ladeleistung, Lademodus; Gerät: Freigabe). Der Wert
-   wird auf den Variablentyp umgewandelt und per `RequestAction` geschrieben. Für die Modus-Variable legt die
-   Tabelle „EOS-Modus → Wert“ fest, welcher Wert je EOS-Modus geschrieben wird (z. B. evcc `off`/`pv`/`now`).
-2. **Symcon-Aktionen** – je EOS-Modus eine Aktion (feuert beim Wechsel in den Modus) und eine Aktion bei jedem
-   Wechsel. „Ziel für Aktionen“ (Variable oder Instanz, Standard: die Modus-Variable) öffnet die Auswahl direkt
-   mit den Aktionen dieses Geräts. Der Kontext wird als Parameter mitgegeben.
-3. **Skript** – bei jedem Wechsel mit dem Kontext in `$_IPS` (`Reason`, `ModeRaw`, `Factor`, `PowerW`,
-   `ChargeAllowed`, `CurrentA`, `Run` …, vollständige Liste in [docs/geraete-mapping.md](docs/geraete-mapping.md)).
+1. **Option 1: Bei Moduswechsel Werte in Variablen schreiben** – schaltbare Variablen anderer Module
+   (Betriebsmodus, Soll-Ladeleistung, Entladen erlaubt, Netzladen; E-Auto: Laden erlaubt, Ladestrom,
+   Ladeleistung, Lademodus; Gerät: Freigabe). Der Wert wird auf den Variablentyp umgewandelt und per
+   `RequestAction` geschrieben. Für die Modus-Variable legt die Tabelle „Wert je EOS-Modus“ fest, welcher Wert
+   je EOS-Modus geschrieben wird (z. B. evcc `off`/`pv`/`now`).
+2. **Option 2: Je EOS-Modus eine Instanzaktion ausführen** – ein Auswahlfeld pro Modus, feuert einmal beim
+   Wechsel in den Modus. „Ziel der Aktionen“ (Variable oder Instanz, Standard: die Modus-Variable) öffnet die
+   Auswahl direkt mit den Aktionen dieses Geräts.
+3. **Option 3: Bei jedem EOS-Moduswechsel Instanzaktion oder Skript ausführen** – eine Aktion und ein Skript,
+   das Skript mit dem Kontext in `$_IPS` (`Reason`, `ModeRaw`, `Factor`, `PowerW`, `ChargeAllowed`,
+   `CurrentA`, `Run` …, vollständige Liste in [docs/geraete-mapping.md](docs/geraete-mapping.md)).
 
 Geschrieben wird nur bei Änderung. Optional sendet ein **Heartbeat** die Sollwerte alle n Sekunden erneut
 (für Wechselrichter mit eigenem Timeout). Der **Fallback-Modus** greift, wenn der Plan veraltet (Einstellung

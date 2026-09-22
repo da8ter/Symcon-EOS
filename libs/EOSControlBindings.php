@@ -298,7 +298,7 @@ if (!trait_exists('EOSControlBindings')) {
                     continue;
                 }
                 if (($node['name'] ?? '') === $name) {
-                    $node['items'] = $items;
+                    $node['items'] = array_merge(is_array($node['items'] ?? null) ? $node['items'] : [], $items);
                     return;
                 }
                 if (isset($node['items']) && is_array($node['items'])) {

@@ -4,13 +4,13 @@ Die Geräte-Instanzen (EOS Batterie, EOS E-Auto, EOS Haushaltsgerät) enthalten 
 Code. Was zur Slot-Grenze mit der Hardware passiert, legt der Anwender im Panel **Steuerung** der Instanz
 fest. Drei Mechanismen stehen zur Verfügung und lassen sich kombinieren:
 
-| Mechanismus | Formularfeld | Wann sinnvoll |
+| Option im Formular | Felder | Wann sinnvoll |
 | --- | --- | --- |
-| **Zielvariablen** | „Betriebsmodus“, „Soll-Ladeleistung“, „Entladen erlaubt“ … (nur schaltbare Variablen wählbar) | Das Hersteller-Modul hat schaltbare Variablen (evcc, openWB, Modbus, MQTT, Shelly …). Der Wert wird auf den Typ der Variable umgewandelt (Bool/Int/Float/String) und per `RequestAction` geschrieben. |
-| **Symcon-Aktionen** | „Aktion je EOS-Modus“ (ein Auswahlfeld pro Modus) und „Aktion bei jedem Wechsel“ | Das Modul bietet Aktionen an (z. B. „Ladestrom setzen“), oder ein fertiger Ablauf soll beim Wechsel laufen. Das Feld „Ziel für Aktionen“ (Variable oder Instanz, Standard: die Modus-Variable) öffnet die Auswahl direkt mit den Aktionen dieses Geräts. Kontext (Modus, Leistung …) wird als Parameter mitgegeben, eigene Parameter der Aktion (TARGET, VALUE) gewinnen. |
-| **Skript** | „Skript bei jedem Wechsel“ | Alles andere. Das Skript bekommt den Kontext in `$_IPS` (siehe unten). |
+| **Option 1: Bei Moduswechsel Werte in Variablen schreiben** | „Modus-Variable“ mit Tabelle „Wert je EOS-Modus“, „Soll-Ladeleistung“, „Entladen erlaubt“ … (nur schaltbare Variablen wählbar) | Das Hersteller-Modul hat schaltbare Variablen (evcc, openWB, Modbus, MQTT, Shelly …). Der Wert wird auf den Typ der Variable umgewandelt (Bool/Int/Float/String) und per `RequestAction` geschrieben. |
+| **Option 2: Je EOS-Modus eine Instanzaktion ausführen** und **Option 3: Bei jedem EOS-Moduswechsel Instanzaktion oder Skript ausführen** | ein Auswahlfeld pro Modus (Option 2), „Aktion bei jedem Wechsel“ (Option 3) | Das Modul bietet Aktionen an (z. B. „Ladestrom setzen“), oder ein fertiger Ablauf soll beim Wechsel laufen. Das Feld „Ziel für Aktionen“ (Variable oder Instanz, Standard: die Modus-Variable) öffnet die Auswahl direkt mit den Aktionen dieses Geräts. Kontext (Modus, Leistung …) wird als Parameter mitgegeben, eigene Parameter der Aktion (TARGET, VALUE) gewinnen. |
+| **Option 3, Skript** | „Skript bei jedem Wechsel“ | Alles andere. Das Skript bekommt den Kontext in `$_IPS` (siehe unten). |
 
-Reihenfolge je Wechsel: Zielvariablen → Aktion des neuen Modus → Aktion bei Wechsel → Skript. Geschrieben wird
+Reihenfolge je Wechsel: Option 1 → Option 2 → Option 3 (Aktion, dann Skript). Geschrieben wird
 nur, was sich geändert hat; die Aktion je Modus feuert nur beim Wechsel in den Modus (Flanke), nie beim
 Heartbeat.
 
@@ -36,7 +36,7 @@ Heartbeat.
 ### Wechselrichter mit Modus-Variable (Modbus, MQTT, Hersteller-Modul)
 
 1. Zielvariable **Betriebsmodus** auf die Modus-Variable des Hersteller-Moduls (Int oder String) legen.
-2. In der Tabelle „EOS-Modus → Wert“ je Zeile den Wert eintragen, den das Modul erwartet, z. B. für ein
+2. In der Tabelle „Wert je EOS-Modus“ je Zeile den Wert eintragen, den das Modul erwartet, z. B. für ein
    Modul mit `0 = Automatik, 1 = Laden sperren, 2 = Entladen sperren, 3 = Netzladen`:
 
    | EOS | Wert |
@@ -131,7 +131,7 @@ wenn **Stoppen erlauben** aktiv ist (Spülmaschinen nicht mitten im Programm aus
 
 ### Gerät mit Start-API (Home Connect, Miele …)
 
-Die „Aktion je EOS-Modus“ für `RUN` auf die Start-Aktion des Moduls
+In Option 2 die Aktion für `RUN` auf die Start-Aktion des Moduls
 legen. Der Startimpuls kommt genau einmal je EOS-Anweisung, nur innerhalb der **Gnadenfrist** (Standard 30 min
 nach geplantem Start) und nicht, wenn die optionale Quellvariable „läuft“ schon wahr ist.
 
