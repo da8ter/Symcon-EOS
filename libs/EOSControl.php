@@ -333,6 +333,20 @@ if (!trait_exists('EOSControl')) {
                 case 'ManualMode':
                     $this->changeManualMode((int) $value);
                     return true;
+                case 'SetActionTarget':
+                    // Form onChange: point the open action pickers at the newly chosen target.
+                    $data = json_decode((string) $value, true);
+                    $target = (int) ($data['target'] ?? 0);
+                    if ($target <= 0) {
+                        $target = (int) ($data['modeVar'] ?? 0);
+                    }
+                    if ($target > 0 && IPS_ObjectExists($target)) {
+                        foreach ($this->modeMapRows() as $row) {
+                            $this->UpdateFormField('ModeAction_' . strtoupper((string) $row['mode']), 'targetID', $target);
+                        }
+                        $this->UpdateFormField('ChangeAction', 'targetID', $target);
+                    }
+                    return true;
             }
             return false;
         }

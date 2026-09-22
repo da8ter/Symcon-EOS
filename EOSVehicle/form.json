@@ -165,7 +165,8 @@
                             "type": "SelectVariable",
                             "name": "TargetModeVariable",
                             "caption": "Charging mode variable (value per EOS mode from the table below, e.g. evcc off/pv/now)",
-                            "requiredAction": 1
+                            "requiredAction": 1,
+                            "onChange": "IPS_RequestAction($id, 'SetActionTarget', json_encode(['target' => $ActionTarget, 'modeVar' => $TargetModeVariable]));"
                         },
                         {
                             "type": "List",
@@ -210,7 +211,8 @@
                         {
                             "type": "SelectObject",
                             "name": "ActionTarget",
-                            "caption": "Target of the actions (variable or instance, also for option 3; default: the mode variable)"
+                            "caption": "Target of the actions (variable or instance, also for option 3; default: the mode variable)",
+                            "onChange": "IPS_RequestAction($id, 'SetActionTarget', json_encode(['target' => $ActionTarget, 'modeVar' => $TargetModeVariable]));"
                         },
                         {
                             "type": "Label",

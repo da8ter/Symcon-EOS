@@ -147,7 +147,8 @@
                         {
                             "type": "SelectObject",
                             "name": "ActionTarget",
-                            "caption": "Target of the actions (variable or instance, also for option 3; default: the mode variable)"
+                            "caption": "Target of the actions (variable or instance, also for option 3; default: the mode variable)",
+                            "onChange": "IPS_RequestAction($id, 'SetActionTarget', json_encode(['target' => $ActionTarget, 'modeVar' => 0]));"
                         },
                         {
                             "type": "Label",
