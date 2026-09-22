@@ -1,15 +1,15 @@
 # Symcon-EOS
 
-IP-Symcon-Modulbibliothek für [Akkudoktor-EOS](https://github.com/Akkudoktor-EOS/EOS) (Energy Optimization System).
+Symcon-Modulbibliothek für [Akkudoktor-EOS](https://github.com/Akkudoktor-EOS/EOS) (Energy Optimization System).
 
 EOS berechnet aus Prognosen (PV, Strompreis, Last) und Messwerten (SoC, Zählerstände) einen kostenoptimalen
-Fahrplan für Batteriespeicher, E-Auto und Haushaltsgeräte. Diese Bibliothek bindet EOS an IP-Symcon an:
+Fahrplan für Batteriespeicher, E-Auto und Haushaltsgeräte. Diese Bibliothek bindet EOS an Symcon an:
 Symcon liefert Messwerte an EOS, holt den Plan ab, stellt die Anweisungen als Variablen bereit und
 erlaubt die Pflege der EOS-Konfiguration aus der Symcon-Konsole.
 
 ## Status
 
-Anzeige und **Steuerung** (herstellerneutral über Zielvariablen, Symcon-Aktionen und Skript). Getestet mit EOS v0.4.0rc1 und IP-Symcon 9.1, Mindestversion 8.1.
+Anzeige und **Steuerung** (herstellerneutral über Zielvariablen, Symcon-Aktionen und Skript). Getestet mit EOS v0.4.0rc1 und Symcon 9.1, Mindestversion 8.1.
 
 | Modul | Typ | Präfix | Aufgabe |
 | --- | --- | --- | --- |
@@ -83,7 +83,7 @@ der EOS Batterie klein halten (z. B. 800 W), dann entlädt der virtuelle Speiche
 
 - Laufende EOS-Instanz ≥ 0.4.0rc1, erreichbar über HTTP (Standard-Port 8503). Wer noch keine hat:
   Abschnitt [EOS in Docker installieren](#eos-in-docker-installieren).
-- IP-Symcon ≥ 8.1.
+- Symcon ≥ 8.1.
 - Geräte in EOS (`devices/batteries/<id>` …) legen die Geräte-Instanzen beim Übernehmen selbst an und halten sie
   mit ihren Parametern abgeglichen; Änderungen aus EOSdash erscheinen beim Öffnen des Formulars in den Feldern.
 

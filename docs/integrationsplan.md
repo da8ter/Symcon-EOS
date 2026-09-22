@@ -1,6 +1,6 @@
-# Integrationsplan: Akkudoktor-EOS in IP-Symcon
+# Integrationsplan: Akkudoktor-EOS in Symcon
 
-Stand: 2026-09-19 · Analysierte EOS-Version: **v0.4.0rc1** (Tag `v0.4.0rc1`, Commit `7dae1d2`, 2026-09-18) · Ziel: IP-Symcon ≥ 7.1 (empfohlen 8.x)
+Stand: 2026-09-19 · Analysierte EOS-Version: **v0.4.0rc1** (Tag `v0.4.0rc1`, Commit `7dae1d2`, 2026-09-18) · Ziel: Symcon ≥ 7.1 (empfohlen 8.x)
 
 ---
 
@@ -144,7 +144,7 @@ Konsequenz: **Polling aus Symcon** ist der robuste Weg (Phase 1). Push ist ein K
 
 ```
 ┌──────────────────────────┐        REST (HTTP, LAN)         ┌──────────────────────────────┐
-│ EOS (Docker)             │ <────── PUT measurement ─────── │ IP-Symcon                    │
+│ EOS (Docker)             │ <────── PUT measurement ─────── │ Symcon                       │
 │  :8503 API  :8504 Dash   │ ──────> GET plan/solution ────> │  Modul „EOS Server“ (Splitter)│
 │  Provider: Preise, PV,   │ <────── PUT config/{path} ───── │  ├─ EOS Batterie   (Device)   │
 │  Wetter, Last            │ ──────> GET health ───────────> │  ├─ EOS E-Auto     (Device)   │
