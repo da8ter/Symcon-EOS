@@ -65,13 +65,19 @@ if (!trait_exists('EOSApplianceConfig')) {
         }
 
         /**
-         * Deadline and earliest start belong to Symcon only when syncing is on AND a source
-         * exists (a source variable, or SetDeadline was used); otherwise they belong to EOSdash.
+         * Each time field belongs to Symcon only when syncing is on AND it has its own source:
+         * the deadline its source variable or SetDeadline, the earliest start its source
+         * variable. Otherwise the field belongs to EOSdash and is never written.
          */
-        private function timesOwned(): bool
+        private function deadlineOwned(): bool
         {
             return $this->ReadPropertyBoolean('SyncTimesToEOS')
-                && ($this->ReadPropertyInteger('DeadlineSourceVariable') > 0 || $this->ReadPropertyInteger('EarliestStartSourceVariable') > 0 || $this->ReadAttributeBoolean('TimesByScript'));
+                && ($this->ReadPropertyInteger('DeadlineSourceVariable') > 0 || $this->ReadAttributeBoolean('TimesByScript'));
+        }
+
+        private function earliestOwned(): bool
+        {
+            return $this->ReadPropertyBoolean('SyncTimesToEOS') && $this->ReadPropertyInteger('EarliestStartSourceVariable') > 0;
         }
 
         /** Source variables -> Deadline variable -> times in EOS. */
@@ -95,17 +101,27 @@ if (!trait_exists('EOSApplianceConfig')) {
                 return false;
             }
             $now = $this->eosNow();
-            if (!$this->timesOwned()) {
-                $this->SetTimerInterval('TimesExpiry', 0);
+            $want = [];
+            if ($this->earliestOwned()) {
+                $earliest = $this->earliestStart();
+                $want['earliest_start_datetime'] = $earliest > $now ? $earliest : 0;
+            }
+            if ($this->deadlineOwned()) {
+                $deadline = (int) $this->GetValue('Deadline');
+                $want['deadline_datetime'] = $deadline > $now ? $deadline : 0;
+            } else {
                 $eos = $this->eosTimeField('deadline_datetime');
                 $past = $eos > 0 && $eos <= $now && $this->ReadPropertyString('DeadlinePolicy') === 'STRICT';
                 $this->warnOnce('PastDeadlineWarned', $past ? (string) $eos : '', sprintf($this->Translate('EOS holds a deadline in the past (%s) with policy STRICT; the optimization fails. Clear it in EOSdash or give this instance a deadline source.'), $this->eosIsoNow(max(0, $eos))));
-                return true;
             }
-            $deadline = (int) $this->GetValue('Deadline');
-            $earliest = $this->earliestStart();
-            $want = ['earliest_start_datetime' => $earliest > $now ? $earliest : 0, 'deadline_datetime' => $deadline > $now ? $deadline : 0];
             $this->armExpiryTimer('TimesExpiry', array_values($want));
+            if (isset($want['earliest_start_datetime'], $want['deadline_datetime']) && $want['earliest_start_datetime'] > 0) {
+                // EOS checks deadline > earliest start on every write: a window moving past the old deadline moves the deadline first.
+                $eosDeadline = $this->eosTimeField('deadline_datetime');
+                if ($eosDeadline > 0 && $want['earliest_start_datetime'] >= $eosDeadline) {
+                    $want = ['deadline_datetime' => $want['deadline_datetime'], 'earliest_start_datetime' => $want['earliest_start_datetime']];
+                }
+            }
             $written = false;
             $ok = true;
             foreach ($want as $field => $ts) {
