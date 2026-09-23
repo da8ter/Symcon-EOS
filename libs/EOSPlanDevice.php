@@ -29,6 +29,10 @@ if (!trait_exists('EOSPlanDevice')) {
         public const STATUS_BAD_DEVICE_ID = 201;
         public const STATUS_NO_SOURCE = 202;
         public const STATUS_DUPLICATE_ID = 203;
+        /** EOS already holds another device of a kind GENETIC supports only once (battery, vehicle). */
+        public const STATUS_OTHER_DEVICE = 205;
+        /** Min. SoC not below max. SoC: EOS would reject the device configuration. */
+        public const STATUS_BAD_LIMITS = 206;
         /** Never sleep longer than this before re-evaluating the plan (ms). */
         public const MAX_SLOT_TIMER_MS = 6 * 3600 * 1000;
         /** A plan whose first instruction is at most this far ahead is not "without instruction" (s). */
@@ -45,6 +49,10 @@ if (!trait_exists('EOSPlanDevice')) {
             $this->RegisterAttributeString('PlanMeta', '{}');
             $this->RegisterAttributeBoolean('EmptyPlanWarned', false);
             $this->RegisterAttributeBoolean('SkewWarned', false);
+            // Asks the EOS Server for the id owner again when it could not answer (see deviceIdTaken()).
+            $this->RegisterTimer('ClaimRetry', 0, 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
+            // The server's last answer for an id: {id, taken}; kept while it cannot answer.
+            $this->RegisterAttributeString('IdDecision', '{}');
         }
 
         protected function registerPlanVariables(int $position): void
@@ -72,30 +80,79 @@ if (!trait_exists('EOSPlanDevice')) {
             return in_array($status, [IS_ACTIVE, 202, 203], true);
         }
 
-        protected function forward(array $payload): array
+        protected function forward(array $payload, bool $quiet = false): array
         {
             $payload['DataID'] = self::EOS_TX_GUID;
-            $raw = $this->SendDataToParent(json_encode($payload));
+            // quiet: during a module reload the parent may be mid-recreation (Symcon warns and answers nothing).
+            $raw = $quiet ? @$this->SendDataToParent(json_encode($payload)) : $this->SendDataToParent(json_encode($payload));
             $decoded = json_decode((string) $raw, true);
             return is_array($decoded) ? $decoded : ['ok' => false, 'error' => 'no response from EOS Server'];
         }
 
-        protected function isDuplicateDeviceId(string $deviceId): bool
+        /**
+         * Is the device id owned by another battery, vehicle or appliance instance at the same
+         * EOS Server (EOS needs ids unique across all device kinds)? The server keeps one owner
+         * per id: the first instance that claimed it keeps it, so a newly added instance with the
+         * default id never disables a configured one. The owners live in the server instance, not
+         * in EOS, so it is asked also while EOS is unreachable. Without an answer (no server, a
+         * deactivated one, or one being re-created by a module reload) nothing is decided anew:
+         * a block stays, an owner keeps working, and the server is asked again.
+         */
+        protected function deviceIdTaken(string $deviceId): bool
         {
-            foreach (IPS_GetInstanceListByModuleID(self::MODULE_GUID) as $id) {
-                if ($id === $this->InstanceID) {
-                    continue;
+            if ($this->parentActive()) {
+                $res = $this->forward(['Command' => 'ClaimDevice', 'DeviceID' => $deviceId, 'InstanceID' => $this->InstanceID], true);
+                if (($res['ok'] ?? false) === true && isset($res['owner'])) {
+                    $taken = (int) $res['owner'] !== $this->InstanceID;
+                    $this->SetTimerInterval('ClaimRetry', 0);
+                    $this->WriteAttributeString('IdDecision', json_encode(['id' => $deviceId, 'taken' => $taken]));
+                    return $taken;
                 }
-                if ((string) IPS_GetProperty($id, 'DeviceID') === $deviceId) {
-                    return true;
+                $this->SetTimerInterval('ClaimRetry', 30000); // active but no answer (module reload): ask again
+            } else {
+                $this->SetTimerInterval('ClaimRetry', 0);     // asked again when the server is back (ReceiveData)
+            }
+            $last = $this->eosJsonDecode($this->ReadAttributeString('IdDecision'), []);
+            return is_array($last) && ($last['id'] ?? null) === $deviceId && !empty($last['taken']);
+        }
+
+        /** The parent instance exists and is not deactivated (it can answer ClaimDevice even while EOS is down). */
+        protected function parentActive(): bool
+        {
+            $parent = (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
+            return $parent > 0 && IPS_InstanceExists($parent) && (int) IPS_GetInstance($parent)['InstanceStatus'] !== IS_INACTIVE;
+        }
+
+        /** Statuses in which the instance must neither push, nor process plans, nor drive hardware. */
+        protected function deviceBlocked(): bool
+        {
+            return in_array($this->GetStatus(), [self::STATUS_BAD_DEVICE_ID, self::STATUS_DUPLICATE_ID, self::STATUS_OTHER_DEVICE], true);
+        }
+
+        /**
+         * Enter a blocking status: stop every timer and give up all source-variable
+         * messages (re-registered by the next ApplyChanges), so nothing is sent or written
+         * under a device id this instance does not own.
+         */
+        protected function blockDevice(int $status): void
+        {
+            $this->SetStatus($status);
+            foreach (self::BLOCK_TIMERS as $timer) {
+                $this->SetTimerInterval($timer, 0);
+            }
+            foreach (self::SOURCE_ATTRIBUTES as $attribute) {
+                $var = $this->ReadAttributeInteger($attribute);
+                if ($var > 0) {
+                    $this->UnregisterMessage($var, VM_UPDATE);
+                    $this->WriteAttributeInteger($attribute, 0);
                 }
             }
-            return false;
         }
 
         protected function validDeviceId(string $deviceId): bool
         {
-            return $deviceId !== '' && preg_match('/^[A-Za-z0-9_-]+$/', $deviceId) === 1;
+            // Leading letter: a purely numeric id like "0" becomes a JSON list in the device map.
+            return preg_match('/^[A-Za-z][A-Za-z0-9_-]*$/', $deviceId) === 1;
         }
 
         // ------------------------------------------------------------------ plan handling
@@ -111,8 +168,12 @@ if (!trait_exists('EOSPlanDevice')) {
             // usable, redo ApplyChanges so the instance leaves status 104 and
             // starts its timers. Deferred: we are inside the parent's
             // SendDataToChildren call and must not call back into it here.
-            if ($this->GetStatus() === self::STATUS_NO_PARENT && $this->parentUsable()) {
+            // A blocked duplicate asks the server again with every broadcast: the owner may be gone.
+            if (($this->GetStatus() === self::STATUS_NO_PARENT && $this->parentUsable()) || ($this->GetStatus() === self::STATUS_DUPLICATE_ID && $this->parentActive())) {
                 $this->RegisterOnceTimer('ApplyLater', 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
+            }
+            if ($this->deviceBlocked()) {
+                return '';
             }
             if ($event === 'PlanUpdated') {
                 $this->storePlan($data['Plan'] ?? [], is_array($data['Instructions'] ?? null) ? $data['Instructions'] : []);
@@ -126,7 +187,7 @@ if (!trait_exists('EOSPlanDevice')) {
 
         public function RefreshPlan(): bool
         {
-            if (!$this->parentUsable()) {
+            if (!$this->parentUsable() || $this->deviceBlocked()) {
                 return false;
             }
             $res = $this->forward(['Command' => 'GetPlanForResource', 'ResourceID' => $this->ReadPropertyString('DeviceID')]);
@@ -151,9 +212,12 @@ if (!trait_exists('EOSPlanDevice')) {
         public function ProcessPlan(): void
         {
             $this->SetTimerInterval('SlotTimer', 0);
+            if ($this->deviceBlocked()) {
+                return;
+            }
             $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
             $list = is_array($list) ? $list : [];
-            $now = time();
+            $now = $this->eosNow();
             $active = null;
             $next = null;
             foreach ($list as $instruction) {
@@ -171,7 +235,7 @@ if (!trait_exists('EOSPlanDevice')) {
                 $this->WriteAttributeBoolean('EmptyPlanWarned', false);
             } else {
                 if ($list === [] && !$this->ReadAttributeBoolean('EmptyPlanWarned')) {
-                    $this->LogMessage('EOS plan contains no instructions for ' . $this->ReadPropertyString('DeviceID'), KL_WARNING);
+                    $this->LogMessage(sprintf($this->Translate('The EOS plan contains no instructions for %s'), $this->ReadPropertyString('DeviceID')), KL_WARNING);
                     $this->WriteAttributeBoolean('EmptyPlanWarned', true);
                 }
                 $this->showNoInstruction();
@@ -196,7 +260,7 @@ if (!trait_exists('EOSPlanDevice')) {
         protected function activeInstruction(): ?array
         {
             $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
-            $now = time();
+            $now = $this->eosNow();
             $active = null;
             foreach (is_array($list) ? $list : [] as $instruction) {
                 if ((int) ($instruction['ts'] ?? 0) <= $now) {
@@ -215,7 +279,7 @@ if (!trait_exists('EOSPlanDevice')) {
         /** First instruction in the future, null if none. */
         protected function nextInstruction(): ?array
         {
-            $now = time();
+            $now = $this->eosNow();
             foreach ($this->instructionList() as $instruction) {
                 if ((int) ($instruction['ts'] ?? 0) > $now) {
                     return $instruction;
@@ -245,18 +309,18 @@ if (!trait_exists('EOSPlanDevice')) {
         {
             $reason = '';
             $generated = $this->planGeneratedAt();
-            if ($generated === 0 || (time() - $generated) > $this->ReadPropertyInteger('StaleAfterMinutes') * 60) {
+            if ($generated === 0 || ($this->eosNow() - $generated) > $this->ReadPropertyInteger('StaleAfterMinutes') * 60) {
                 $reason = 'stale';
                 return false;
             }
             $until = $this->planValidUntil();
-            if ($until > 0 && time() > $until + self::GAP_TOLERANCE_S) {
+            if ($until > 0 && $this->eosNow() > $until + self::GAP_TOLERANCE_S) {
                 $reason = 'expired';
                 return false;
             }
             if ($active === null) {
                 $next = $this->nextInstruction();
-                $reason = ($next !== null && (int) $next['ts'] - time() <= self::GAP_TOLERANCE_S) ? 'gap' : 'no instruction';
+                $reason = ($next !== null && (int) $next['ts'] - $this->eosNow() <= self::GAP_TOLERANCE_S) ? 'gap' : 'no instruction';
                 return false;
             }
             return true;
@@ -282,7 +346,6 @@ if (!trait_exists('EOSPlanDevice')) {
                 'generated_at' => $meta['generated_at'] ?? null,
                 'valid_from'   => $meta['valid_from'] ?? null,
                 'valid_until'  => $meta['valid_until'] ?? null,
-                'received'     => time(),
             ]));
             $this->SetValue('PlanJSON', json_encode(array_map(static function (array $i): array {
                 return [
@@ -296,9 +359,9 @@ if (!trait_exists('EOSPlanDevice')) {
 
             // Clock skew between the EOS host and Symcon makes every plan start "in the future".
             $generated = $this->eosParseTime($meta['generated_at'] ?? null);
-            $skewed = $generated > time() + 60;
+            $skewed = $generated > $this->eosNow() + 60;
             if ($skewed && !$this->ReadAttributeBoolean('SkewWarned')) {
-                $this->LogMessage(sprintf('EOS plan generated_at is %d s in the future - check the clocks of EOS host and Symcon', $generated - time()), KL_WARNING);
+                $this->LogMessage(sprintf($this->Translate('The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon'), $generated - $this->eosNow()), KL_WARNING);
             }
             $this->WriteAttributeBoolean('SkewWarned', $skewed);
         }
@@ -308,11 +371,13 @@ if (!trait_exists('EOSPlanDevice')) {
             $meta = $this->eosJsonDecode($this->ReadAttributeString('PlanMeta'), []);
             $generated = $this->eosParseTime(is_array($meta) ? ($meta['generated_at'] ?? null) : null);
             $limit = $this->ReadPropertyInteger('StaleAfterMinutes') * 60;
-            $stale = $generated === 0 || (time() - $generated) > $limit;
+            $stale = $generated === 0 || ($this->eosNow() - $generated) > $limit;
             if ($active === null && $this->activeInstruction() === null) {
                 $stale = true;
             }
-            $this->SetValue('PlanStale', $stale);
+            if ((bool) $this->GetValue('PlanStale') !== $stale) {
+                $this->SetValue('PlanStale', $stale);
+            }
         }
 
         /** Register/unregister VM_UPDATE for an optional source variable property (remembered in an attribute). */

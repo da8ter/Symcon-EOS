@@ -6,6 +6,14 @@ declare(strict_types=1);
  * Shared helpers for all Symcon-EOS modules: data-flow GUIDs, operation-mode
  * tables, ISO-8601 time handling and presentation builders.
  */
+if (!class_exists('EOSClock')) {
+    /** Single time source of the library. Symcon never sets it; the test bench pins it (fractions allowed). */
+    final class EOSClock
+    {
+        public static int|float|null $now = null;
+    }
+}
+
 if (!trait_exists('EOSCommon')) {
     trait EOSCommon
     {
@@ -15,6 +23,9 @@ if (!trait_exists('EOSCommon')) {
         public const EOS_RX_GUID = '{EAB78E68-BFF7-4608-BA75-9ECDB5165208}';
         /** Module GUID of the EOS Server splitter. */
         public const EOS_SERVER_GUID = '{8042C326-0C4E-400A-9973-8AF1F9E59E71}';
+
+        /** Battery, vehicle and appliance modules: EOS requires device ids unique across all of them. */
+        public const EOS_DEVICE_MODULE_GUIDS = ['{F4B30383-1210-4169-93DA-5C9664447B42}', '{5D0C0E3A-7B1F-4E7A-9C7E-2E6E4B1A8F21}', '{A7E2C4D9-3F61-4B8E-B2D5-6C9F0E1A7B34}'];
 
         public const EOS_MODE_UNKNOWN = 99;
 
@@ -81,6 +92,18 @@ if (!trait_exists('EOSCommon')) {
 
         // ---------------------------------------------------------------- time helpers
 
+        /** Current unix time; every time decision of the library goes through here. */
+        protected function eosNow(): int
+        {
+            return EOSClock::$now !== null ? (int) floor(EOSClock::$now) : time();
+        }
+
+        /** Current time with fractions of a second, for arming timers exactly. */
+        protected function eosNowFloat(): float
+        {
+            return EOSClock::$now !== null ? (float) EOSClock::$now : microtime(true);
+        }
+
         /** Parse an ISO-8601 string with offset (as EOS sends it) into a unix timestamp; 0 on failure. */
         protected function eosParseTime(?string $iso): int
         {
@@ -97,7 +120,7 @@ if (!trait_exists('EOSCommon')) {
         /** Current time as ISO-8601 with offset, e.g. 2026-09-20T09:30:00+02:00. */
         protected function eosIsoNow(?int $timestamp = null): string
         {
-            $dt = new DateTimeImmutable('@' . ($timestamp ?? time()));
+            $dt = new DateTimeImmutable('@' . ($timestamp ?? $this->eosNow()));
             return $dt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format(DATE_ATOM);
         }
 

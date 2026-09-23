@@ -1,8 +1,8 @@
 # Akkudoktor-EOS als Docker-Container neben Symcon (macOS, Linux, NAS).
 #
-# EOS_IMAGE (setzt ./setup.sh): das veröffentlichte Image akkudoktor/eos:<Version>
-# von Docker Hub oder, wenn es das nicht gibt (Release-Kandidaten), der lokale
-# Build aus dem GitHub-Tag EOS_GIT_REF mit dem Dockerfile des EOS-Projekts. Ein
+# EOS_IMAGE (setzt ./setup.sh): EOS_IMAGE_OVERRIDE, sonst das veröffentlichte Image
+# akkudoktor/eos:<Version> von Docker Hub (nur wenn EOS_GIT_REF zur Version passt),
+# sonst der lokale Build aus EOS_GIT_REF mit dem Dockerfile des EOS-Projekts. Ein
 # Checkout des EOS-Repos ist nicht nötig; am EOS-Code wird nichts verändert.
 #
 # Start:      ./setup.sh                 (ohne Skript: docker compose up -d --build)

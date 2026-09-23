@@ -5,6 +5,11 @@ declare(strict_types=1);
 require_once __DIR__ . '/../libs/EOSClient.php';
 require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSConfigMapper.php';
+require_once __DIR__ . '/../libs/EOSConfigFormValues.php';
+require_once __DIR__ . '/../libs/EOSFormHelpers.php';
+require_once __DIR__ . '/../libs/EOSMeasurementBundle.php';
+require_once __DIR__ . '/../libs/EOSServerConfig.php';
+require_once __DIR__ . '/../libs/EOSServerStatus.php';
 
 /**
  * EOS Server: splitter that talks to an Akkudoktor-EOS instance.
@@ -17,11 +22,23 @@ class EOSServer extends IPSModuleStrict
 {
     use EOSCommon;
     use EOSConfigMapper;
+    use EOSConfigFormValues;
+    use EOSFormHelpers;
+    use EOSMeasurementBundle;
+    use EOSServerConfig;
+    use EOSServerStatus;
 
     private const STATUS_INACTIVE = 104;
     private const STATUS_UNREACHABLE = 201;
     private const STATUS_VERSION = 202;
     private const STATUS_NO_PLAN = 203;
+    /** "Optimize now" only kicks the run off: EOS finishes it after the client left (measured). */
+    private const OPTIMIZE_KICK_S = 3;
+    /** No new run this long after "Optimize now": tell the user to look at the EOS log. */
+    private const OPTIMIZE_WATCH_S = 900;
+
+    /** Set by BroadcastPlan() so ApplyChanges() distributes the plan only once. */
+    private bool $planBroadcast = false;
 
     public function Create(): void
     {
@@ -42,6 +59,15 @@ class EOSServer extends IPSModuleStrict
         $this->RegisterAttributeString('LastRunSeen', '');
         $this->RegisterAttributeString('EOSConfigCache', '');
         $this->RegisterAttributeString('SoCCache', '{}');
+        // Server status = f(reachable, version, plan): see updateServerStatus().
+        $this->RegisterAttributeBoolean('Reachable', false);
+        $this->RegisterAttributeBoolean('VersionOk', true);
+        $this->RegisterAttributeBoolean('PlanAvailable', false);
+        $this->RegisterAttributeInteger('TransportTimeouts', 0);
+        $this->RegisterAttributeInteger('OptimizeRequestedTs', 0);
+        $this->RegisterAttributeString('PlanMissingExplained', '');
+        // Device id => owning device instance (ClaimDevice): one owner per id at this server.
+        $this->RegisterAttributeString('DeviceOwners', '{}');
 
         $this->RegisterVariableBoolean('Connected', $this->Translate('Connected'), $this->eosBoolPresentation('Offline', 'Online', 0xFF0000, 0x00A000, 'Network'), 10);
         $this->RegisterVariableString('Version', $this->Translate('EOS version'), $this->eosValuePresentation('Information'), 20);
@@ -74,14 +100,27 @@ class EOSServer extends IPSModuleStrict
             return;
         }
 
-        $this->SetTimerInterval('HealthPoll', $this->ReadPropertyInteger('HealthInterval') * 1000);
+        // At least every 10 s: the health poll is also what brings the server back after an outage.
+        $this->SetTimerInterval('HealthPoll', max(10, $this->ReadPropertyInteger('HealthInterval')) * 1000);
         $this->SetTimerInterval('PlanRefresh', $this->ReadPropertyInteger('PlanRefreshInterval') * 1000);
 
+        $this->planBroadcast = false;
         $this->PollHealth();
-        // Re-distribute the cached plan so children can rebuild their schedule after a restart,
+        // Re-distribute the cached plan (once) so children can rebuild their schedule after a restart,
         // and always send the status so children waiting for the server recover even without a plan.
-        $this->BroadcastPlan(false);
-        $this->broadcastStatus((bool) $this->GetValue('Connected'));
+        if (!$this->planBroadcast) {
+            $this->BroadcastPlan();
+        }
+        $this->broadcastStatus($this->serverUsable($this->GetStatus()));
+    }
+
+    /** Deferred status broadcast (never from inside a child's ForwardData call). */
+    public function RequestAction(string $Ident, mixed $Value): void
+    {
+        if ($Ident !== 'BroadcastStatus') {
+            throw new Exception('Invalid ident: ' . $Ident);
+        }
+        $this->broadcastStatus($this->serverUsable($this->GetStatus()));
     }
 
     public function MessageSink(int $TimeStamp, int $SenderID, int $Message, array $Data): void
@@ -103,19 +142,28 @@ class EOSServer extends IPSModuleStrict
             'LoadProvider'      => 'load',
             'WeatherProvider'   => 'weather',
         ];
-        $this->walkForm($form['elements'], function (array &$el) use ($providers, $config): void {
+        $this->formWalk($form['elements'], function (array &$el) use ($providers, $config): bool {
             $name = $el['name'] ?? '';
             if (($el['type'] ?? '') === 'Select' && isset($providers[$name])) {
                 $el['options'] = $this->ProviderOptions(is_array($config) ? $config : [], $providers[$name]);
             }
+            return false;
         });
         $client = $this->client();
-        $this->walkForm($form['actions'], function (array &$el) use ($client): void {
+        $live = $client->getConfig();
+        if ($live['ok'] && is_array($live['data'])) {
+            $problems = $this->configProblems($live['data']);
+            $this->setFormAttribute($form['elements'], 'ConfigCheck', 'caption', $problems === []
+                ? $this->Translate('EOS device configuration: no problems found.')
+                : $this->Translate('EOS will not plan until this is fixed:') . ' ' . implode(' · ', $problems));
+        }
+        $this->formWalk($form['actions'], function (array &$el) use ($client): bool {
             if (($el['name'] ?? '') === 'DashboardLink') {
                 $el['caption'] = 'EOSdash: ' . $client->dashboardUrl();
             } elseif (($el['name'] ?? '') === 'SwaggerLink') {
                 $el['caption'] = 'API: ' . $client->swaggerUrl();
             }
+            return false;
         });
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
@@ -147,7 +195,14 @@ class EOSServer extends IPSModuleStrict
         $lastRun = (string) ($res['data']['energy-management']['last_run_datetime'] ?? '');
         if ($lastRun !== '' && $lastRun !== $this->ReadAttributeString('LastRunSeen')) {
             $this->WriteAttributeString('LastRunSeen', $lastRun);
+            $this->WriteAttributeInteger('OptimizeRequestedTs', 0);
             $this->FetchPlan();
+            return;
+        }
+        $asked = $this->ReadAttributeInteger('OptimizeRequestedTs');
+        if ($asked > 0 && $this->eosNow() - $asked > self::OPTIMIZE_WATCH_S) {
+            $this->WriteAttributeInteger('OptimizeRequestedTs', 0);
+            $this->LogMessage($this->Translate('Optimization was started, but EOS reported no new run for 15 minutes; check the EOS log'), KL_WARNING);
         }
     }
 
@@ -157,12 +212,14 @@ class EOSServer extends IPSModuleStrict
         $res = $client->getPlan();
         if (!$res['ok'] || !is_array($res['data'])) {
             if ($res['status'] === 404) {
-                $this->SetValue('LastError', (string) $res['error']);
-                $this->SetStatus(self::STATUS_NO_PLAN);
+                $this->WriteAttributeBoolean('PlanAvailable', false);
+                $this->setServerError((string) $res['error']);
+                $this->updateServerStatus();
+                $this->explainMissingPlan();
             } elseif ($res['status'] === 0) {
                 $this->markUnreachable((string) $res['error']);
             } else {
-                $this->SetValue('LastError', (string) $res['error']);
+                $this->setServerError((string) $res['error']);
             }
             return false;
         }
@@ -170,13 +227,18 @@ class EOSServer extends IPSModuleStrict
         $plan = $res['data'];
         $instructions = is_array($plan['instructions'] ?? null) ? $plan['instructions'] : [];
         $hash = md5(json_encode($instructions) . (string) ($plan['generated_at'] ?? ''));
-        $changed = $hash !== $this->ReadAttributeString('PlanHash');
+        $this->WriteAttributeBoolean('PlanAvailable', true);
+        if ($hash === $this->ReadAttributeString('PlanHash') && $this->ReadAttributeString('LastPlan') !== '') {
+            // Unchanged plan: children keep their copy, nothing to fetch or distribute.
+            $this->updateServerStatus();
+            return true;
+        }
 
         $this->WriteAttributeString('LastPlan', json_encode($plan));
         $this->WriteAttributeString('PlanHash', $hash);
         $this->SetValue('PlanID', (string) ($plan['id'] ?? ''));
         $this->SetValue('PlanValidUntil', $this->eosParseTime($plan['valid_until'] ?? null));
-        $this->SetValue('LastError', '');
+        $this->setServerError('');
 
         $sol = $client->getSolution();
         if ($sol['ok'] && is_array($sol['data'])) {
@@ -190,10 +252,24 @@ class EOSServer extends IPSModuleStrict
             $this->SendDebug('FetchPlan', 'solution: ' . (string) $sol['error'], 0);
         }
 
-        $this->SetStatus(IS_ACTIVE);
-        $this->SendDebug('FetchPlan', sprintf('plan %s, %d instructions, changed=%s', (string) ($plan['id'] ?? ''), count($instructions), $changed ? 'yes' : 'no'), 0);
-        $this->BroadcastPlan(true);
+        $this->updateServerStatus();
+        $this->SendDebug('FetchPlan', sprintf('plan %s, %d instructions', (string) ($plan['id'] ?? ''), count($instructions)), 0);
+        $this->BroadcastPlan();
         return true;
+    }
+
+    /** No plan: say once why EOS will not plan, when the device configuration shows it. */
+    private function explainMissingPlan(): void
+    {
+        $live = $this->client()->getConfig();
+        $problems = ($live['ok'] && is_array($live['data'])) ? $this->configProblems($live['data']) : [];
+        $text = implode(' · ', $problems);
+        if ($text !== $this->ReadAttributeString('PlanMissingExplained')) {
+            $this->WriteAttributeString('PlanMissingExplained', $text);
+            if ($text !== '') {
+                $this->LogMessage($this->Translate('EOS will not plan until this is fixed:') . ' ' . $text, KL_WARNING);
+            }
+        }
     }
 
     public function Optimize(): void
@@ -202,136 +278,26 @@ class EOSServer extends IPSModuleStrict
         $this->SetTimerInterval('OptimizeRun', 1000);
     }
 
+    /**
+     * Kick an optimization off. POST /v1/optimize waits for the whole run, which would keep
+     * this instance (and every child sending data) blocked for minutes; EOS completes the run
+     * after the client left, so a short timeout counts as "started" and the next health poll
+     * with a new last_run fetches the plan.
+     */
     public function RunOptimizeNow(): void
     {
         $this->SetTimerInterval('OptimizeRun', 0);
-        $res = $this->client()->optimize();
-        if ($res['ok']) {
-            $this->SendDebug('Optimize', 'finished ok', 0);
-            $this->SetValue('LastError', '');
-            $this->FetchPlan();
-        } else {
-            $this->SetValue('LastError', 'optimize: ' . (string) $res['error']);
-            $this->LogMessage('EOS optimize failed: ' . (string) $res['error'], KL_WARNING);
+        $res = $this->client()->optimize(self::OPTIMIZE_KICK_S);
+        if ($res['ok'] || ((int) $res['status'] === 0 && (int) ($res['errno'] ?? 0) === 28)) {
+            $this->WriteAttributeInteger('OptimizeRequestedTs', $this->eosNow());
+            $this->SendDebug('Optimize', $res['ok'] ? 'finished' : 'started, result follows with the next EOS run', 0);
+            if ($res['ok']) {
+                $this->FetchPlan();
+            }
+            return;
         }
-    }
-
-    public function PutMeasurement(string $Key, float $Value, string $DateTime): bool
-    {
-        if ($DateTime === '') {
-            $DateTime = $this->eosIsoNow();
-        }
-        $res = $this->client()->putMeasurementValue($Key, $Value, $DateTime);
-        if (!$res['ok']) {
-            $this->SetValue('LastError', 'measurement ' . $Key . ': ' . (string) $res['error']);
-        }
-        return $res['ok'];
-    }
-
-    public function GetConfig(string $Path): string
-    {
-        $res = $Path === '' ? $this->client()->getConfig() : $this->client()->getConfigPath($Path);
-        if (!$res['ok']) {
-            $this->SetValue('LastError', 'config ' . $Path . ': ' . (string) $res['error']);
-            return '';
-        }
-        return json_encode($res['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
-
-    public function SetConfig(string $Path, string $ValueJSON): bool
-    {
-        $value = json_decode($ValueJSON, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            $value = $ValueJSON;
-        }
-        $res = $this->client()->putConfigPath($Path, $value);
-        if (!$res['ok']) {
-            $this->SetValue('LastError', 'config ' . $Path . ': ' . (string) $res['error']);
-        }
-        return $res['ok'];
-    }
-
-    public function SaveConfig(): bool
-    {
-        $res = $this->client()->saveConfigFile();
-        $this->UpdateFormField('ConfigInfo', 'caption', $res['ok'] ? $this->Translate('Configuration saved to EOS.config.json.') : (string) $res['error']);
-        if (!$res['ok']) {
-            $this->SetValue('LastError', 'save config: ' . (string) $res['error']);
-        }
-        return $res['ok'];
-    }
-
-    public function LoadConfigFromEOS(): bool
-    {
-        $res = $this->client()->getConfig();
-        if (!$res['ok'] || !is_array($res['data'])) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) $res['error']);
-            return false;
-        }
-        $this->WriteAttributeString('EOSConfigCache', json_encode($res['data']));
-        $values = $this->ConfigToFormValues($res['data']);
-        foreach ($values['scalar'] as $name => $value) {
-            $this->UpdateFormField($name, 'value', $value);
-        }
-        foreach ($values['list'] as $name => $rows) {
-            $this->UpdateFormField($name, 'values', json_encode($rows));
-        }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Configuration loaded from EOS. Review the fields and press Apply to store them in Symcon.'));
-        return true;
-    }
-
-    public function WriteConfigToEOS(): bool
-    {
-        $merge = $this->PropertiesToConfig();
-        $this->SendDebug('WriteConfig', json_encode($merge, JSON_UNESCAPED_UNICODE), 0);
-        $res = $this->client()->putConfig($merge);
-        if (!$res['ok']) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) $res['error']);
-            $this->SetValue('LastError', 'write config: ' . (string) $res['error']);
-            return false;
-        }
-        if (is_array($res['data'])) {
-            $this->WriteAttributeString('EOSConfigCache', json_encode($res['data']));
-        }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Configuration written to EOS.'));
-        return true;
-    }
-
-    public function UseSymconLocation(): void
-    {
-        $loc = json_decode(IPS_GetLocation(), true);
-        $lat = (float) ($loc['Latitude'] ?? 0);
-        $lon = (float) ($loc['Longitude'] ?? 0);
-        $this->UpdateFormField('GeneralLatitude', 'value', $lat);
-        $this->UpdateFormField('GeneralLongitude', 'value', $lon);
-        $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('Location taken from Symcon: %s / %s. Press Apply to store.'), (string) $lat, (string) $lon));
-    }
-
-    public function ReadRawConfig(string $Path): string
-    {
-        $json = $this->GetConfig($Path);
-        $this->UpdateFormField('RawResult', 'caption', $json !== '' ? $this->eosShorten($json, 400) : (string) $this->GetValue('LastError'));
-        $this->UpdateFormField('RawConfigValue', 'value', $json);
-        return $json;
-    }
-
-    public function WriteRawConfig(string $Path, string $ValueJSON): bool
-    {
-        $ok = $this->SetConfig($Path, $ValueJSON);
-        $this->UpdateFormField('RawResult', 'caption', $ok ? 'OK: ' . $Path : (string) $this->GetValue('LastError'));
-        return $ok;
-    }
-
-    public function WriteRawMerge(string $JSON): bool
-    {
-        $merge = json_decode($JSON, true);
-        if (!is_array($merge)) {
-            $this->UpdateFormField('RawResult', 'caption', 'invalid JSON');
-            return false;
-        }
-        $res = $this->client()->putConfig($merge);
-        $this->UpdateFormField('RawResult', 'caption', $res['ok'] ? 'OK' : (string) $res['error']);
-        return $res['ok'];
+        $this->setServerError(sprintf($this->Translate('Optimization: %s'), (string) $res['error']));
+        $this->LogMessage(sprintf($this->Translate('EOS optimization failed: %s'), (string) $res['error']), KL_WARNING);
     }
 
     public function GetDashboardURL(): string
@@ -365,38 +331,10 @@ class EOSServer extends IPSModuleStrict
         $command = (string) ($data['Command'] ?? '');
         switch ($command) {
             case 'PutMeasurement':
-                $key = (string) ($data['Key'] ?? '');
-                $value = (float) ($data['Value'] ?? 0);
-                $dateTime = (string) ($data['DateTime'] ?? $this->eosIsoNow());
-                $this->rememberSticky($key, $value);
-                // One request for the value plus all cached sticky values (PUT /v1/measurement/data
-                // accepts any key): EOS then sees a complete record at this timestamp, never a
-                // half-written one that a run in between would reject as "stale SoC".
-                $bundle = $this->stickyBundle($key);
-                if ($bundle === []) {
-                    $res = $this->client()->putMeasurementValue($key, $value, $dateTime);
-                } else {
-                    $res = $this->client()->putMeasurementData(['start_datetime' => $dateTime, 'interval' => '1 minute', $key => [$value]] + array_map(static fn (float $v): array => [$v], $bundle));
-                }
-                if (!$res['ok']) {
-                    $this->SetValue('LastError', 'measurement: ' . (string) $res['error']);
-                }
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
+                return $this->reply($this->forwardPutMeasurement($data));
 
             case 'PutSamples':
-                $samples = is_array($data['Samples'] ?? null) ? $data['Samples'] : [];
-                // Meter readings carry no SoC/cycle keys. Write the cached sticky values for the
-                // same timestamp FIRST, so the newest record is never a meter-only record.
-                $bundle = $this->stickyBundle('');
-                if ($bundle !== [] && $samples !== []) {
-                    $stamp = (string) (end($samples)['date_time'] ?? $this->eosIsoNow());
-                    $this->client()->putMeasurementData(['start_datetime' => $stamp, 'interval' => '1 minute'] + array_map(static fn (float $v): array => [$v], $bundle));
-                }
-                $res = $this->client()->putMeasurementSamples($samples);
-                if (!$res['ok']) {
-                    $this->SetValue('LastError', 'samples: ' . (string) $res['error']);
-                }
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error'], 'data' => $res['data']]);
+                return $this->reply($this->forwardPutSamples($data));
 
             case 'GetPlanForResource':
                 return json_encode($this->planForResource((string) ($data['ResourceID'] ?? '')));
@@ -413,20 +351,18 @@ class EOSServer extends IPSModuleStrict
                 ]);
 
             case 'GetConfig':
-                $res = $this->client()->getConfigPath((string) ($data['Path'] ?? ''));
-                return json_encode(['ok' => $res['ok'], 'data' => $res['data'], 'error' => $res['error']]);
-
             case 'SetConfig':
-                $res = $this->client()->putConfigPath((string) ($data['Path'] ?? ''), $data['Value'] ?? null);
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
-
             case 'MergeConfig':
-                $res = $this->client()->putConfig(is_array($data['Value'] ?? null) ? $data['Value'] : []);
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
-
             case 'SaveConfig':
-                $res = $this->client()->saveConfigFile();
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
+            case 'RemoveDevice':
+                return $this->reply($this->forwardConfigCommand($command, $data));
+
+            case 'ClaimDevice':
+                // Answered by this instance, not by EOS: must not count as "EOS reachable" (reply()).
+                return (string) json_encode($this->claimDevice((string) ($data['DeviceID'] ?? ''), (int) ($data['InstanceID'] ?? 0)));
+
+            case 'DeviceOwner':
+                return (string) json_encode(['ok' => true, 'status' => 200, 'owner' => $this->deviceOwner((string) ($data['DeviceID'] ?? ''))]);
 
             default:
                 return json_encode(['ok' => false, 'error' => 'unknown command ' . $command]);
@@ -447,107 +383,16 @@ class EOSServer extends IPSModuleStrict
         );
     }
 
-    /**
-     * EOS 0.4.0rc1 looks up device measurements (SoC factor, completed cycles)
-     * with dropna=False: the newest measurement record decides, and a record
-     * written for another key (EV SoC, meter reading, cycles) has NaN for the
-     * others, which cancels the run. Work-around: remember the latest value of
-     * these "sticky" keys and re-send all of them whenever a different key is
-     * written, so the newest record always carries every device value.
-     */
-    /** Remember SoC / cycle values so they can be re-sent with every other measurement. */
-    private function rememberSticky(string $key, float $value): void
-    {
-        if (!$this->isStickyKey($key)) {
-            return;
-        }
-        $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
-        $cache = is_array($cache) ? $cache : [];
-        $cache[$key] = ['value' => $value, 'ts' => time()];
-        $this->WriteAttributeString('SoCCache', json_encode($cache));
-    }
-
-    /**
-     * EOS 0.4.0rc1 looks up SoC and cycle counts in the newest measurement record
-     * only (configrequest.py, dropna=False). Every record we write therefore has to
-     * carry all known sticky values; this returns them as key => value, without
-     * $exceptKey. SoC values expire with the EOS freshness limit, cycle counts do not.
-     */
-    private function stickyBundle(string $exceptKey): array
-    {
-        $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
-        $cache = is_array($cache) ? $cache : [];
-        $now = time();
-        $maxAge = max(60, (int) ($this->ReadPropertyInteger('OptMeasurementMaxAge') ?: 300));
-        $bundle = [];
-        foreach ($cache as $stickyKey => $entry) {
-            if ($stickyKey === $exceptKey) {
-                continue;
-            }
-            if (str_ends_with((string) $stickyKey, '-soc-factor') && $now - (int) ($entry['ts'] ?? 0) > $maxAge) {
-                continue;
-            }
-            $bundle[(string) $stickyKey] = (float) $entry['value'];
-        }
-        return $bundle;
-    }
-
-    private function isStickyKey(string $key): bool
-    {
-        return str_ends_with($key, '-soc-factor') || str_ends_with($key, '.cycles_completed');
-    }
-
-    private function applyHealth(array $health): void
-    {
-        $version = (string) ($health['version'] ?? '');
-        $wasConnected = (bool) $this->GetValue('Connected');
-        $this->SetValue('Connected', true);
-        $this->SetValue('Version', $version);
-        $this->SetValue('LastRun', $this->eosParseTime($health['energy-management']['last_run_datetime'] ?? null));
-
-        $expected = trim($this->ReadPropertyString('ExpectedVersion'));
-        if ($expected !== '' && !str_starts_with($version, $expected)) {
-            $this->SetValue('LastError', 'version ' . $version . ' != ' . $expected . '*');
-            $this->SetStatus(self::STATUS_VERSION);
-            return;
-        }
-        if ($this->GetStatus() !== self::STATUS_NO_PLAN) {
-            $this->SetStatus(IS_ACTIVE);
-        }
-        if (!$wasConnected) {
-            // Children that went to "no active server" re-run ApplyChanges on any event;
-            // a plan may not exist yet (203), so tell them explicitly.
-            $this->broadcastStatus(true);
-        }
-    }
-
-    private function broadcastStatus(bool $connected): void
-    {
-        $this->SendDataToChildren(json_encode(['DataID' => self::EOS_RX_GUID, 'Event' => 'Status', 'Connected' => $connected]));
-    }
-
-    private function markUnreachable(string $error): void
-    {
-        $wasConnected = (bool) $this->GetValue('Connected');
-        $this->SetValue('Connected', false);
-        $this->SetValue('LastError', $error);
-        $this->SetStatus(self::STATUS_UNREACHABLE);
-        if ($wasConnected) {
-            $this->LogMessage('EOS not reachable: ' . $error, KL_WARNING);
-            $this->broadcastStatus(false);
-        }
-    }
-
-    private function BroadcastPlan(bool $force): void
+    private function BroadcastPlan(): void
     {
         $plan = $this->eosJsonDecode($this->ReadAttributeString('LastPlan'), null);
         if (!is_array($plan)) {
             return;
         }
+        $this->planBroadcast = true;
         $this->SendDataToChildren(json_encode([
             'DataID'       => self::EOS_RX_GUID,
             'Event'        => 'PlanUpdated',
-            'Force'        => $force,
             'Plan'         => [
                 'id'           => $plan['id'] ?? '',
                 'generated_at' => $plan['generated_at'] ?? null,
@@ -555,7 +400,6 @@ class EOSServer extends IPSModuleStrict
                 'valid_until'  => $plan['valid_until'] ?? null,
             ],
             'Instructions' => is_array($plan['instructions'] ?? null) ? $plan['instructions'] : [],
-            'Connected'    => (bool) $this->GetValue('Connected'),
         ]));
     }
 
@@ -578,7 +422,6 @@ class EOSServer extends IPSModuleStrict
                 'valid_until'  => $plan['valid_until'] ?? null,
             ],
             'instructions' => $mine,
-            'connected'    => (bool) $this->GetValue('Connected'),
         ];
     }
 
@@ -606,20 +449,5 @@ class EOSServer extends IPSModuleStrict
             }
         }
         return ['ok' => true, 'tz' => $solution['solution']['tz'] ?? null, 'series' => $series];
-    }
-
-    /** Apply $fn to every element (recursively into items) of a form section. */
-    private function walkForm(array &$elements, callable $fn): void
-    {
-        foreach ($elements as &$el) {
-            if (!is_array($el)) {
-                continue;
-            }
-            $fn($el);
-            if (isset($el['items']) && is_array($el['items'])) {
-                $this->walkForm($el['items'], $fn);
-            }
-        }
-        unset($el);
     }
 }

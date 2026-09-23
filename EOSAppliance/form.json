@@ -25,7 +25,7 @@
                     "type": "ValidationTextBox",
                     "name": "DeviceID",
                     "caption": "EOS device ID (free text; a new device is created in EOS on Apply)",
-                    "validate": "^[A-Za-z0-9_-]+$"
+                    "validate": "^[A-Za-z][A-Za-z0-9_-]*$"
                 },
                 {
                     "type": "SelectVariable",
@@ -46,7 +46,7 @@
                 {
                     "type": "CheckBox",
                     "name": "SyncTimesToEOS",
-                    "caption": "Write deadline and earliest start to EOS automatically"
+                    "caption": "Write deadline and earliest start to EOS (needs a source or EOSHA_SetDeadline; passed times are cleared)"
                 },
                 {
                     "type": "SelectVariable",
@@ -115,38 +115,6 @@
                             "validVariableTypes": [
                                 0
                             ]
-                        },
-                        {
-                            "type": "List",
-                            "name": "ModeMap",
-                            "caption": "Value per EOS mode for the mode variable",
-                            "rowCount": 2,
-                            "add": false,
-                            "delete": false,
-                            "columns": [
-                                {
-                                    "name": "mode",
-                                    "caption": "EOS",
-                                    "width": "170px",
-                                    "visible": true,
-                                    "save": true
-                                },
-                                {
-                                    "name": "caption",
-                                    "caption": "Meaning",
-                                    "width": "160px"
-                                },
-                                {
-                                    "name": "value",
-                                    "caption": "Value for the mode variable",
-                                    "width": "auto",
-                                    "add": "",
-                                    "edit": {
-                                        "type": "ValidationTextBox"
-                                    }
-                                }
-                            ],
-                            "values": []
                         }
                     ]
                 },
@@ -159,7 +127,7 @@
                         {
                             "type": "SelectObject",
                             "name": "ActionTarget",
-                            "caption": "Target of the actions (variable or instance, also for option 3; default: the mode variable)",
+                            "caption": "Target of the actions (variable or instance, also for option 3)",
                             "onChange": "IPS_RequestAction($id, 'SetActionTarget', json_encode(['target' => $ActionTarget, 'modeVar' => 0]));"
                         },
                         {
@@ -170,7 +138,7 @@
                 },
                 {
                     "type": "ExpansionPanel",
-                    "caption": "Option 3: run an instance action or script on every EOS mode change",
+                    "caption": "Option 3: run an instance action or script on every change, mode change and heartbeat",
                     "expanded": false,
                     "items": [
                         {
@@ -225,7 +193,7 @@
                         {
                             "type": "NumberSpinner",
                             "name": "HeartbeatSeconds",
-                            "caption": "Re-send setpoints every (s), 0 = off",
+                            "caption": "Re-send setpoints every (s), 0 = off, at least 5",
                             "minimum": 0,
                             "maximum": 3600,
                             "suffix": " s"
@@ -337,6 +305,30 @@
                             "edit": {
                                 "type": "ValidationTextBox"
                             }
+                        },
+                        {
+                            "name": "day_of_week",
+                            "caption": "day_of_week",
+                            "width": "100px",
+                            "visible": false,
+                            "save": true,
+                            "add": ""
+                        },
+                        {
+                            "name": "date",
+                            "caption": "date",
+                            "width": "100px",
+                            "visible": false,
+                            "save": true,
+                            "add": ""
+                        },
+                        {
+                            "name": "locale",
+                            "caption": "locale",
+                            "width": "100px",
+                            "visible": false,
+                            "save": true,
+                            "add": ""
                         }
                     ],
                     "values": []
@@ -345,6 +337,30 @@
                     "type": "Label",
                     "name": "ConfigInfo",
                     "caption": " "
+                },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Button",
+                            "name": "OverwriteEOS",
+                            "caption": "Overwrite EOS with the saved Symcon values",
+                            "onClick": "IPS_RequestAction($id, 'OverwriteEOS', $DeviceID);"
+                        },
+                        {
+                            "type": "Button",
+                            "name": "LoadFromEOS",
+                            "caption": "Load values from EOS",
+                            "onClick": "IPS_RequestAction($id, 'LoadFromEOS', $DeviceID);"
+                        },
+                        {
+                            "type": "Button",
+                            "name": "RemoveOldEntry",
+                            "caption": "Remove old EOS entry",
+                            "visible": false,
+                            "onClick": "IPS_RequestAction($id, 'RemoveOldEOSEntry', '');"
+                        }
+                    ]
                 }
             ]
         }

@@ -25,7 +25,7 @@
                     "type": "ValidationTextBox",
                     "name": "DeviceID",
                     "caption": "EOS device ID (free text; a new device is created in EOS on Apply)",
-                    "validate": "^[A-Za-z0-9_-]+$"
+                    "validate": "^[A-Za-z][A-Za-z0-9_-]*$"
                 },
                 {
                     "type": "SelectVariable",
@@ -68,6 +68,14 @@
                     "suffix": " s"
                 },
                 {
+                    "type": "NumberSpinner",
+                    "name": "SoCMaxAgeMinutes",
+                    "caption": "Max. age of the SoC source (min), 0 = off",
+                    "minimum": 0,
+                    "maximum": 1440,
+                    "suffix": " min"
+                },
+                {
                     "type": "SelectVariable",
                     "name": "PluggedSourceVariable",
                     "caption": "Plugged-in source variable (optional)",
@@ -78,7 +86,7 @@
                 {
                     "type": "CheckBox",
                     "name": "PushOnlyWhenPlugged",
-                    "caption": "Push SoC only while plugged in"
+                    "caption": "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)"
                 },
                 {
                     "type": "SelectVariable",
@@ -91,7 +99,7 @@
                 {
                     "type": "CheckBox",
                     "name": "SyncDepartureToEOS",
-                    "caption": "Write departure time to EOS automatically"
+                    "caption": "Write the departure to EOS (needs a departure source or EOSEV_SetDeparture; a passed departure is cleared)"
                 },
                 {
                     "type": "NumberSpinner",
@@ -234,7 +242,7 @@
                 },
                 {
                     "type": "ExpansionPanel",
-                    "caption": "Option 3: run an instance action or script on every EOS mode change",
+                    "caption": "Option 3: run an instance action or script on every change, mode change and heartbeat",
                     "expanded": false,
                     "items": [
                         {
@@ -292,7 +300,7 @@
                         {
                             "type": "NumberSpinner",
                             "name": "HeartbeatSeconds",
-                            "caption": "Re-send setpoints every (s), 0 = off",
+                            "caption": "Re-send setpoints every (s), 0 = off, at least 5",
                             "minimum": 0,
                             "maximum": 3600,
                             "suffix": " s"
@@ -373,6 +381,30 @@
                     "type": "Label",
                     "name": "ConfigInfo",
                     "caption": " "
+                },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Button",
+                            "name": "OverwriteEOS",
+                            "caption": "Overwrite EOS with the saved Symcon values",
+                            "onClick": "IPS_RequestAction($id, 'OverwriteEOS', $DeviceID);"
+                        },
+                        {
+                            "type": "Button",
+                            "name": "LoadFromEOS",
+                            "caption": "Load values from EOS",
+                            "onClick": "IPS_RequestAction($id, 'LoadFromEOS', $DeviceID);"
+                        },
+                        {
+                            "type": "Button",
+                            "name": "RemoveOldEntry",
+                            "caption": "Remove old EOS entry",
+                            "visible": false,
+                            "onClick": "IPS_RequestAction($id, 'RemoveOldEOSEntry', '');"
+                        }
+                    ]
                 }
             ]
         }
@@ -439,6 +471,16 @@
             "code": 203,
             "icon": "error",
             "caption": "Device ID already used by another instance"
+        },
+        {
+            "code": 205,
+            "icon": "error",
+            "caption": "EOS already has another device of this kind"
+        },
+        {
+            "code": 206,
+            "icon": "error",
+            "caption": "Max. SoC must be greater than 0 (configuration not written to EOS)"
         }
     ]
 }

@@ -40,6 +40,8 @@ class EOSMeter extends IPSModuleStrict
         $this->RegisterPropertyBoolean('PushOnChange', false);
 
         $this->RegisterAttributeString('RegisteredVars', '[]');
+        $this->RegisterAttributeInteger('KeysRepairTs', 0);
+        $this->RegisterAttributeInteger('LastPushAttemptTs', 0);
         $this->RegisterAttributeInteger('LastPushTs', 0);
 
         $this->RegisterVariableInteger('LastPush', $this->Translate('Last push'), $this->eosDateTimePresentation('Repeat'), 10);
@@ -91,7 +93,8 @@ class EOSMeter extends IPSModuleStrict
             $this->ApplyChanges();
             return;
         }
-        if ($Message === VM_UPDATE && time() - $this->ReadAttributeInteger('LastPushTs') >= 30) {
+        // Only changed readings, and at most every 30 s counted from the last attempt (also a failed one).
+        if ($Message === VM_UPDATE && (!array_key_exists(1, $Data) || $Data[1] === true) && $this->eosNow() - $this->ReadAttributeInteger('LastPushAttemptTs') >= 30) {
             $this->Push();
         }
     }
@@ -123,16 +126,25 @@ class EOSMeter extends IPSModuleStrict
         if ($samples === []) {
             return false;
         }
+        $this->WriteAttributeInteger('LastPushAttemptTs', $this->eosNow());
         $res = $this->forward(['Command' => 'PutSamples', 'Samples' => $samples]);
+        if (($res['ok'] ?? false) !== true && str_contains((string) ($res['error'] ?? ''), 'No energy channel')
+            && $this->eosNow() - $this->ReadAttributeInteger('KeysRepairTs') >= 600) {
+            // EOS no longer knows a key (e.g. a server "Write to EOS" replaced the list): register and send again.
+            $this->WriteAttributeInteger('KeysRepairTs', $this->eosNow());
+            if ($this->WriteKeysToEOS()) {
+                $res = $this->forward(['Command' => 'PutSamples', 'Samples' => $samples]);
+            }
+        }
         if (($res['ok'] ?? false) !== true) {
             $this->SetValue('LastError', (string) ($res['error'] ?? '?'));
             $this->UpdateFormField('ActionResult', 'caption', (string) ($res['error'] ?? '?'));
             return false;
         }
         $this->SetValue('LastError', '');
-        $this->SetValue('LastPush', time());
+        $this->SetValue('LastPush', $this->eosNow());
         $this->SetValue('PushedValues', count($samples));
-        $this->WriteAttributeInteger('LastPushTs', time());
+        $this->WriteAttributeInteger('LastPushTs', $this->eosNow());
         $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('%d meter readings sent.'), count($samples)));
         return true;
     }
@@ -167,7 +179,7 @@ class EOSMeter extends IPSModuleStrict
         }
         $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['measurement' => $merge]]);
         if (($res['ok'] ?? false) !== true) {
-            $this->SetValue('LastError', 'keys: ' . (string) ($res['error'] ?? '?'));
+            $this->SetValue('LastError', sprintf($this->Translate('Meter keys: %s'), (string) ($res['error'] ?? '?')));
             return false;
         }
         $this->forward(['Command' => 'SaveConfig']);
@@ -191,7 +203,7 @@ class EOSMeter extends IPSModuleStrict
             return false;
         }
         $archive = (int) $archives[0];
-        $end = time();
+        $end = $this->eosNow();
         $start = $end - $hours * 3600;
         $total = 0;
         $ok = true;
@@ -200,9 +212,8 @@ class EOSMeter extends IPSModuleStrict
                 $this->SendDebug('ImportHistory', 'variable ' . $meter['variable'] . ' is not logged', 0);
                 continue;
             }
-            $values = AC_GetLoggedValues($archive, $meter['variable'], $start, $end, 0);
             $samples = [];
-            foreach ($values as $v) {
+            foreach ($this->loggedValues($archive, $meter['variable'], $start, $end) as $v) {
                 $samples[] = [
                     'date_time' => $this->eosIsoNow((int) $v['TimeStamp']),
                     'key'       => $meter['key'],
@@ -221,11 +232,30 @@ class EOSMeter extends IPSModuleStrict
         }
         $msg = $ok ? sprintf($this->Translate('%d history values imported.'), $total) : (string) $this->GetValue('LastError');
         $this->UpdateFormField('ActionResult', 'caption', $msg);
-        $this->LogMessage('EOS meter history import: ' . $msg, KL_NOTIFY);
+        $this->LogMessage(sprintf($this->Translate('History import: %s'), $msg), KL_NOTIFY);
         return $ok;
     }
 
     // ------------------------------------------------------------------ internals
+
+    /**
+     * All logged rows of $start..$end. AC_GetLoggedValues returns at most 10000 rows,
+     * newest first: page backwards from the oldest row of each full page.
+     */
+    private function loggedValues(int $archive, int $varId, int $start, int $end): array
+    {
+        $rows = [];
+        $to = $end;
+        do {
+            $page = AC_GetLoggedValues($archive, $varId, $start, $to, 0);
+            $rows = array_merge($rows, $page);
+            if (count($page) < 10000) {
+                break;
+            }
+            $to = min(array_map(static fn (array $r): int => (int) $r['TimeStamp'], $page)) - 1;
+        } while ($to >= $start);
+        return $rows;
+    }
 
     /** @return array<int, array{variable:int, key:string, category:string, unit:int}> */
     private function meters(): array
@@ -258,7 +288,7 @@ class EOSMeter extends IPSModuleStrict
     {
         $res = $this->forward(['Command' => 'PutSamples', 'Samples' => $samples]);
         if (($res['ok'] ?? false) !== true) {
-            $this->SetValue('LastError', 'import: ' . (string) ($res['error'] ?? '?'));
+            $this->SetValue('LastError', sprintf($this->Translate('History import: %s'), (string) ($res['error'] ?? '?')));
             return false;
         }
         return true;
