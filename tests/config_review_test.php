@@ -42,6 +42,23 @@ function drop(int ...$ids): void
         unset($GLOBALS['objects'][$id], $GLOBALS['instances'][$id]);
     }
 }
+function formElement(array $nodes, string $name): ?array
+{
+    foreach ($nodes as $n) {
+        if (!is_array($n)) {
+            continue;
+        }
+        if (($n['name'] ?? '') === $name) {
+            return $n;
+        }
+        foreach (['items', 'elements', 'actions'] as $k) {
+            if (isset($n[$k]) && is_array($n[$k]) && ($found = formElement($n[$k], $name)) !== null) {
+                return $found;
+            }
+        }
+    }
+    return null;
+}
 function eosField(string $path): mixed { return $GLOBALS['eosBackend']->getConfigPath($path)['data'] ?? null; }
 function batteryAt(int $iid, string $id = 'battery1'): EOSBattery
 {
@@ -172,6 +189,22 @@ $power = (fn (): array => $this->batteryState('FORCED_CHARGE', 1.0, false))->cal
 check($power === 2500.0, 'R8-6: an EOSdash change of max_charge_power_w reaches the control with the next SoC push after 15 min: ' . $power);
 setClock($now);
 drop(1340);
+
+// ---------------------------------------------------------------- R8-8: the old entry after a rename stays known until it is removed
+echo "== Alter Eintrag nach Umbenennen\n";
+eosLoad(['home_appliances' => ['dishwasher1' => HA], 'max_home_appliances' => 1]);
+$rn = applianceAt(1350); $rn->ApplyChanges();
+$rn->properties['DeviceID'] = 'dryer1'; $rn->ApplyChanges(); // renamed: dryer1 created, dishwasher1 still in EOS
+$rn->ApplyChanges();                                          // any later Apply must not forget the old id
+$form = json_decode($rn->GetConfigurationForm(), true);
+$button = formElement(array_merge($form['elements'] ?? [], $form['actions'] ?? []), 'RemoveOldEntry');
+check(($button['visible'] ?? false) === true && isset($be->live['devices']['home_appliances']['dishwasher1']), 'R8-8: after renaming an appliance "Remove old EOS entry" is offered while the old entry exists: ' . json_encode($button['visible'] ?? null));
+$rn->RequestAction('RemoveOldEOSEntry', '');
+$form = json_decode($rn->GetConfigurationForm(), true);
+$button = formElement(array_merge($form['elements'] ?? [], $form['actions'] ?? []), 'RemoveOldEntry');
+check(!isset($be->live['devices']['home_appliances']['dishwasher1']) && isset($be->live['devices']['home_appliances']['dryer1']) && ($button['visible'] ?? true) === false,
+    'R8-8: ... the button removes it, the new entry stays, and the button is gone');
+drop(1350);
 
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

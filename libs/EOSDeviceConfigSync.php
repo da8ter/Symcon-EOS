@@ -40,6 +40,8 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             $this->RegisterAttributeString('SyncedConfig', '{}');
             $this->RegisterAttributeString('PickSnapshot', '{}');
             $this->RegisterAttributeString('EOSValues', '{}');
+            // The EOS entry this instance used before its DeviceID changed, until it is removed.
+            $this->RegisterAttributeString('PreviousDeviceID', '');
         }
 
         /** A configuration property, typed after its default in CONFIG_DEFAULTS. */
@@ -101,6 +103,11 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 return false;
             }
             $previousId = (string) ($this->syncedState()['id'] ?? '');
+            if ($previousId !== '' && $previousId !== $id) {
+                $this->WriteAttributeString('PreviousDeviceID', $previousId); // kept beyond this sync, see oldDeviceId()
+            } elseif ($this->ReadAttributeString('PreviousDeviceID') === $id) {
+                $this->WriteAttributeString('PreviousDeviceID', ''); // renamed back
+            }
             $eos = is_array($read['value']) ? $read['value'] : null;
             if ($eos === null) {
                 return $this->createDeviceEntry($id, $device, $merge, $previousId);
@@ -200,6 +207,18 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 }
             }
             return true;
+        }
+
+        /** The EOS entry this instance used before its DeviceID changed ('' = none). */
+        protected function oldDeviceId(): string
+        {
+            $current = $this->ReadPropertyString('DeviceID');
+            foreach ([$this->ReadAttributeString('PreviousDeviceID'), (string) ($this->syncedState()['id'] ?? '')] as $old) {
+                if ($old !== '' && $old !== $current) {
+                    return $old;
+                }
+            }
+            return '';
         }
 
         private function syncedState(): array

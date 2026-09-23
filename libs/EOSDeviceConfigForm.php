@@ -93,8 +93,8 @@ if (!trait_exists('EOSDeviceConfigForm')) {
         /** Button: delete the EOS entry this instance used before its DeviceID changed. */
         protected function removeOldEOSEntry(): void
         {
-            $old = (string) ($this->syncedState()['id'] ?? '');
-            if ($old === '' || $old === $this->ReadPropertyString('DeviceID')) {
+            $old = $this->oldDeviceId();
+            if ($old === '') {
                 $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('No old EOS entry to remove.'));
                 return;
             }
@@ -103,7 +103,10 @@ if (!trait_exists('EOSDeviceConfigForm')) {
                 $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
                 return;
             }
-            $this->WriteAttributeString('SyncedConfig', json_encode(['v' => 1, 'id' => '', 'base' => [], 'ts' => $this->eosNow()]));
+            if ((string) ($this->syncedState()['id'] ?? '') === $old) {
+                $this->WriteAttributeString('SyncedConfig', json_encode(['v' => 1, 'id' => '', 'base' => [], 'ts' => $this->eosNow()]));
+            }
+            $this->WriteAttributeString('PreviousDeviceID', '');
             $this->LogMessage(sprintf($this->Translate('Old EOS entry %s removed'), $old), KL_NOTIFY);
             $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('Old EOS entry %s removed. Press Apply to create the new one.'), $old));
         }
@@ -187,8 +190,10 @@ if (!trait_exists('EOSDeviceConfigForm')) {
                 }
             }
             $this->setFormAttribute($form['elements'], 'EOSDevicePick', 'options', $options);
-            $old = (string) ($this->syncedState()['id'] ?? '');
-            $this->setFormAttribute($form['elements'], 'RemoveOldEntry', 'visible', $old !== '' && $old !== $current);
+            // Offered while the old entry is still in EOS (unknown when EOS is not readable).
+            $old = $this->oldDeviceId();
+            $known = isset($read) && $read['state'] === 'ok' && is_array($read['value']);
+            $this->setFormAttribute($form['elements'], 'RemoveOldEntry', 'visible', $old !== '' && (!$known || array_key_exists($old, $read['value'])));
         }
     }
 }
