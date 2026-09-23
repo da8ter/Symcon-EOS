@@ -33,6 +33,7 @@ if (!trait_exists('EOSControlDispatch')) {
             }
             $desired = $this->eosJsonDecode($this->ReadAttributeString('Desired'), []);
             if (!is_array($desired) || !isset($desired['targets'])) {
+                $this->SetTimerInterval('Retry', 0); // released or nothing to drive: no further wake-ups
                 return;
             }
             if (!$this->GetValue('ControlActive')) {
@@ -91,7 +92,8 @@ if (!trait_exists('EOSControlDispatch')) {
             $chgBound = $this->changeBindingConfigured();
             $state = $this->desiredState($desired);
             $chgFailedSame = (int) ($chg['fail'] ?? 0) > 0 && ($chg['fstate'] ?? null) === $state;
-            if ($chgBound && $heartbeatSeconds > 0 && (int) ($chg['fail'] ?? 0) === 0 && isset($chg['ts']) && $now - (int) $chg['ts'] >= $heartbeatSeconds) {
+            // A failure of another (earlier) state does not stop the heartbeat of the current one.
+            if ($chgBound && $heartbeatSeconds > 0 && !$chgFailedSame && isset($chg['ts']) && $now - (int) $chg['ts'] >= $heartbeatSeconds) {
                 $heartbeatDue = true;
             }
             $modeRaw = (string) ($desired['modeRaw'] ?? '');
@@ -372,10 +374,12 @@ if (!trait_exists('EOSControlDispatch')) {
             if ((int) ($row['fail'] ?? 0) > 0 && $plan['rowKey'] !== '' && ($row['failMode'] ?? null) === $plan['rowKey'] && $plan['rowKey'] !== (string) ($row['modeRaw'] ?? '')) {
                 $due[] = (int) $row['failTs'] + $this->backoffSeconds((int) $row['fail']);
             }
-            if ((int) ($last['chg']['fail'] ?? 0) > 0) {
-                $due[] = (int) $last['chg']['failTs'] + $this->backoffSeconds((int) $last['chg']['fail']);
-            } elseif ($heartbeatSeconds > 0 && isset($last['chg']['ts']) && $this->changeBindingConfigured()) {
-                $due[] = (int) $last['chg']['ts'] + $heartbeatSeconds;
+            // The action/script retries only the state that failed; for any other state its heartbeat counts.
+            $chg = is_array($last['chg'] ?? null) ? $last['chg'] : [];
+            if ((int) ($chg['fail'] ?? 0) > 0 && ($chg['fstate'] ?? null) === $plan['state']) {
+                $due[] = (int) $chg['failTs'] + $this->backoffSeconds((int) $chg['fail']);
+            } elseif ($heartbeatSeconds > 0 && isset($chg['ts']) && $this->changeBindingConfigured()) {
+                $due[] = (int) $chg['ts'] + $heartbeatSeconds;
             }
             if ($due === []) {
                 $this->SetTimerInterval('Retry', 0);

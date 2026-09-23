@@ -317,5 +317,22 @@ for ($i = 1; $i <= 3; $i++) { setClock($now + $i * 120); planFor('dishwasher1', 
 check($warnings($rk, 'Control write failed') === 1, 'R6-12: a failing RUN action warns once across re-plans (RUN@<start> keys): ' . $warnings($rk, 'Control write failed'));
 unset($GLOBALS['objects'][1062]);
 
+// ---------------------------------------------------------------- regression check (after the final review): option 3 failure of an old state
+echo "== Regression: Option 3 nach Fehlschlag eines alten Stands\n";
+setClock($now);
+$cl = bat(1080, ['TargetModeVariable' => 0, 'TargetChargePowerVariable' => 0, 'ChangeAction' => json_encode(['actionID' => '{OK}', 'parameters' => []]), 'HeartbeatSeconds' => 30]);
+planFor('battery1', 'FORCED_CHARGE', 0.5);
+$cl->ApplyChanges(); $cl->fireOnce();                                        // state A runs
+setClock($now + 10); $cl->properties['ChangeAction'] = json_encode(['actionID' => '{FAIL}', 'parameters' => []]);
+planFor('battery1', 'FORCED_CHARGE', 1.0); $cl->RefreshPlan(); $cl->fireOnce();  // state B fails
+setClock($now + 20); $cl->properties['ChangeAction'] = json_encode(['actionID' => '{OK}', 'parameters' => []]);
+planFor('battery1', 'FORCED_CHARGE', 0.5); $cl->RefreshPlan(); $cl->fireOnce();  // back to A
+resetWorld(); $wakeups = 0; $t = 20.0;
+while ($t < 200) { $t += max(0.5, $cl->timers['Retry']['ms'] / 1000); setClock($now + $t); $cl->fireTimer('Retry'); $wakeups++; }
+check($wakeups < 20 && count($GLOBALS['runActions']) >= 4, 'regression: after a failed option-3 run of a state that is gone, no 500 ms loop, and the heartbeat keeps running option 3: wakeups ' . $wakeups . ', runs ' . count($GLOBALS['runActions']));
+$cl->RequestAction('ControlActive', false); $cl->fireTimer('Retry');
+check($cl->timers['Retry']['ms'] === 0, 'regression: after the release the Retry timer is switched off instead of waking as a no-op: ' . $cl->timers['Retry']['ms']);
+unset($GLOBALS['objects'][1080]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
