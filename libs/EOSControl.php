@@ -169,7 +169,10 @@ if (!trait_exists('EOSControl')) {
                 $source = 'manual';
             } elseif ($this->planUsable($active, $reason) && ($desired = $this->desiredFromInstruction($active)) !== null) {
                 $source = 'plan';
-                $this->WriteAttributeString('LastPlanInstruction', json_encode(['instruction' => $active, 'generatedAt' => $this->planGeneratedAt()]));
+                $held = json_encode(['instruction' => $active, 'generatedAt' => $this->planGeneratedAt()]);
+                if ($this->ReadAttributeString('LastPlanInstruction') !== $held) {
+                    $this->WriteAttributeString('LastPlanInstruction', $held);
+                }
             } else {
                 if ($reason === '') {
                     $reason = 'unknown mode ' . (string) ($active['operation_mode_id'] ?? '');
@@ -187,7 +190,10 @@ if (!trait_exists('EOSControl')) {
             }
             $this->setFallbackActive($source === 'fallback', $reason);
             if ($desired === null) {
-                $this->recordResult($this->Translate('fallback: no intervention'), false);
+                $text = $this->Translate('fallback: no intervention');
+                if ((string) $this->GetValue('LastControlResult') !== $text) {
+                    $this->recordResult($text, false);
+                }
                 return null;
             }
             $desired['source'] = $source;
@@ -209,11 +215,13 @@ if (!trait_exists('EOSControl')) {
         /** Fast path for onPlanProcessed()/watchdog: store the desired state, defer the writes. */
         protected function scheduleControl(?array $active, string $trigger): void
         {
-            if ($this->deviceBlocked()) {
+            // Switched off: released once already, nothing to decide until it is switched on again.
+            if ($this->deviceBlocked() || !$this->GetValue('ControlActive')) {
                 return;
             }
             $desired = $this->computeDesired($active, $trigger);
             if ($desired === null) {
+                $this->dropDesired();
                 return;
             }
             if ($trigger === 'tick' && isset($this->lastSent()['targets'])) {
@@ -228,6 +236,21 @@ if (!trait_exists('EOSControl')) {
             }
             $this->WriteAttributeString('Desired', json_encode($desired, JSON_UNESCAPED_UNICODE));
             $this->RegisterOnceTimer('Dispatch', self::CONTROL_PREFIX . '_Dispatch($_IPS[\'TARGET\']);');
+        }
+
+        /**
+         * Nothing to drive (fallback "no intervention", bindings not ready): the stored state must
+         * not be replayed by retries or heartbeats. The device is left alone from here on, so its
+         * state is unknown when control resumes.
+         */
+        protected function dropDesired(): void
+        {
+            if ($this->ReadAttributeString('Desired') === '{}') {
+                return;
+            }
+            $this->WriteAttributeString('Desired', '{}');
+            $this->WriteAttributeString('LastSent', json_encode(['v' => 2, 'resync' => true]));
+            $this->SetTimerInterval('Retry', 0);
         }
 
         protected function setFallbackActive(bool $on, string $reason): void

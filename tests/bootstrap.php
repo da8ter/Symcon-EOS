@@ -112,7 +112,7 @@ final class FakeEOS
 class IPSModuleStrict
 {
     public int $InstanceID;
-    public array $properties = [], $attributes = [], $variables = [], $timers = [], $onceTimers = [], $logs = [], $debug = [], $formUpdates = [], $messages = [], $tileUpdates = [];
+    public array $properties = [], $attributes = [], $variables = [], $timers = [], $onceTimers = [], $logs = [], $debug = [], $formUpdates = [], $messages = [], $tileUpdates = [], $attrWrites = [];
     public int $status = IS_ACTIVE;
 
     public function __construct(int $instanceId = 1000)
@@ -140,9 +140,9 @@ class IPSModuleStrict
     protected function ReadAttributeInteger(string $k): int { return (int) $this->attr($k); }
     protected function ReadAttributeString(string $k): string { return (string) $this->attr($k); }
     protected function ReadAttributeBoolean(string $k): bool { return (bool) $this->attr($k); }
-    protected function WriteAttributeInteger(string $k, int $v): void { $this->attr($k); $this->attributes[$k] = $v; }
-    protected function WriteAttributeString(string $k, string $v): void { $this->attr($k); $this->attributes[$k] = $v; }
-    protected function WriteAttributeBoolean(string $k, bool $v): void { $this->attr($k); $this->attributes[$k] = $v; }
+    protected function WriteAttributeInteger(string $k, int $v): void { $this->attr($k); $this->attributes[$k] = $v; $this->attrWrites[$k] = ($this->attrWrites[$k] ?? 0) + 1; }
+    protected function WriteAttributeString(string $k, string $v): void { $this->attr($k); $this->attributes[$k] = $v; $this->attrWrites[$k] = ($this->attrWrites[$k] ?? 0) + 1; }
+    protected function WriteAttributeBoolean(string $k, bool $v): void { $this->attr($k); $this->attributes[$k] = $v; $this->attrWrites[$k] = ($this->attrWrites[$k] ?? 0) + 1; }
     private function attr(string $k): mixed
     {
         if (!array_key_exists($k, $this->attributes)) {
