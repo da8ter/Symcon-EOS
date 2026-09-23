@@ -228,7 +228,7 @@ class EOSVehicle extends IPSModuleStrict
             $ev['charge_rates'] = $rates;
         }
         $departure = (int) $this->GetValue('Departure');
-        $ev['min_soc_deadline_datetime'] = $departure > time() ? $this->eosIsoNow($departure) : null;
+        $ev['min_soc_deadline_datetime'] = $departure > $this->eosNow() ? $this->eosIsoNow($departure) : null;
         return ['devices/electric_vehicles/' . $id, $ev, ['devices' => ['max_electric_vehicles' => 1, 'electric_vehicles' => [$id => $ev]]]];
     }
 
@@ -344,7 +344,7 @@ class EOSVehicle extends IPSModuleStrict
         } else {
             $previous = $this->ReadAttributeInteger('LastChargeState');
             $dwell = $this->ReadPropertyInteger('MinSwitchIntervalSec');
-            if ($previous >= 0 && $state['charging'] !== ($previous === 1) && time() - $this->ReadAttributeInteger('LastChargeSwitchTs') < $dwell) {
+            if ($previous >= 0 && $state['charging'] !== ($previous === 1) && $this->eosNow() - $this->ReadAttributeInteger('LastChargeSwitchTs') < $dwell) {
                 $state = $previous === 1 ? $this->vehicleState('FORCED_CHARGE', max($state['factor'], 0.01), true) : $this->vehicleState('IDLE', 0.0, true);
                 $degraded = $this->Translate('switch held back (minimum interval)');
             }
@@ -375,7 +375,7 @@ class EOSVehicle extends IPSModuleStrict
         $charging = !empty($desired['targets']['ChargeAllowed']) ? 1 : 0;
         if ($this->ReadAttributeInteger('LastChargeState') !== $charging) {
             $this->WriteAttributeInteger('LastChargeState', $charging);
-            $this->WriteAttributeInteger('LastChargeSwitchTs', time());
+            $this->WriteAttributeInteger('LastChargeSwitchTs', $this->eosNow());
         }
     }
 
@@ -466,7 +466,7 @@ class EOSVehicle extends IPSModuleStrict
         if (!$this->parentUsable()) {
             return false;
         }
-        $deadline = $ts > time() ? $this->eosIsoNow($ts) : '';
+        $deadline = $ts > $this->eosNow() ? $this->eosIsoNow($ts) : '';
         if ($deadline === $this->ReadAttributeString('LastDeadlineSent')) {
             return true;
         }

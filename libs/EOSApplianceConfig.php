@@ -40,9 +40,9 @@ if (!trait_exists('EOSApplianceConfig')) {
             }
             $appliance['time_windows'] = $windows !== [] ? ['windows' => $windows] : null;
             $deadline = (int) $this->GetValue('Deadline');
-            $appliance['deadline_datetime'] = $deadline > time() ? $this->eosIsoNow($deadline) : null;
+            $appliance['deadline_datetime'] = $deadline > $this->eosNow() ? $this->eosIsoNow($deadline) : null;
             $earliest = $this->earliestStart();
-            $appliance['earliest_start_datetime'] = $earliest > time() ? $this->eosIsoNow($earliest) : null;
+            $appliance['earliest_start_datetime'] = $earliest > $this->eosNow() ? $this->eosIsoNow($earliest) : null;
 
             $merge = ['devices' => ['home_appliances' => [$id => $appliance]]];
             if ($this->parentUsable()) {
@@ -107,8 +107,8 @@ if (!trait_exists('EOSApplianceConfig')) {
                 return false;
             }
             $payload = [
-                'deadline_datetime'       => $deadline > time() ? $this->eosIsoNow($deadline) : null,
-                'earliest_start_datetime' => $earliest > time() ? $this->eosIsoNow($earliest) : null,
+                'deadline_datetime'       => $deadline > $this->eosNow() ? $this->eosIsoNow($deadline) : null,
+                'earliest_start_datetime' => $earliest > $this->eosNow() ? $this->eosIsoNow($earliest) : null,
             ];
             $signature = json_encode($payload);
             if ($signature === $this->ReadAttributeString('LastTimesSent')) {

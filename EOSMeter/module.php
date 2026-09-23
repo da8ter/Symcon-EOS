@@ -91,7 +91,7 @@ class EOSMeter extends IPSModuleStrict
             $this->ApplyChanges();
             return;
         }
-        if ($Message === VM_UPDATE && time() - $this->ReadAttributeInteger('LastPushTs') >= 30) {
+        if ($Message === VM_UPDATE && $this->eosNow() - $this->ReadAttributeInteger('LastPushTs') >= 30) {
             $this->Push();
         }
     }
@@ -130,9 +130,9 @@ class EOSMeter extends IPSModuleStrict
             return false;
         }
         $this->SetValue('LastError', '');
-        $this->SetValue('LastPush', time());
+        $this->SetValue('LastPush', $this->eosNow());
         $this->SetValue('PushedValues', count($samples));
-        $this->WriteAttributeInteger('LastPushTs', time());
+        $this->WriteAttributeInteger('LastPushTs', $this->eosNow());
         $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('%d meter readings sent.'), count($samples)));
         return true;
     }
@@ -191,7 +191,7 @@ class EOSMeter extends IPSModuleStrict
             return false;
         }
         $archive = (int) $archives[0];
-        $end = time();
+        $end = $this->eosNow();
         $start = $end - $hours * 3600;
         $total = 0;
         $ok = true;

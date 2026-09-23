@@ -454,7 +454,7 @@ class EOSBattery extends IPSModuleStrict
         }
         return [
             'device'       => $this->ReadPropertyString('DeviceID'),
-            'now'          => time(),
+            'now'          => $this->eosNow(),
             'slot'         => $slot,
             'modeRaw'      => (string) $this->GetValue('ModeRaw'),
             'factor'       => (float) $this->GetValue('Factor'),

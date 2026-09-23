@@ -6,6 +6,14 @@ declare(strict_types=1);
  * Shared helpers for all Symcon-EOS modules: data-flow GUIDs, operation-mode
  * tables, ISO-8601 time handling and presentation builders.
  */
+if (!class_exists('EOSClock')) {
+    /** Single time source of the library. Symcon never sets it; the test bench pins it. */
+    final class EOSClock
+    {
+        public static ?int $now = null;
+    }
+}
+
 if (!trait_exists('EOSCommon')) {
     trait EOSCommon
     {
@@ -81,6 +89,12 @@ if (!trait_exists('EOSCommon')) {
 
         // ---------------------------------------------------------------- time helpers
 
+        /** Current unix time; every time decision of the library goes through here. */
+        protected function eosNow(): int
+        {
+            return EOSClock::$now ?? time();
+        }
+
         /** Parse an ISO-8601 string with offset (as EOS sends it) into a unix timestamp; 0 on failure. */
         protected function eosParseTime(?string $iso): int
         {
@@ -97,7 +111,7 @@ if (!trait_exists('EOSCommon')) {
         /** Current time as ISO-8601 with offset, e.g. 2026-09-20T09:30:00+02:00. */
         protected function eosIsoNow(?int $timestamp = null): string
         {
-            $dt = new DateTimeImmutable('@' . ($timestamp ?? time()));
+            $dt = new DateTimeImmutable('@' . ($timestamp ?? $this->eosNow()));
             return $dt->setTimezone(new DateTimeZone(date_default_timezone_get()))->format(DATE_ATOM);
         }
 

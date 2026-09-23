@@ -219,7 +219,7 @@ if (!trait_exists('EOSControl')) {
 
         protected function executeDesired(array $desired, bool $force, bool $sim): void
         {
-            $now = time();
+            $now = $this->eosNow();
             $last = $this->eosJsonDecode($this->ReadAttributeString('LastSent'), []);
             $last = is_array($last) ? $last : [];
             $lastTargets = is_array($last['targets'] ?? null) ? $last['targets'] : [];
@@ -387,7 +387,7 @@ if (!trait_exists('EOSControl')) {
         {
             $this->SetValue('ManualMode', $mode);
             $minutes = $this->ReadPropertyInteger('ManualReturnMinutes');
-            $this->WriteAttributeInteger('ManualUntil', ($mode !== self::MANUAL_AUTO && $minutes > 0) ? time() + $minutes * 60 : 0);
+            $this->WriteAttributeInteger('ManualUntil', ($mode !== self::MANUAL_AUTO && $minutes > 0) ? $this->eosNow() + $minutes * 60 : 0);
             // The hardware state is unknown after manual operation: write once.
             $this->WriteAttributeString('LastSent', '{}');
             $this->scheduleControl($this->activeInstruction(), 'manual');
@@ -420,7 +420,7 @@ if (!trait_exists('EOSControl')) {
             $active = $this->activeInstruction();
             $this->updatePlanStale($active);
             $until = $this->ReadAttributeInteger('ManualUntil');
-            if ((int) $this->GetValue('ManualMode') !== self::MANUAL_AUTO && $until > 0 && time() >= $until) {
+            if ((int) $this->GetValue('ManualMode') !== self::MANUAL_AUTO && $until > 0 && $this->eosNow() >= $until) {
                 $this->SetValue('ManualMode', self::MANUAL_AUTO);
                 $this->WriteAttributeInteger('ManualUntil', 0);
                 $this->WriteAttributeString('LastSent', '{}');
@@ -448,7 +448,7 @@ if (!trait_exists('EOSControl')) {
         protected function recordResult(string $text, bool $touchTime = true): void
         {
             if ($touchTime) {
-                $this->SetValue('LastControl', time());
+                $this->SetValue('LastControl', $this->eosNow());
             }
             $this->SetValue('LastControlResult', $this->eosShorten($text, 250));
         }

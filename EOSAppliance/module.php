@@ -272,7 +272,7 @@ class EOSAppliance extends IPSModuleStrict
             $degraded = $this->Translate('already started');
         } elseif ($this->isRunning()) {
             $degraded = $this->Translate('already running');
-        } elseif (time() >= $ts + $this->ReadPropertyInteger('StartGraceMinutes') * 60) {
+        } elseif ($this->eosNow() >= $ts + $this->ReadPropertyInteger('StartGraceMinutes') * 60) {
             // e.g. Symcon restarted hours after the planned start: do not start late.
             if ($this->ReadAttributeString('MissedStartWarned') !== $id) {
                 $this->LogMessage(sprintf('Planned start of %s at %s missed (grace period), not starting', $this->ReadPropertyString('DeviceID'), date('H:i', $ts)), KL_WARNING);
@@ -362,7 +362,7 @@ class EOSAppliance extends IPSModuleStrict
     {
         $start = $activeRunTs;
         if ($start === null) {
-            $now = time();
+            $now = $this->eosNow();
             foreach ($this->instructionList() as $i) {
                 if ((int) $i['ts'] > $now && strtoupper((string) ($i['operation_mode_id'] ?? '')) === 'RUN') {
                     $start = (int) $i['ts'];

@@ -463,7 +463,7 @@ class EOSServer extends IPSModuleStrict
         }
         $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
         $cache = is_array($cache) ? $cache : [];
-        $cache[$key] = ['value' => $value, 'ts' => time()];
+        $cache[$key] = ['value' => $value, 'ts' => $this->eosNow()];
         $this->WriteAttributeString('SoCCache', json_encode($cache));
     }
 
@@ -477,7 +477,7 @@ class EOSServer extends IPSModuleStrict
     {
         $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
         $cache = is_array($cache) ? $cache : [];
-        $now = time();
+        $now = $this->eosNow();
         $maxAge = max(60, (int) ($this->ReadPropertyInteger('OptMeasurementMaxAge') ?: 300));
         $bundle = [];
         foreach ($cache as $stickyKey => $entry) {

@@ -51,7 +51,7 @@ if (!trait_exists('EOSSoCPush')) {
         protected function handleSoCMessage(int $SenderID, int $Message): void
         {
             if ($Message === VM_UPDATE && $SenderID === $this->ReadPropertyInteger('SoCSourceVariable') && $SenderID > 0) {
-                if (time() - $this->ReadAttributeInteger('LastPushTs') >= $this->ReadPropertyInteger('PushDebounce')) {
+                if ($this->eosNow() - $this->ReadAttributeInteger('LastPushTs') >= $this->ReadPropertyInteger('PushDebounce')) {
                     $this->PushSoC();
                 }
             }
@@ -85,8 +85,8 @@ if (!trait_exists('EOSSoCPush')) {
             ]);
             if (($res['ok'] ?? false) === true) {
                 $this->SetValue('SoCSent', $factor);
-                $this->SetValue('LastPush', time());
-                $this->WriteAttributeInteger('LastPushTs', time());
+                $this->SetValue('LastPush', $this->eosNow());
+                $this->WriteAttributeInteger('LastPushTs', $this->eosNow());
                 $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('SoC %.3f sent'), $factor));
                 return true;
             }

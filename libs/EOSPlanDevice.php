@@ -153,7 +153,7 @@ if (!trait_exists('EOSPlanDevice')) {
             $this->SetTimerInterval('SlotTimer', 0);
             $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
             $list = is_array($list) ? $list : [];
-            $now = time();
+            $now = $this->eosNow();
             $active = null;
             $next = null;
             foreach ($list as $instruction) {
@@ -196,7 +196,7 @@ if (!trait_exists('EOSPlanDevice')) {
         protected function activeInstruction(): ?array
         {
             $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
-            $now = time();
+            $now = $this->eosNow();
             $active = null;
             foreach (is_array($list) ? $list : [] as $instruction) {
                 if ((int) ($instruction['ts'] ?? 0) <= $now) {
@@ -215,7 +215,7 @@ if (!trait_exists('EOSPlanDevice')) {
         /** First instruction in the future, null if none. */
         protected function nextInstruction(): ?array
         {
-            $now = time();
+            $now = $this->eosNow();
             foreach ($this->instructionList() as $instruction) {
                 if ((int) ($instruction['ts'] ?? 0) > $now) {
                     return $instruction;
@@ -245,18 +245,18 @@ if (!trait_exists('EOSPlanDevice')) {
         {
             $reason = '';
             $generated = $this->planGeneratedAt();
-            if ($generated === 0 || (time() - $generated) > $this->ReadPropertyInteger('StaleAfterMinutes') * 60) {
+            if ($generated === 0 || ($this->eosNow() - $generated) > $this->ReadPropertyInteger('StaleAfterMinutes') * 60) {
                 $reason = 'stale';
                 return false;
             }
             $until = $this->planValidUntil();
-            if ($until > 0 && time() > $until + self::GAP_TOLERANCE_S) {
+            if ($until > 0 && $this->eosNow() > $until + self::GAP_TOLERANCE_S) {
                 $reason = 'expired';
                 return false;
             }
             if ($active === null) {
                 $next = $this->nextInstruction();
-                $reason = ($next !== null && (int) $next['ts'] - time() <= self::GAP_TOLERANCE_S) ? 'gap' : 'no instruction';
+                $reason = ($next !== null && (int) $next['ts'] - $this->eosNow() <= self::GAP_TOLERANCE_S) ? 'gap' : 'no instruction';
                 return false;
             }
             return true;
@@ -282,7 +282,7 @@ if (!trait_exists('EOSPlanDevice')) {
                 'generated_at' => $meta['generated_at'] ?? null,
                 'valid_from'   => $meta['valid_from'] ?? null,
                 'valid_until'  => $meta['valid_until'] ?? null,
-                'received'     => time(),
+                'received'     => $this->eosNow(),
             ]));
             $this->SetValue('PlanJSON', json_encode(array_map(static function (array $i): array {
                 return [
@@ -296,9 +296,9 @@ if (!trait_exists('EOSPlanDevice')) {
 
             // Clock skew between the EOS host and Symcon makes every plan start "in the future".
             $generated = $this->eosParseTime($meta['generated_at'] ?? null);
-            $skewed = $generated > time() + 60;
+            $skewed = $generated > $this->eosNow() + 60;
             if ($skewed && !$this->ReadAttributeBoolean('SkewWarned')) {
-                $this->LogMessage(sprintf('EOS plan generated_at is %d s in the future - check the clocks of EOS host and Symcon', $generated - time()), KL_WARNING);
+                $this->LogMessage(sprintf('EOS plan generated_at is %d s in the future - check the clocks of EOS host and Symcon', $generated - $this->eosNow()), KL_WARNING);
             }
             $this->WriteAttributeBoolean('SkewWarned', $skewed);
         }
@@ -308,7 +308,7 @@ if (!trait_exists('EOSPlanDevice')) {
             $meta = $this->eosJsonDecode($this->ReadAttributeString('PlanMeta'), []);
             $generated = $this->eosParseTime(is_array($meta) ? ($meta['generated_at'] ?? null) : null);
             $limit = $this->ReadPropertyInteger('StaleAfterMinutes') * 60;
-            $stale = $generated === 0 || (time() - $generated) > $limit;
+            $stale = $generated === 0 || ($this->eosNow() - $generated) > $limit;
             if ($active === null && $this->activeInstruction() === null) {
                 $stale = true;
             }
