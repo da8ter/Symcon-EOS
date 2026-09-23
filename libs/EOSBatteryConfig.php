@@ -56,6 +56,9 @@ if (!trait_exists('EOSBatteryConfig')) {
             $invId = (string) array_key_first($inverters);
             $linked = (string) ($inverters[$invId]['battery_id'] ?? '');
             $batteries = $this->readConfig(self::DEVICE_COLLECTION);
+            if ($batteries['state'] !== 'ok') {
+                return; // unknown which batteries exist: leave the link alone
+            }
             $linkedExists = $linked !== '' && is_array($batteries['value']) && array_key_exists($linked, $batteries['value']);
             if ($linked === $id || ($linkedExists && $linked !== $previousId)) {
                 return; // already ours, or deliberately linked to another existing battery

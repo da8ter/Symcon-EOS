@@ -127,11 +127,17 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                     return false;
                 }
                 foreach ($class['push'] as $key) {
-                    $newBase[$key] = $device[$key];
                     $eos[$key] = $device[$key]; // what EOS holds now (EOSValues below)
                 }
-                $this->forward(['Command' => 'SaveConfig']);
-                $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS (%s)'), implode(', ', $class['push'])), KL_NOTIFY);
+                if (($this->forward(['Command' => 'SaveConfig'])['ok'] ?? false) === true) {
+                    foreach ($class['push'] as $key) {
+                        $newBase[$key] = $device[$key];
+                    }
+                    $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS (%s)'), implode(', ', $class['push'])), KL_NOTIFY);
+                } else {
+                    // Not in EOS.config.json: an EOS restart would drop it. The base stays, so the next Apply writes it again.
+                    $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS but not saved (%s); it is written again with the next Apply'), implode(', ', $class['push'])), KL_WARNING);
+                }
             }
             $this->WriteAttributeString('SyncedConfig', json_encode(['v' => 1, 'id' => $id, 'base' => $newBase, 'ts' => $this->eosNow()]));
             $this->rememberEOSValues($id, $eos);
@@ -147,6 +153,10 @@ if (!trait_exists('EOSDeviceConfigSync')) {
         private function createDeviceEntry(string $id, array $device, array $merge, string $previousId): bool
         {
             $other = $this->otherDevicesInEOS();
+            if ($other === null) {
+                $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('EOS configuration could not be read (%s); nothing compared, nothing written.'), self::DEVICE_COLLECTION));
+                return false;
+            }
             if ($other !== '') {
                 $message = ($previousId !== '' && $previousId !== $id && in_array($previousId, explode(', ', $other), true))
                     ? sprintf($this->Translate('EOS still holds the old device %s; remove it with "Remove old EOS entry", then Apply.'), $previousId)
@@ -289,13 +299,16 @@ if (!trait_exists('EOSDeviceConfigSync')) {
         {
         }
 
-        /** Other device ids in EOS for a kind GENETIC supports only once; '' when none (or not such a kind). */
-        protected function otherDevicesInEOS(): string
+        /** Other device ids in EOS for a kind GENETIC supports only once; '' when none (or not such a kind), null when unknown. */
+        protected function otherDevicesInEOS(): ?string
         {
             if (!self::SINGLE_DEVICE) {
                 return '';
             }
             $read = $this->readConfig(self::DEVICE_COLLECTION);
+            if ($read['state'] === 'error') {
+                return null; // an unreadable collection is no proof that it is empty
+            }
             $ids = ($read['state'] === 'ok' && is_array($read['value'])) ? array_map('strval', array_keys($read['value'])) : [];
             return implode(', ', array_values(array_diff($ids, [$this->ReadPropertyString('DeviceID')])));
         }

@@ -158,6 +158,9 @@ if (!trait_exists('EOSDeviceConfigForm')) {
             }
             if (!is_array($read['value'])) {
                 $other = $this->otherDevicesInEOS();
+                if ($other === null) {
+                    return sprintf($this->Translate('EOS configuration could not be read (%s); nothing compared, nothing written.'), self::DEVICE_COLLECTION);
+                }
                 return $other !== ''
                     ? sprintf($this->Translate('EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.'), $other)
                     : $this->Translate('Device not in EOS yet; it is created on Apply.');

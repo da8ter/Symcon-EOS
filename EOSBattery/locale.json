@@ -158,7 +158,8 @@
             "The EOS plan contains no instructions for %s": "The EOS plan contains no instructions for %s",
             "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon",
             "The device id is invalid or not owned by this instance; nothing written to EOS.": "The device id is invalid or not owned by this instance; nothing written to EOS.",
-            "The device id is invalid; nothing loaded.": "The device id is invalid; nothing loaded."
+            "The device id is invalid; nothing loaded.": "The device id is invalid; nothing loaded.",
+            "Device configuration written to EOS but not saved (%s); it is written again with the next Apply": "Device configuration written to EOS but not saved (%s); it is written again with the next Apply"
         },
         "de": {
             "EOS Battery": "EOS Batterie",
@@ -346,7 +347,8 @@
             "The EOS plan contains no instructions for %s": "Der EOS-Plan enthält keine Anweisungen für %s",
             "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "Der EOS-Plan ist %d s in die Zukunft datiert (generated_at); Uhren von EOS-Rechner und Symcon prüfen",
             "The device id is invalid or not owned by this instance; nothing written to EOS.": "Die Geräte-ID ist ungültig oder gehört nicht dieser Instanz; nichts nach EOS geschrieben.",
-            "The device id is invalid; nothing loaded.": "Die Geräte-ID ist ungültig; nichts geladen."
+            "The device id is invalid; nothing loaded.": "Die Geräte-ID ist ungültig; nichts geladen.",
+            "Device configuration written to EOS but not saved (%s); it is written again with the next Apply": "Gerätekonfiguration in EOS geschrieben, aber nicht gespeichert (%s); sie wird beim nächsten Übernehmen erneut geschrieben"
         }
     }
 }

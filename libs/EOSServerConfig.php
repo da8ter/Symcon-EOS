@@ -166,22 +166,35 @@ if (!trait_exists('EOSServerConfig')) {
             if (!array_key_exists($id, $map)) {
                 return ['ok' => true, 'status' => 200, 'error' => null];
             }
+            $settable = static function (array $map): stdClass {
+                $clean = new stdClass(); // stays a JSON object, also when it becomes empty
+                foreach ($map as $key => $entry) {
+                    // computed fields of the GET answer are not settable
+                    $clean->{$key} = array_filter(is_array($entry) ? $entry : [], static fn (mixed $v, string $k): bool => !str_starts_with($k, 'measurement_key') && $k !== 'capacity_estimate', ARRAY_FILTER_USE_BOTH);
+                }
+                return $clean;
+            };
+            $original = $settable($map);
             unset($map[$id]);
-            $clean = new stdClass(); // stays a JSON object, also when it becomes empty
-            foreach ($map as $key => $entry) {
-                // computed fields of the GET answer are not settable
-                $clean->{$key} = array_filter(is_array($entry) ? $entry : [], static fn (mixed $v, string $k): bool => !str_starts_with($k, 'measurement_key') && $k !== 'capacity_estimate', ARRAY_FILTER_USE_BOTH);
-            }
+            $saved = false;
             foreach ([
-                fn (): array => $this->client()->putConfigPath($collection, $clean),
-                fn (): array => $this->client()->saveConfigFile(),
-                fn (): array => $this->client()->resetConfig(),
-            ] as $step) {
+                'map'   => fn (): array => $this->client()->putConfigPath($collection, $settable($map)),
+                'save'  => fn (): array => $this->client()->saveConfigFile(),
+                'reset' => fn (): array => $this->client()->resetConfig(),
+            ] as $name => $step) {
                 $res = $step();
                 if (!$res['ok']) {
+                    if ($name !== 'map') {
+                        // Half done: EOS would bring the key back with the next merge, next to a newly created device.
+                        $this->client()->putConfigPath($collection, $original);
+                        if ($saved) {
+                            $this->client()->saveConfigFile();
+                        }
+                    }
                     $this->SetValue('LastError', sprintf($this->Translate('Remove %s: %s'), $collection . '/' . $id, (string) $res['error']));
                     return ['ok' => false, 'status' => $res['status'], 'error' => $res['error']];
                 }
+                $saved = $saved || $name === 'save';
             }
             $this->LogMessage(sprintf($this->Translate('Device %s removed from EOS'), $collection . '/' . $id), KL_NOTIFY);
             return ['ok' => true, 'status' => 200, 'error' => null];

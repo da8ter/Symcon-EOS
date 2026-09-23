@@ -206,5 +206,32 @@ check(!isset($be->live['devices']['home_appliances']['dishwasher1']) && isset($b
     'R8-8: ... the button removes it, the new entry stays, and the button is gone');
 drop(1350);
 
+// ---------------------------------------------------------------- R8-10: error paths never create, relink or forget
+echo "== Fehlerpfade\n";
+eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV, 'max_batteries' => 1]);
+$be->failPaths = ['devices/batteries'];
+$e1 = batteryAt(1360, 'speicher1'); $e1->ApplyChanges();
+$be->failPaths = [];
+check(array_keys($be->live['devices']['batteries']) === ['battery1'] && ($be->live['devices']['inverters']['inv1']['battery_id'] ?? null) === 'battery1',
+    'R8-10: a failed read of devices/batteries creates no second battery and does not relink the inverter: ' . json_encode(array_keys($be->live['devices']['batteries'])));
+drop(1360);
+
+eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV, 'max_batteries' => 1]);
+$e2 = batteryAt(1361); $e2->ApplyChanges();
+$e2->properties['DeviceID'] = 'speicher1'; $e2->ApplyChanges(); // 205: EOS still has battery1
+$be->saveFails = true; $e2->RequestAction('RemoveOldEOSEntry', ''); $be->saveFails = false;
+$e2->ApplyChanges();
+check(array_keys($be->live['devices']['batteries']) === ['battery1'] && $e2->status === 205,
+    'R8-10: a removal that fails after its map PUT is rolled back; the next Apply does not end with two batteries: ' . json_encode(array_keys($be->live['devices']['batteries'])) . ' status ' . $e2->status);
+drop(1361);
+
+eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV, 'max_batteries' => 1]);
+$e3 = batteryAt(1362); $e3->ApplyChanges();
+$e3->properties['CapacityWh'] = 12000; $be->saveFails = true; $e3->ApplyChanges(); $be->saveFails = false; // written, not saved
+$be->live = $be->file; $be->runtime = [];                                                               // EOS restart
+$e3->ApplyChanges();
+check((int) eosField('devices/batteries/battery1/capacity_wh') === 12000, 'R8-10: a write whose save failed is written again after an EOS restart: ' . json_encode(eosField('devices/batteries/battery1/capacity_wh')));
+drop(1362);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
