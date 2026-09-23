@@ -296,7 +296,8 @@ resetWorld(); $calls = count($eos->calls);
 $second->PushSoC(); $second->RefreshPlan();
 $second->ReceiveData(json_encode(['DataID' => '{EAB78E68-BFF7-4608-BA75-9ECDB5165208}', 'Event' => 'PlanUpdated', 'Plan' => $eos->plan, 'Instructions' => $eos->instructions]));
 $second->fireOnce(); $second->Dispatch(); $second->Watchdog(); $second->fireOnce(); $second->ApplyControl(true); $second->RequestAction('ControlActive', true); $second->fireOnce();
-check(count($eos->calls) === $calls && writesTo(26) === [] && $second->onceTimers === [], 'K38: a blocked instance neither pushes, nor processes plans, nor writes to its targets');
+$nonClaim = array_filter(array_slice($eos->calls, $calls), static fn (array $c): bool => ($c['Command'] ?? '') !== 'ClaimDevice');
+check($nonClaim === [] && writesTo(26) === [] && array_diff(array_column($second->onceTimers, 'name'), ['ApplyLater']) === [], 'K38: a blocked instance neither pushes, nor processes plans, nor writes to its targets (it only asks the server again)');
 $first->ApplyChanges(); $first->fireOnce();
 check($first->status === IS_ACTIVE, 'K38: the instance with the lower InstanceID keeps working');
 worldVar(28, 1, 0, false);
@@ -305,9 +306,9 @@ $ha->properties['DeviceID'] = 'dryer1'; $ha->properties['CyclesCompletedSourceVa
 check($ha->status === IS_ACTIVE && isset($ha->messages[28]), 'an appliance with its own id works');
 $ha->properties['DeviceID'] = 'battery1'; $ha->ApplyChanges();
 check($ha->status === 203 && !isset($ha->messages[28]) && $ha->timers['CyclesPush']['ms'] === 0, 'K38: ids are unique across device kinds; the source registered before is released');
-$GLOBALS['unreadable'][$first->InstanceID] = true; $GLOBALS['sdkWarnings'] = []; $ha->onceTimers = []; $eos->claimFails = true; // local rule: the server cannot answer
+$GLOBALS['unreadable'][$first->InstanceID] = true; $GLOBALS['sdkWarnings'] = []; $ha->onceTimers = []; $eos->claimFails = true; // the server cannot answer (reload)
 $ha->properties['DeviceID'] = 'dryer1'; $ha->ApplyChanges(); $eos->claimFails = false;
-check($ha->status === IS_ACTIVE && in_array('ApplyLater', array_column($ha->onceTimers, 'name'), true) && $GLOBALS['sdkWarnings'] === [], 'K38: during a module reload a sibling that cannot be read is skipped without a warning, and the check runs again');
+check($ha->status === IS_ACTIVE && $ha->timers['ClaimRetry']['ms'] === 30000 && $GLOBALS['sdkWarnings'] === [], 'K38: during a module reload no sibling is read (no warning), the instance keeps its status and asks the server again');
 unset($GLOBALS['unreadable'][$first->InstanceID]); $ha->onceTimers = [];
 unset($GLOBALS['objects'][1100], $GLOBALS['objects'][1300]);
 $GLOBALS['registry'] = false;

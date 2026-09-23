@@ -276,7 +276,7 @@ $x = bat(1052); $x->ApplyChanges();
 $y = bat(1053); $GLOBALS['instances'][1053]['ConnectionID'] = 3000; $GLOBALS['instances'][3000] = ['ConnectionID' => 0, 'InstanceStatus' => IS_ACTIVE]; $y->ApplyChanges();
 check($x->status === IS_ACTIVE && $y->status !== 203, 'R6-8: the same id on another EOS Server is no duplicate: ' . $y->status);
 $z = bat(1054); $z->ApplyChanges();
-check($z->status === 203, 'R6-8: without the server the lowest InstanceID on the same server keeps the id');
+check($z->status !== 203 && $z->timers['ClaimRetry']['ms'] === 30000, 'R6-8: without an answer an instance keeps its last status (a new one is not blocked yet) and asks again in 30 s');
 $eos->claimFails = false;
 unset($GLOBALS['objects'][1052], $GLOBALS['objects'][1053], $GLOBALS['objects'][1054]);
 $GLOBALS['registry'] = false;
@@ -423,6 +423,28 @@ check(count(array_filter($lines, static fn (string $l): bool => str_contains($l,
     'regression: a failure hidden as flapping that lasts beyond the hour is warned again; the last line does not say "OK": ' . json_encode(array_map(static fn (string $l): string => substr($l, 0, 25), $lines)));
 $GLOBALS['world'][21]['fail'] = false;
 unset($GLOBALS['objects'][1085]);
+
+// ---------------------------------------------------------------- final check: undecided means "keep the last decision"
+echo "== Abschluss: ohne Entscheidung gilt die letzte\n";
+$GLOBALS['registry'] = true; $eos->owners = [];
+setClock($now);
+$ka = bat(1093); planFor('battery1', 'NON_EXPORT'); $ka->ApplyChanges();                 // owner
+$kb = bat(1092); $kb->properties['ControlMode'] = 2; $kb->ApplyChanges();                 // duplicate, blocked by the server
+check($ka->status === IS_ACTIVE && $kb->status === 203, 'setup: owner active, duplicate blocked');
+$GLOBALS['instances'][2000]['InstanceStatus'] = IS_INACTIVE; $kb->ApplyChanges();        // server deactivated, duplicate re-applies
+check($kb->status === 203 && $kb->timers['Watchdog']['ms'] === 0, 'final: a duplicate stays blocked while the server is deactivated (no watchdog, no hardware writes): ' . $kb->status);
+$GLOBALS['instances'][2000]['InstanceStatus'] = 201;                                      // server back, EOS still down
+$kb->ReceiveData(json_encode(['DataID' => '{EAB78E68-BFF7-4608-BA75-9ECDB5165208}', 'Event' => 'Status']));
+check(in_array('ApplyLater', array_column($kb->onceTimers, 'name'), true), 'final: a blocked instance asks the server again with its next broadcast, also while EOS is down');
+$kb->fireOnce();
+check($kb->status === 203, 'final: ... and stays blocked while the owner exists');
+$eos->claimFails = true; $ka->ApplyChanges(); $kb->ApplyChanges(); $eos->claimFails = false; // mid-reload: no answer
+check($ka->status !== 203 && $kb->status === 203, 'final: without an answer owner and duplicate keep their status, no swap: owner ' . $ka->status . ', duplicate ' . $kb->status);
+$GLOBALS['instances'][2000]['InstanceStatus'] = IS_ACTIVE;
+$kb->properties['DeviceID'] = ''; $kb->ApplyChanges();                                    // invalid id while a retry is armed
+check($kb->status === 201 && $kb->timers['ClaimRetry']['ms'] === 0, 'final: a block stops ClaimRetry (no 30 s loop with an invalid id)');
+unset($GLOBALS['objects'][1092], $GLOBALS['objects'][1093]);
+$GLOBALS['registry'] = false;
 
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

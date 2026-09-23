@@ -160,8 +160,9 @@ Jede Geräte-Instanz merkt sich den zuletzt abgeglichenen Stand ihres EOS-Eintra
 - Geräte-IDs beginnen mit einem Buchstaben und sind je EOS Server über Batterien, E-Autos und Haushaltsgeräte
   hinweg eindeutig. Die ID gehört der Instanz, die sie zuerst beansprucht hat; der EOS Server merkt sich das, auch
   während EOS nicht erreichbar ist. Eine später angelegte Instanz mit derselben ID zeigt Status 203, auch mit
-  kleinerer InstanceID. Ist der EOS Server deaktiviert, entscheidet die Instanz nichts und wartet in 104. In
-  201/203/205 schreibt eine Instanz weder in EOS noch an ihre Hardware.
+  kleinerer InstanceID. Kann der Server nicht antworten (deaktiviert, mitten im Modul-Reload), gilt seine letzte
+  Entscheidung für diese ID weiter; eine gesperrte Instanz fragt mit jedem Server-Ereignis neu und läuft wieder, sobald
+  der Eigentümer weg ist. In 201/203/205 schreibt eine Instanz weder in EOS noch an ihre Hardware.
 - Widersprüchliche Grenzen (Batterie: Min-SoC ≥ Max-SoC; E-Auto: Max-SoC 0) gehen nicht nach EOS (Status 206).
   Ein Ziel-SoC ≥ Max-SoC geht als Max-SoC − 1 nach EOS, weil EOS das Ziel unter dem Maximum verlangt.
 - **Zeiten** (Abfahrt des E-Autos, Fertig-bis und frühester Start des Haushaltsgeräts) schreibt die Instanz je Feld

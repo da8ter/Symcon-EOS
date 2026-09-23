@@ -53,7 +53,7 @@ class EOSAppliance extends IPSModuleStrict
     /** Configuration properties sent to EOS, with their defaults (also the base of a first sync). */
     private const CONFIG_DEFAULTS = ['ConsumptionWh' => 2000, 'DurationH' => 3, 'NumCycles' => 1, 'ScheduleMode' => 'ONCE', 'TimeWindows' => '[]', 'MinCycleGapH' => 0, 'DeadlinePolicy' => 'BEST_EFFORT'];
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
-    private const BLOCK_TIMERS = ['CyclesPush', 'SlotTimer', 'Watchdog', 'Retry', 'TimesExpiry'];
+    private const BLOCK_TIMERS = ['CyclesPush', 'SlotTimer', 'Watchdog', 'Retry', 'TimesExpiry', 'ClaimRetry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredDeadlineVar', 'RegisteredEarliestVar', 'RegisteredCyclesVar'];
     private const CONTROL_PREFIX = 'EOSHA';
     private const MODE_OFF = 0;

@@ -44,7 +44,7 @@ class EOSBattery extends IPSModuleStrict
     /** Configuration properties sent to EOS, with their defaults (also the base of a first sync). */
     private const CONFIG_DEFAULTS = ['CapacityWh' => 10000, 'MaxChargePowerW' => 5000, 'MinSoC' => 10, 'MaxSoC' => 95, 'ChargingEfficiency' => 0.95, 'DischargingEfficiency' => 0.95, 'LcosAmtKwh' => 0.0];
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
-    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'Retry'];
+    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'Retry', 'ClaimRetry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredSoCVar'];
     private const CONTROL_PREFIX = 'EOSBAT';
 

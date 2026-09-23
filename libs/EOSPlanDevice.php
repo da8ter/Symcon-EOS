@@ -51,6 +51,8 @@ if (!trait_exists('EOSPlanDevice')) {
             $this->RegisterAttributeBoolean('SkewWarned', false);
             // Asks the EOS Server for the id owner again when it could not answer (see deviceIdTaken()).
             $this->RegisterTimer('ClaimRetry', 0, 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
+            // The server's last answer for an id: {id, taken}; kept while it cannot answer.
+            $this->RegisterAttributeString('IdDecision', '{}');
         }
 
         protected function registerPlanVariables(int $position): void
@@ -91,51 +93,34 @@ if (!trait_exists('EOSPlanDevice')) {
          * Is the device id owned by another battery, vehicle or appliance instance at the same
          * EOS Server (EOS needs ids unique across all device kinds)? The server keeps one owner
          * per id: the first instance that claimed it keeps it, so a newly added instance with the
-         * default id never disables a configured one. Without an answer the local rule decides.
+         * default id never disables a configured one. The owners live in the server instance, not
+         * in EOS, so it is asked also while EOS is unreachable. Without an answer (no server, a
+         * deactivated one, or one being re-created by a module reload) nothing is decided anew:
+         * a block stays, an owner keeps working, and the server is asked again.
          */
         protected function deviceIdTaken(string $deviceId): bool
         {
-            // The owners live in the EOS Server instance, not in EOS: asked also while EOS is unreachable.
-            // Without a server to ask (none, or deactivated) nothing is decided: this device waits in 104
-            // and re-applies when the server is back; a block decided now would stick.
-            $parent = (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
-            if ($parent <= 0 || !IPS_InstanceExists($parent) || (int) IPS_GetInstance($parent)['InstanceStatus'] === IS_INACTIVE) {
-                $this->SetTimerInterval('ClaimRetry', 0);
-                return false;
+            if ($this->parentActive()) {
+                $res = $this->forward(['Command' => 'ClaimDevice', 'DeviceID' => $deviceId, 'InstanceID' => $this->InstanceID], true);
+                if (($res['ok'] ?? false) === true && isset($res['owner'])) {
+                    $taken = (int) $res['owner'] !== $this->InstanceID;
+                    $this->SetTimerInterval('ClaimRetry', 0);
+                    $this->WriteAttributeString('IdDecision', json_encode(['id' => $deviceId, 'taken' => $taken]));
+                    return $taken;
+                }
+                $this->SetTimerInterval('ClaimRetry', 30000); // active but no answer (module reload): ask again
+            } else {
+                $this->SetTimerInterval('ClaimRetry', 0);     // asked again when the server is back (ReceiveData)
             }
-            $res = $this->forward(['Command' => 'ClaimDevice', 'DeviceID' => $deviceId, 'InstanceID' => $this->InstanceID], true);
-            if (($res['ok'] ?? false) === true && isset($res['owner'])) {
-                $this->SetTimerInterval('ClaimRetry', 0);
-                return (int) $res['owner'] !== $this->InstanceID;
-            }
-            // Active but no answer (e.g. being re-created by a module reload): the local rule for now, ask again.
-            $this->SetTimerInterval('ClaimRetry', 30000);
-            return $this->isDuplicateDeviceId($deviceId);
+            $last = $this->eosJsonDecode($this->ReadAttributeString('IdDecision'), []);
+            return is_array($last) && ($last['id'] ?? null) === $deviceId && !empty($last['taken']);
         }
 
-        /** Local rule, only while an active server cannot answer: the lowest InstanceID at the same server keeps the id. */
-        protected function isDuplicateDeviceId(string $deviceId): bool
+        /** The parent instance exists and is not deactivated (it can answer ClaimDevice even while EOS is down). */
+        protected function parentActive(): bool
         {
-            $unreadable = false;
             $parent = (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
-            foreach (self::EOS_DEVICE_MODULE_GUIDS as $guid) {
-                foreach (IPS_GetInstanceListByModuleID($guid) as $id) {
-                    if ($id >= $this->InstanceID || (int) IPS_GetInstance($id)['ConnectionID'] !== $parent) {
-                        continue;
-                    }
-                    // During a module reload a sibling may be mid-recreation: Symcon warns and answers false.
-                    $other = @IPS_GetProperty($id, 'DeviceID');
-                    if (!is_string($other)) {
-                        $unreadable = true;
-                    } elseif ($other === $deviceId) {
-                        return true;
-                    }
-                }
-            }
-            if ($unreadable) {
-                $this->RegisterOnceTimer('ApplyLater', 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
-            }
-            return false;
+            return $parent > 0 && IPS_InstanceExists($parent) && (int) IPS_GetInstance($parent)['InstanceStatus'] !== IS_INACTIVE;
         }
 
         /** Statuses in which the instance must neither push, nor process plans, nor drive hardware. */
@@ -183,7 +168,8 @@ if (!trait_exists('EOSPlanDevice')) {
             // usable, redo ApplyChanges so the instance leaves status 104 and
             // starts its timers. Deferred: we are inside the parent's
             // SendDataToChildren call and must not call back into it here.
-            if ($this->GetStatus() === self::STATUS_NO_PARENT && $this->parentUsable()) {
+            // A blocked duplicate asks the server again with every broadcast: the owner may be gone.
+            if (($this->GetStatus() === self::STATUS_NO_PARENT && $this->parentUsable()) || ($this->GetStatus() === self::STATUS_DUPLICATE_ID && $this->parentActive())) {
                 $this->RegisterOnceTimer('ApplyLater', 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
             }
             if ($this->deviceBlocked()) {

@@ -45,7 +45,7 @@ class EOSVehicle extends IPSModuleStrict
     /** Configuration properties sent to EOS, with their defaults (also the base of a first sync). */
     private const CONFIG_DEFAULTS = ['TargetSoC' => 80, 'CapacityWh' => 60000, 'MaxChargePowerW' => 11000, 'MaxSoC' => 100, 'ChargingEfficiency' => 0.90, 'ChargeRates' => '0, 0.25, 0.5, 0.75, 1'];
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
-    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'Retry', 'DeadlineExpiry'];
+    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'Retry', 'DeadlineExpiry', 'ClaimRetry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredSoCVar', 'RegisteredPluggedVar', 'RegisteredDepartureVar'];
     private const CONTROL_PREFIX = 'EOSEV';
     /** Manual / fallback values reuse the battery enumeration: 0 = no charging, 5 = charge at max power. */
