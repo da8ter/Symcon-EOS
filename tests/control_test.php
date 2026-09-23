@@ -230,6 +230,11 @@ check(writesTo(20) === ['now'] && $m->timers['Retry']['ms'] === 29700, 'K48: the
 resetWorld(); setClock($now + 159.6);
 $m->Dispatch();
 check(writesTo(20) === [] && $m->timers['Retry']['ms'] === 900, 'K48: a heartbeat due in 0.4 s is not pushed back to 1.5 s (live: retry, then heartbeat 2 s later): ' . $m->timers['Retry']['ms']);
+$logged = static fn (string $needle): int => count(array_filter($m->logs, static fn (array $l): bool => str_contains($l[1], $needle)));
+check($logged('Control write failed') === 1 && $logged('Control writes OK again') === 0, 'K45: one warning for a failing target, not one per retry, and no "OK again" from heartbeats that skip it (live: 14 warnings in 30 min)');
+$GLOBALS['world'][21]['fail'] = false; resetWorld(); setClock($now + 221);
+$m->Dispatch();
+check(lastSent($m)['targets']['ChargePowerW']['fail'] === 0 && $logged('Control writes OK again') === 1 && $logged('Control write failed') === 1, 'K45: "OK again" once the failing target has been written');
 setClock(null);
 $GLOBALS['world'][21]['fail'] = false;
 

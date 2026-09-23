@@ -247,7 +247,7 @@ if (!trait_exists('EOSControlDispatch')) {
             }
             $this->recordResult($text);
             $this->SendDebug('Control', $text . ' (' . $durationMs . ' ms)', 0);
-            $this->logThrottled($failed !== [] ? implode(' · ', $failed) : '');
+            $this->logThrottled($this->failureSignature($lastNew), implode(' · ', $failed));
             if ($durationMs > self::SLOW_WRITE_MS) {
                 $this->LogMessage(sprintf($this->Translate('Control writes took %d ms - consider a script binding for slow devices'), $durationMs), KL_WARNING);
             }
@@ -282,6 +282,25 @@ if (!trait_exists('EOSControlDispatch')) {
          * per-target heartbeats, the mode-row and change-action retries. Armed on absolute due
          * times, so re-arming from every dispatch cannot starve it.
          */
+        /** Everything failing after a dispatch, attempted now or waiting in its backoff, as sorted "key:error". */
+        protected function failureSignature(array $last): array
+        {
+            $failing = [];
+            foreach ((array) ($last['targets'] ?? []) as $key => $entry) {
+                if ((int) ($entry['fail'] ?? 0) > 0) {
+                    $failing[] = $key . ':' . (string) ($entry['err'] ?? 'failed');
+                }
+            }
+            if ((int) ($last['row']['fail'] ?? 0) > 0) {
+                $failing[] = 'row:' . (string) ($last['row']['failMode'] ?? '');
+            }
+            if ((int) ($last['chg']['fail'] ?? 0) > 0) {
+                $failing[] = 'chg';
+            }
+            sort($failing);
+            return $failing;
+        }
+
         protected function armRetryTimer(array $last, array $resolved): void
         {
             $due = [];

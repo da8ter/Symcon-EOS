@@ -346,17 +346,22 @@ if (!trait_exists('EOSControl')) {
             $this->SetValue('LastControlResult', $this->eosShorten($text, 250));
         }
 
-        /** Warn on failures only when the failure signature changes (and once when it clears). */
-        protected function logThrottled(string $failures): void
+        /**
+         * Warn when something starts failing (a new target or a new kind of error) and once when
+         * everything works again. $failing is the state after the dispatch, including targets that
+         * wait in their backoff; a heartbeat that skips them therefore does not count as recovery.
+         */
+        protected function logThrottled(array $failing, string $text): void
         {
-            $previous = $this->ReadAttributeString('ControlErrorSig');
-            if ($failures === $previous) {
+            $previous = $this->eosJsonDecode($this->ReadAttributeString('ControlErrorSig'), []);
+            $previous = is_array($previous) ? $previous : []; // text from before 23.09.2026 counts as nothing
+            if ($failing === $previous) {
                 return;
             }
-            $this->WriteAttributeString('ControlErrorSig', $failures);
-            if ($failures !== '') {
-                $this->LogMessage($this->Translate('Control write failed') . ': ' . $failures, KL_WARNING);
-            } elseif ($previous !== '') {
+            $this->WriteAttributeString('ControlErrorSig', json_encode($failing));
+            if (array_diff($failing, $previous) !== []) {
+                $this->LogMessage($this->Translate('Control write failed') . ': ' . ($text !== '' ? $text : implode(', ', $failing)), KL_WARNING);
+            } elseif ($failing === []) {
                 $this->LogMessage($this->Translate('Control writes OK again'), KL_NOTIFY);
             }
         }
