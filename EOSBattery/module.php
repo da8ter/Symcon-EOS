@@ -37,7 +37,7 @@ class EOSBattery extends IPSModuleStrict
     private const DEVICE_COLLECTION = 'devices/batteries';
     private const SINGLE_DEVICE = true;
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
-    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog'];
+    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'Retry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredSoCVar'];
     private const CONTROL_PREFIX = 'EOSBAT';
 

@@ -38,7 +38,7 @@ class EOSAppliance extends IPSModuleStrict
     private const DEVICE_COLLECTION = 'devices/home_appliances';
     private const SINGLE_DEVICE = false;
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
-    private const BLOCK_TIMERS = ['CyclesPush', 'SlotTimer', 'Watchdog', 'TimesExpiry'];
+    private const BLOCK_TIMERS = ['CyclesPush', 'SlotTimer', 'Watchdog', 'Retry', 'TimesExpiry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredDeadlineVar', 'RegisteredEarliestVar', 'RegisteredCyclesVar'];
     private const CONTROL_PREFIX = 'EOSHA';
     private const MODE_OFF = 0;
@@ -262,6 +262,16 @@ class EOSAppliance extends IPSModuleStrict
         return ['Enable' => ['property' => 'TargetEnableVariable']];
     }
 
+    /** Something must be able to start the appliance (K17): enable target, RUN action, or action/script on change. */
+    protected function validateControlDevice(): string
+    {
+        $canStart = $this->ReadPropertyInteger('TargetEnableVariable') > 0
+            || $this->normalizeActionJson($this->ReadPropertyString('ModeAction_RUN')) !== ''
+            || $this->normalizeActionJson($this->ReadPropertyString('ChangeAction')) !== ''
+            || $this->ReadPropertyInteger('ControlScript') > 0;
+        return $canStart ? '' : $this->Translate('no binding that can start the appliance');
+    }
+
     protected function modeMapRows(): array
     {
         return [['mode' => 'RUN', 'caption' => 'Run'], ['mode' => 'OFF', 'caption' => 'Off']];
@@ -330,11 +340,11 @@ class EOSAppliance extends IPSModuleStrict
         return $this->ReadPropertyBoolean('AllowStop') || ($desired['source'] ?? '') === 'manual';
     }
 
-    protected function onDispatched(array $desired, bool $success): void
+    protected function onDispatched(array $desired, array $outcome): void
     {
         $id = (string) ($desired['startId'] ?? '');
         // A failed write or start action must not count as "started"; the next dispatch retries.
-        if (!$success || empty($desired['start']) || $id === '' || $id === 'manual') {
+        if (!$outcome['success'] || empty($desired['start']) || $id === '' || $id === 'manual') {
             return;
         }
         $ids = $this->startedIds();

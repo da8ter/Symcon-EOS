@@ -216,12 +216,14 @@ $m = battery(2); $m->properties['HeartbeatSeconds'] = 30; $m->ApplyChanges(); $m
 $GLOBALS['world'][21]['fail'] = true;
 $eos->instructions = []; $eos->instruction('battery1', $now - 5, 'FORCED_CHARGE', 1.0); $eos->freshPlan($now - 30); $m->RefreshPlan(); $m->fireOnce();
 check((lastSent($m)['targets']['ChargePowerW']['fail'] ?? 0) === 1, 'charge power write failed once');
-$ls = lastSent($m); $ls['ts'] = $now - 3600; $m->attributes['LastSent'] = json_encode($ls); resetWorld();
+check($m->timers['Retry']['ms'] === 30500, 'K48: the Retry timer is armed for the first heartbeat (30 s), before the 60 s retry: ' . $m->timers['Retry']['ms']);
+resetWorld(); setClock($now + 40);
 $m->Dispatch();
-check(writesTo(20) === ['now'] && writesTo(23) === [false] && writesTo(21) === [] && lastSent($m)['targets']['ChargePowerW']['fail'] === 1, 'heartbeat re-sends the healthy targets but not the value in backoff: ' . json_encode($GLOBALS['actions']));
-$ls = lastSent($m); $ls['ts'] = $now - 3600; $ls['targets']['ChargePowerW']['failTs'] = $now - 120; $m->attributes['LastSent'] = json_encode($ls); resetWorld();
+check(writesTo(20) === ['now'] && writesTo(23) === [false] && writesTo(21) === [] && lastSent($m)['targets']['ChargePowerW']['fail'] === 1, 'heartbeat after 40 s re-sends the healthy targets but not the value in backoff: ' . json_encode($GLOBALS['actions']));
+resetWorld(); setClock($now + 100);
 $m->Dispatch();
-check(lastSent($m)['targets']['ChargePowerW']['fail'] === 2, 'after the backoff the heartbeat retries the failed value');
+check(lastSent($m)['targets']['ChargePowerW']['fail'] === 2, 'after the 60 s backoff the failed value is retried');
+setClock(null);
 $GLOBALS['world'][21]['fail'] = false;
 
 // ---------------------------------------------------------------- T13 appliance start only counts when nothing is still failing
@@ -292,5 +294,65 @@ $ha->properties['DeviceID'] = 'battery1'; $ha->ApplyChanges();
 check($ha->status === 203 && !isset($ha->messages[28]) && $ha->timers['CyclesPush']['ms'] === 0, 'K38: ids are unique across device kinds; the source registered before is released');
 unset($GLOBALS['objects'][1100], $GLOBALS['objects'][1300]);
 $GLOBALS['registry'] = false;
+
+// ---------------------------------------------------------------- T16 control state machine (review 23.09.2026)
+echo "== Zustandsmaschine\n";
+setClock($now);
+worldVar(60, 3, '', true); worldVar(61, 1, 0, true); worldVar(62, 0, false, true);
+$sm = battery(2);
+$sm->properties['TargetModeVariable'] = 60; $sm->properties['TargetChargePowerVariable'] = 61; $sm->properties['TargetDischargePowerVariable'] = 0; $sm->properties['TargetDischargeAllowedVariable'] = 62;
+$eos->instructions = []; $eos->instruction('battery1', $now - 5, 'FORCED_CHARGE', 1.0); $eos->freshPlan($now - 30);
+unset($GLOBALS['world'][62]); resetWorld();
+$sm->ApplyChanges(); $sm->fireOnce();
+check($sm->attributes['ControlReady'] === true && str_contains($sm->attributes['ControlProblem'], 'DischargeAllowed'), 'K46: a missing optional target is reported but does not stop control');
+check(writesTo(60) === ['now'] && writesTo(61) === [5000], 'K46: the other targets are written');
+$e = lastSent($sm)['targets']['DischargeAllowed'] ?? [];
+check(($e['err'] ?? '') === 'missing' && ($e['fail'] ?? 0) === 1, 'K4: the missing target is recorded as a failure (err missing), not as "changed" forever');
+check(($GLOBALS['runScripts'][0][1]['ModeChanged'] ?? null) === true && ($GLOBALS['runScripts'][0][1]['Resync'] ?? null) === true && $GLOBALS['runScripts'][0][1]['Reason'] === 'plan', 'K16: the script context carries ModeChanged and Resync, Reason stays the source');
+$scriptRuns = count($GLOBALS['runScripts']);
+$desiredBefore = $sm->attributes['Desired']; $staleSets = $sm->variables['PlanStale']['setCount'];
+for ($i = 1; $i <= 5; $i++) { setClock($now + $i * 10); $sm->Watchdog(); }
+check($sm->onceTimers === [] && $sm->attributes['Desired'] === $desiredBefore && $sm->variables['PlanStale']['setCount'] === $staleSets, 'K20: idle watchdog ticks arm no dispatch and rewrite nothing');
+setClock($now + 70); $sm->fireTimer('Retry');
+check(count($GLOBALS['runScripts']) === $scriptRuns && (lastSent($sm)['targets']['DischargeAllowed']['fail'] ?? 0) === 2, 'K4/K16: the retry after the backoff runs without the script on change');
+$eos->freshPlan($now - 4 * 3600); $sm->RefreshPlan(); $sm->fireOnce();
+check(end($GLOBALS['actions'])[0] !== 62 && in_array('pv', writesTo(60), true) && $sm->value('FallbackActive') === true, 'K46: a stale plan still writes the fallback to the remaining targets');
+setClock($now);
+
+// K39: the gap re-evaluates the last instruction with today's policy
+$g = battery(2);
+$eos->instructions = []; $eos->instruction('battery1', $now - 5, 'FORCED_CHARGE', 1.0); $eos->freshPlan($now - 30); $g->ApplyChanges(); $g->fireOnce();
+$eos->instructions = []; $eos->instruction('battery1', $now + 300, 'IDLE'); $eos->freshPlan($now - 10); $g->RefreshPlan(); $g->fireOnce(); resetWorld();
+$g->properties['AllowGridCharge'] = false; $g->ApplyChanges(); $g->fireOnce();
+check(writesTo(20) === ['pvonly'] && writesTo(21) === [0], 'K39: in the gap the held instruction follows the current policy (no grid charging): ' . json_encode($GLOBALS['actions']));
+
+// K42: no second fallback when the master switch had already released
+resetWorld(); $g->RequestAction('ControlActive', false); $released = count($GLOBALS['actions']);
+$g->properties['ControlMode'] = 0; $g->ApplyChanges(); $g->fireOnce();
+check($released > 0 && count($GLOBALS['actions']) === $released, 'K42: leaving "active" while switched off writes no second fallback');
+$g->RequestAction('ControlActive', true);
+
+// K47: manual return survives a display-mode round trip
+$mm = battery(2); $mm->properties['ManualReturnMinutes'] = 30; $mm->ApplyChanges(); $mm->fireOnce();
+$mm->RequestAction('ManualMode', 5); $mm->fireOnce(); $until = $mm->attributes['ManualUntil'];
+$mm->properties['ControlMode'] = 0; $mm->ApplyChanges(); $mm->properties['ControlMode'] = 2; $mm->ApplyChanges(); $mm->fireOnce();
+check($until > $now && $mm->attributes['ManualUntil'] === $until, 'K47: ManualUntil survives "display only" and back');
+setClock($until + 1); $mm->Watchdog(); $mm->fireOnce();
+check($mm->value('ManualMode') === 100, 'K47: the manual mode still ends on time');
+setClock($now);
+
+// K3: an old failure of a different value does not keep the state "pending"
+$k3 = battery(2); $k3->ApplyChanges(); $k3->fireOnce();
+$ls = lastSent($k3); $ls['targets']['ChargePowerW'] = ['v' => '0', 'ts' => $now - 600, 'fail' => 1, 'failTs' => $now - 30, 'fv' => '1000', 'err' => 'failed'];
+$k3->attributes['LastSent'] = json_encode($ls); resetWorld(); $k3->Dispatch();
+check(writesTo(21) === [0] && lastSent($k3)['targets']['ChargePowerW']['fail'] === 0, 'K3: a failure of another value is cleared by writing the wanted value once');
+
+// K51a, K17: structural problems
+worldVar(63, 1, 100, true); $GLOBALS['world'][63]['parent'] = 1000;
+$own = battery(2); $own->properties['TargetModeVariable'] = 63; $own->ApplyChanges();
+check($own->attributes['ControlReady'] === false && str_contains($own->attributes['ControlProblem'], 'this instance'), 'K51a: a variable of the instance itself cannot be a target');
+$ha = new EOSAppliance(1002); $ha->Create(); connectToServer($ha);
+$ha->properties['ControlMode'] = 2; $ha->properties['ModeAction_OFF'] = json_encode(['actionID' => '{OK}', 'parameters' => []]); $ha->ApplyChanges();
+check($ha->attributes['ControlReady'] === false && str_contains($ha->attributes['ControlProblem'], 'start the appliance'), 'K17: an appliance without a binding that can start it is not ready');
 
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

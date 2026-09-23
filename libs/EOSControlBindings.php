@@ -9,7 +9,8 @@ declare(strict_types=1);
  * a Symcon action (SelectAction JSON) or a script, and how to read the
  * mode-mapping table from the configuration form.
  *
- * All executors return ['ok' => bool, 'text' => string, 'skipped' => bool, 'norm' => string].
+ * All executors return ['ok' => bool, 'text' => string, 'skipped' => bool, 'norm' => string];
+ * writeTarget() adds 'err' (missing | unactionable | coerce | failed) for failures.
  */
 if (!trait_exists('EOSControlBindings')) {
     trait EOSControlBindings
@@ -126,15 +127,15 @@ if (!trait_exists('EOSControlBindings')) {
         protected function writeTarget(string $key, int $varId, mixed $value, bool $sim): array
         {
             if ($varId <= 0 || !IPS_VariableExists($varId)) {
-                return ['ok' => false, 'skipped' => true, 'norm' => '', 'text' => $key . ': ' . $this->Translate('target variable missing')];
+                return ['ok' => false, 'skipped' => true, 'err' => 'missing', 'norm' => '', 'text' => $key . ': ' . $this->Translate('target variable missing')];
             }
             if (!$this->isActionable($varId)) {
-                return ['ok' => false, 'skipped' => true, 'norm' => '', 'text' => $key . ': ' . $this->Translate('target variable not actionable')];
+                return ['ok' => false, 'skipped' => true, 'err' => 'unactionable', 'norm' => '', 'text' => $key . ': ' . $this->Translate('target variable not actionable')];
             }
             try {
                 $typed = $this->coerceToVariableType($value, (int) IPS_GetVariable($varId)['VariableType']);
             } catch (\Throwable $e) {
-                return ['ok' => false, 'skipped' => false, 'norm' => '', 'text' => $key . ': ' . $e->getMessage()];
+                return ['ok' => false, 'skipped' => false, 'err' => 'coerce', 'norm' => '', 'text' => $key . ': ' . $e->getMessage()];
             }
             $norm = $this->normalizeValue($typed);
             if ($sim) {
@@ -143,7 +144,7 @@ if (!trait_exists('EOSControlBindings')) {
             $warnings = [];
             $ok = $this->callCapturing(static fn (): mixed => RequestAction($varId, $typed), $warnings);
             if ($ok === false) {
-                return ['ok' => false, 'skipped' => false, 'norm' => $norm, 'text' => $key . '→' . $norm . ' ' . $this->Translate('failed') . ': ' . $this->failureText($warnings, 'RequestAction returned false')];
+                return ['ok' => false, 'skipped' => false, 'err' => 'failed', 'norm' => $norm, 'text' => $key . '→' . $norm . ' ' . $this->Translate('failed') . ': ' . $this->failureText($warnings, 'RequestAction returned false')];
             }
             return ['ok' => true, 'skipped' => false, 'norm' => $norm, 'text' => $key . '→' . $norm . ' OK'];
         }
@@ -316,7 +317,7 @@ if (!trait_exists('EOSControlBindings')) {
 
         // ---------------------------------------------------------------- validation
 
-        /** Any binding configured at all? */
+        /** Any binding configured at all? Mode-map values only count where a Mode target exists. */
         protected function bindingsConfigured(): bool
         {
             foreach ($this->controlTargets() as $target) {
@@ -327,46 +328,78 @@ if (!trait_exists('EOSControlBindings')) {
             if ($this->normalizeActionJson($this->ReadPropertyString('ChangeAction')) !== '' || $this->ReadPropertyInteger('ControlScript') > 0) {
                 return true;
             }
+            $hasMode = isset($this->controlTargets()['Mode']);
             foreach ($this->modeMapSaved() as $row) {
-                if ($row['value'] !== '' || $row['action'] !== '') {
+                if ($row['action'] !== '' || ($hasMode && $row['value'] !== '')) {
                     return true;
                 }
             }
             return false;
         }
 
-        /** Empty string when all bindings are valid, otherwise the first problem. */
-        protected function validateBindings(): string
+        /**
+         * 'blocking': the configuration cannot work at all (control stays off until Apply);
+         * 'warnings': single bindings that are skipped with backoff while the rest - fallback
+         * included - keeps working.
+         */
+        protected function checkBindings(): array
         {
             if (!$this->bindingsConfigured()) {
-                return $this->Translate('no bindings configured');
+                return ['blocking' => $this->Translate('no bindings configured'), 'warnings' => []];
             }
+            $warnings = [];
             foreach ($this->controlTargets() as $key => $target) {
                 $varId = $this->ReadPropertyInteger($target['property']);
                 if ($varId <= 0) {
                     continue;
                 }
                 if (!IPS_VariableExists($varId)) {
-                    return $key . ': ' . $this->Translate('target variable missing');
+                    $warnings[] = $key . ': ' . $this->Translate('target variable missing');
+                    continue;
+                }
+                if (IPS_GetParent($varId) === $this->InstanceID) {
+                    // e.g. ManualMode as mode target: the first write would switch this instance itself.
+                    return ['blocking' => $key . ': ' . $this->Translate('a variable of this instance cannot be a target'), 'warnings' => []];
                 }
                 if (!$this->isActionable($varId)) {
-                    return $key . ': ' . $this->Translate('target variable not actionable');
+                    $warnings[] = $key . ': ' . $this->Translate('target variable not actionable');
+                    continue;
+                }
+                if ($key === 'Mode') {
+                    $type = (int) IPS_GetVariable($varId)['VariableType'];
+                    foreach ($this->modeMapSaved() as $mode => $row) {
+                        if ($row['value'] === '') {
+                            continue;
+                        }
+                        try {
+                            $this->coerceToVariableType($row['value'], $type);
+                        } catch (\Throwable $e) {
+                            return ['blocking' => $mode . ': ' . $e->getMessage(), 'warnings' => []];
+                        }
+                    }
                 }
             }
             $change = $this->normalizeActionJson($this->ReadPropertyString('ChangeAction'));
             if ($change !== '' && !is_array(json_decode($change, true))) {
-                return $this->Translate('Action on change') . ': ' . $this->Translate('invalid action');
+                return ['blocking' => $this->Translate('Action on change') . ': ' . $this->Translate('invalid action'), 'warnings' => []];
             }
             foreach ($this->modeMapSaved() as $mode => $row) {
                 if ($row['action'] !== '' && !is_array(json_decode($row['action'], true))) {
-                    return $mode . ': ' . $this->Translate('invalid action');
+                    return ['blocking' => $mode . ': ' . $this->Translate('invalid action'), 'warnings' => []];
                 }
             }
             $script = $this->ReadPropertyInteger('ControlScript');
             if ($script > 0 && !IPS_ScriptExists($script)) {
-                return $this->Translate('Script on change') . ': ' . $this->Translate('script missing');
+                $warnings[] = $this->Translate('Script on change') . ': ' . $this->Translate('script missing');
             }
-            return $this->validateControlDevice();
+            return ['blocking' => $this->validateControlDevice(), 'warnings' => $warnings];
+        }
+
+        /** First problem as text ('' = all bindings fine); kept for diagnostics. */
+        protected function validateBindings(): string
+        {
+            $check = $this->checkBindings();
+            return $check['blocking'] !== '' ? $check['blocking'] : (string) ($check['warnings'][0] ?? '');
         }
 
         /** Device-specific validation hook (e.g. max power must be > 0 when a power target is bound). */

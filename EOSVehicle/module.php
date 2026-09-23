@@ -37,7 +37,7 @@ class EOSVehicle extends IPSModuleStrict
     private const DEVICE_COLLECTION = 'devices/electric_vehicles';
     private const SINGLE_DEVICE = true;
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
-    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'DeadlineExpiry'];
+    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'Retry', 'DeadlineExpiry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredSoCVar', 'RegisteredPluggedVar', 'RegisteredDepartureVar'];
     private const CONTROL_PREFIX = 'EOSEV';
     /** Manual / fallback values reuse the battery enumeration: 0 = no charging, 5 = charge at max power. */
@@ -358,9 +358,9 @@ class EOSVehicle extends IPSModuleStrict
         return $this->desiredFromVehicleState($state, '', '');
     }
 
-    protected function onDispatched(array $desired, bool $success): void
+    protected function onDispatched(array $desired, array $outcome): void
     {
-        if (!$success) {
+        if (!$outcome['success']) {
             return; // the wallbox did not take the new state; keep the dwell clock as it was
         }
         $charging = !empty($desired['targets']['ChargeAllowed']) ? 1 : 0;

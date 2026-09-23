@@ -213,7 +213,7 @@
                 },
                 {
                     "type": "ExpansionPanel",
-                    "caption": "Option 3: run an instance action or script on every EOS mode change",
+                    "caption": "Option 3: run an instance action or script on every change, mode change and heartbeat",
                     "expanded": false,
                     "items": [
                         {
@@ -273,7 +273,7 @@
                         {
                             "type": "NumberSpinner",
                             "name": "HeartbeatSeconds",
-                            "caption": "Re-send setpoints every (s), 0 = off",
+                            "caption": "Re-send setpoints every (s), 0 = off, at least 5",
                             "minimum": 0,
                             "maximum": 3600,
                             "suffix": " s"

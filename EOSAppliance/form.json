@@ -115,38 +115,6 @@
                             "validVariableTypes": [
                                 0
                             ]
-                        },
-                        {
-                            "type": "List",
-                            "name": "ModeMap",
-                            "caption": "Value per EOS mode for the mode variable",
-                            "rowCount": 2,
-                            "add": false,
-                            "delete": false,
-                            "columns": [
-                                {
-                                    "name": "mode",
-                                    "caption": "EOS",
-                                    "width": "170px",
-                                    "visible": true,
-                                    "save": true
-                                },
-                                {
-                                    "name": "caption",
-                                    "caption": "Meaning",
-                                    "width": "160px"
-                                },
-                                {
-                                    "name": "value",
-                                    "caption": "Value for the mode variable",
-                                    "width": "auto",
-                                    "add": "",
-                                    "edit": {
-                                        "type": "ValidationTextBox"
-                                    }
-                                }
-                            ],
-                            "values": []
                         }
                     ]
                 },
@@ -159,7 +127,7 @@
                         {
                             "type": "SelectObject",
                             "name": "ActionTarget",
-                            "caption": "Target of the actions (variable or instance, also for option 3; default: the mode variable)",
+                            "caption": "Target of the actions (variable or instance, also for option 3)",
                             "onChange": "IPS_RequestAction($id, 'SetActionTarget', json_encode(['target' => $ActionTarget, 'modeVar' => 0]));"
                         },
                         {
@@ -170,7 +138,7 @@
                 },
                 {
                     "type": "ExpansionPanel",
-                    "caption": "Option 3: run an instance action or script on every EOS mode change",
+                    "caption": "Option 3: run an instance action or script on every change, mode change and heartbeat",
                     "expanded": false,
                     "items": [
                         {
@@ -225,7 +193,7 @@
                         {
                             "type": "NumberSpinner",
                             "name": "HeartbeatSeconds",
-                            "caption": "Re-send setpoints every (s), 0 = off",
+                            "caption": "Re-send setpoints every (s), 0 = off, at least 5",
                             "minimum": 0,
                             "maximum": 3600,
                             "suffix": " s"

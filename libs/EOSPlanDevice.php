@@ -353,7 +353,9 @@ if (!trait_exists('EOSPlanDevice')) {
             if ($active === null && $this->activeInstruction() === null) {
                 $stale = true;
             }
-            $this->SetValue('PlanStale', $stale);
+            if ((bool) $this->GetValue('PlanStale') !== $stale) {
+                $this->SetValue('PlanStale', $stale);
+            }
         }
 
         /** Register/unregister VM_UPDATE for an optional source variable property (remembered in an attribute). */

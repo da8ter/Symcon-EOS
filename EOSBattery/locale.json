@@ -75,7 +75,6 @@
             "Fallback and safety": "Fallback and safety",
             "Fallback mode (plan stale or expired)": "Fallback mode (plan stale or expired)",
             "No intervention": "No intervention",
-            "Re-send setpoints every (s), 0 = off": "Re-send setpoints every (s), 0 = off",
             "Manual mode returns to automatic after (min), 0 = never": "Manual mode returns to automatic after (min), 0 = never",
             "Write the fallback once when control is switched off": "Write the fallback once when control is switched off",
             "Apply control now": "Apply control now",
@@ -92,7 +91,6 @@
             "Three options drive the device. All are optional and can be combined; on a change they run in order 1, 2, 3. Values are written only when they change, the action per mode runs once when entering the mode.": "Three options drive the device. All are optional and can be combined; on a change they run in order 1, 2, 3. Values are written only when they change, the action per mode runs once when entering the mode.",
             "Option 1: write values to variables on mode change": "Option 1: write values to variables on mode change",
             "Option 2: run an instance action per EOS mode": "Option 2: run an instance action per EOS mode",
-            "Option 3: run an instance action or script on every EOS mode change": "Option 3: run an instance action or script on every EOS mode change",
             "Target of the actions (variable or instance, also for option 3; default: the mode variable)": "Target of the actions (variable or instance, also for option 3; default: the mode variable)",
             "Each action runs once when EOS switches into that mode. The picker opens with the target above and lists its actions.": "Each action runs once when EOS switches into that mode. The picker opens with the target above and lists its actions.",
             "Value per EOS mode for the mode variable": "Value per EOS mode for the mode variable",
@@ -118,7 +116,11 @@
             "- EOS configuration not readable -": "- EOS configuration not readable -",
             "EOS already has another device of this kind": "EOS already has another device of this kind",
             "Min. SoC must be below max. SoC (configuration not written to EOS)": "Min. SoC must be below max. SoC (configuration not written to EOS)",
-            "EOS %s update failed: %s": "EOS %s update failed: %s"
+            "EOS %s update failed: %s": "EOS %s update failed: %s",
+            "control binding problem": "control binding problem",
+            "a variable of this instance cannot be a target": "a variable of this instance cannot be a target",
+            "Option 3: run an instance action or script on every change, mode change and heartbeat": "Option 3: run an instance action or script on every change, mode change and heartbeat",
+            "Re-send setpoints every (s), 0 = off, at least 5": "Re-send setpoints every (s), 0 = off, at least 5"
         },
         "de": {
             "EOS Battery": "EOS Batterie",
@@ -223,7 +225,6 @@
             "Fallback and safety": "Fallback und Sicherheit",
             "Fallback mode (plan stale or expired)": "Fallback-Modus (Plan veraltet oder abgelaufen)",
             "No intervention": "Kein Eingriff",
-            "Re-send setpoints every (s), 0 = off": "Sollwerte erneut senden alle (s), 0 = aus",
             "Manual mode returns to automatic after (min), 0 = never": "Manueller Modus kehrt zurück zu Automatik nach (min), 0 = nie",
             "Write the fallback once when control is switched off": "Beim Abschalten der Steuerung den Fallback einmal schreiben",
             "Apply control now": "Steuerung jetzt anwenden",
@@ -240,7 +241,6 @@
             "Three options drive the device. All are optional and can be combined; on a change they run in order 1, 2, 3. Values are written only when they change, the action per mode runs once when entering the mode.": "Drei Optionen steuern das Gerät. Alle sind optional und kombinierbar; bei einem Wechsel laufen sie in der Reihenfolge 1, 2, 3. Werte werden nur bei Änderung geschrieben, die Aktion je Modus läuft einmal beim Eintritt in den Modus.",
             "Option 1: write values to variables on mode change": "Option 1: Bei Moduswechsel Werte in Variablen schreiben",
             "Option 2: run an instance action per EOS mode": "Option 2: Je EOS-Modus eine Instanzaktion ausführen",
-            "Option 3: run an instance action or script on every EOS mode change": "Option 3: Bei jedem EOS-Moduswechsel Instanzaktion oder Skript ausführen",
             "Target of the actions (variable or instance, also for option 3; default: the mode variable)": "Ziel der Aktionen (Variable oder Instanz, gilt auch für Option 3; Standard: die Modus-Variable)",
             "Each action runs once when EOS switches into that mode. The picker opens with the target above and lists its actions.": "Jede Aktion läuft einmal, wenn EOS in diesen Modus wechselt. Die Auswahl öffnet mit dem Ziel oben und zeigt dessen Aktionen.",
             "Value per EOS mode for the mode variable": "Wert je EOS-Modus für die Modus-Variable",
@@ -266,7 +266,11 @@
             "- EOS configuration not readable -": "- EOS-Konfiguration nicht lesbar -",
             "EOS already has another device of this kind": "EOS hat bereits ein anderes Gerät dieser Art",
             "Min. SoC must be below max. SoC (configuration not written to EOS)": "Min. SoC muss unter dem Max. SoC liegen (Konfiguration nicht nach EOS geschrieben)",
-            "EOS %s update failed: %s": "EOS-Aktualisierung von %s fehlgeschlagen: %s"
+            "EOS %s update failed: %s": "EOS-Aktualisierung von %s fehlgeschlagen: %s",
+            "control binding problem": "Problem mit einer Steuerungsbindung",
+            "a variable of this instance cannot be a target": "eine Variable dieser Instanz kann kein Ziel sein",
+            "Option 3: run an instance action or script on every change, mode change and heartbeat": "Option 3: Bei jeder Änderung, jedem Moduswechsel und jedem Heartbeat Instanzaktion oder Skript ausführen",
+            "Re-send setpoints every (s), 0 = off, at least 5": "Sollwerte erneut senden alle (s), 0 = aus, mindestens 5"
         }
     }
 }
