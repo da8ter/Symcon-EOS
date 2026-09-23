@@ -373,6 +373,30 @@
                     "type": "Label",
                     "name": "ConfigInfo",
                     "caption": " "
+                },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Button",
+                            "name": "OverwriteEOS",
+                            "caption": "Overwrite EOS with these values",
+                            "onClick": "EOSEV_WriteConfigToEOS($id);"
+                        },
+                        {
+                            "type": "Button",
+                            "name": "LoadFromEOS",
+                            "caption": "Load values from EOS",
+                            "onClick": "EOSEV_ReadConfigFromEOS($id);"
+                        },
+                        {
+                            "type": "Button",
+                            "name": "RemoveOldEntry",
+                            "caption": "Remove old EOS entry",
+                            "visible": false,
+                            "onClick": "IPS_RequestAction($id, 'RemoveOldEOSEntry', '');"
+                        }
+                    ]
                 }
             ]
         }

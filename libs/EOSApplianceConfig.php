@@ -11,31 +11,29 @@ if (!trait_exists('EOSApplianceConfig')) {
     trait EOSApplianceConfig
     {
         /** Force-write the appliance parameters to EOS (ApplyChanges does it automatically when they differ). */
-        public function WriteConfigToEOS(): bool
-        {
-            [$path, $device, $merge] = $this->deviceConfig();
-            return $this->syncDeviceConfig($path, $device, $merge, true);
-        }
-
         /** [config path, device entry, merge payload]; devices/max_home_appliances is handled by ensureDeviceMaximum(). */
         private function deviceConfig(): array
         {
             $id = $this->ReadPropertyString('DeviceID');
             $appliance = [
                 'device_id'       => $id,
-                'consumption_wh'  => $this->ReadPropertyInteger('ConsumptionWh'),
-                'duration_h'      => max(1, $this->ReadPropertyInteger('DurationH')),
-                'num_cycles'      => max(1, $this->ReadPropertyInteger('NumCycles')),
-                'min_cycle_gap_h' => $this->ReadPropertyInteger('MinCycleGapH'),
-                'schedule_mode'   => $this->ReadPropertyString('ScheduleMode'),
-                'deadline_policy' => $this->ReadPropertyString('DeadlinePolicy'),
+                'consumption_wh'  => $this->configValue('ConsumptionWh'),
+                'duration_h'      => max(1, (int) $this->configValue('DurationH')),
+                'num_cycles'      => max(1, (int) $this->configValue('NumCycles')),
+                'min_cycle_gap_h' => $this->configValue('MinCycleGapH'),
+                'schedule_mode'   => $this->configValue('ScheduleMode'),
+                'deadline_policy' => $this->configValue('DeadlinePolicy'),
             ];
             $windows = [];
-            foreach ($this->eosJsonDecode($this->ReadPropertyString('TimeWindows'), []) ?: [] as $row) {
+            foreach ($this->eosJsonDecode((string) $this->configValue('TimeWindows'), []) ?: [] as $row) {
                 $start = trim((string) ($row['start_time'] ?? ''));
                 $duration = trim((string) ($row['duration'] ?? ''));
                 if ($start !== '' && $duration !== '') {
-                    $windows[] = ['start_time' => $start, 'duration' => $duration];
+                    // day_of_week, date and locale come from EOSdash (hidden columns) and are written back unchanged.
+                    $windows[] = ['start_time' => $start, 'duration' => $duration] + array_filter(
+                        ['day_of_week' => $row['day_of_week'] ?? null, 'date' => $row['date'] ?? null, 'locale' => $row['locale'] ?? null],
+                        static fn (mixed $v): bool => $v !== null && $v !== ''
+                    );
                 }
             }
             $appliance['time_windows'] = $windows !== [] ? ['windows' => $windows] : null;
@@ -44,32 +42,18 @@ if (!trait_exists('EOSApplianceConfig')) {
             return [self::DEVICE_COLLECTION . '/' . $id, $appliance, ['devices' => ['home_appliances' => [$id => $appliance]]]];
         }
 
-        public function ReadConfigFromEOS(): bool
+        /** Property => [EOS key, type] for loading EOS values into the form. */
+        private function configFieldMap(): array
         {
-            $id = $this->ReadPropertyString('DeviceID');
-            $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/home_appliances/' . $id]);
-            $ha = $res['data'] ?? null;
-            if (($res['ok'] ?? false) !== true || !is_array($ha)) {
-                $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('No appliance %s in EOS configuration.'), $id));
-                return false;
-            }
-            foreach (['ConsumptionWh' => 'consumption_wh', 'DurationH' => 'duration_h', 'NumCycles' => 'num_cycles', 'MinCycleGapH' => 'min_cycle_gap_h'] as $field => $key) {
-                if (isset($ha[$key])) {
-                    $this->UpdateFormField($field, 'value', (int) $ha[$key]);
-                }
-            }
-            foreach (['ScheduleMode' => 'schedule_mode', 'DeadlinePolicy' => 'deadline_policy'] as $field => $key) {
-                if (isset($ha[$key])) {
-                    $this->UpdateFormField($field, 'value', (string) $ha[$key]);
-                }
-            }
-            $rows = [];
-            foreach ($ha['time_windows']['windows'] ?? [] as $w) {
-                $rows[] = ['start_time' => (string) ($w['start_time'] ?? ''), 'duration' => (string) ($w['duration'] ?? '')];
-            }
-            $this->UpdateFormField('TimeWindows', 'values', json_encode($rows));
-            $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
-            return true;
+            return [
+                'ConsumptionWh'  => ['consumption_wh', 'int'],
+                'DurationH'      => ['duration_h', 'int'],
+                'NumCycles'      => ['num_cycles', 'int'],
+                'MinCycleGapH'   => ['min_cycle_gap_h', 'int'],
+                'ScheduleMode'   => ['schedule_mode', 'string'],
+                'DeadlinePolicy' => ['deadline_policy', 'string'],
+                'TimeWindows'    => ['time_windows', 'windows'],
+            ];
         }
 
         // ------------------------------------------------------------------ times and measurements

@@ -190,4 +190,80 @@ setClock($now + 7201); $a->fireTimer('TimesExpiry');
 check($haDeadline() === null, 'N1: the passed appliance deadline is cleared in EOS');
 setClock($now);
 
+// ---------------------------------------------------------------- K11, K9, K14, K12, S4, S1: three-way sync
+echo "== Drei-Wege-Abgleich (K9, K11, K12, K14, S4, S1)\n";
+$caption = static function (IPSModuleStrict $m): string {
+    $last = '';
+    foreach ($m->formUpdates as [$field, $param, $value]) {
+        if ($field === 'ConfigInfo' && $param === 'caption') {
+            $last = (string) $value;
+        }
+    }
+    return $last;
+};
+eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV]);
+$b = battery(); $b->ApplyChanges();
+$be->putConfig(['devices' => ['batteries' => ['battery1' => ['device_id' => 'battery1', 'max_charge_power_w' => 3000]]]]);
+$be->calls = []; $b->ApplyChanges();
+check(eosMerges() === [] && (int) $be->live['devices']['batteries']['battery1']['max_charge_power_w'] === 3000, 'K11: an EOSdash edit survives kernel start, reload and ApplyLater (no write)');
+$form = json_decode($b->GetConfigurationForm(), true);
+check(str_contains((string) element($form['elements'], 'ConfigInfo')['caption'], 'max_charge_power_w') && $b->timers['FormFill']['ms'] === 1500, 'K11: the form offers the value changed in EOS');
+$b->formUpdates = []; $b->fireTimer('FormFill');
+check(in_array(['MaxChargePowerW', 'value', 3000], $b->formUpdates, true) && !in_array('CapacityWh', array_column($b->formUpdates, 0), true), 'K11: FormFill loads only the field changed in EOS');
+$b->properties['MaxChargePowerW'] = 3000; $be->calls = []; $b->ApplyChanges();
+check(eosMerges() === [], 'taking over the EOS value writes nothing');
+$be->putConfig(['devices' => ['batteries' => ['battery1' => ['device_id' => 'battery1', 'min_soc_percentage' => 20]]]]);
+$b->properties['CapacityWh'] = 12000; $be->calls = []; $b->ApplyChanges();
+$sent = eosMerges()[0][2]['devices']['batteries']['battery1'] ?? [];
+check(array_keys($sent) === ['device_id', 'capacity_wh'] && (int) $be->live['devices']['batteries']['battery1']['min_soc_percentage'] === 20, 'K11: only the field changed in Symcon is written, the EOSdash edit of another field stays: ' . json_encode($sent));
+$be->putConfig(['devices' => ['batteries' => ['battery1' => ['device_id' => 'battery1', 'capacity_wh' => 15000]]]]);
+$b->properties['CapacityWh'] = 11000; $be->calls = []; $b->ApplyChanges();
+check(eosMerges() === [] && (int) $be->live['devices']['batteries']['battery1']['capacity_wh'] === 15000 && str_contains($caption($b), 'conflict capacity_wh'), 'conflict (both changed): nothing written, both values shown');
+$b->WriteConfigToEOS();
+check((int) $be->live['devices']['batteries']['battery1']['capacity_wh'] === 11000 && (int) $be->live['devices']['batteries']['battery1']['min_soc_percentage'] === 10, '"Overwrite EOS with these values" writes every differing field');
+
+const SPEICHER = ['device_id' => 'speicher', 'capacity_wh' => 13500, 'max_charge_power_w' => 3000, 'min_soc_percentage' => 20, 'max_soc_percentage' => 90, 'charging_efficiency' => 0.97, 'discharging_efficiency' => 0.97, 'levelized_cost_of_storage_amt_kwh' => 0.05];
+eosLoad(['batteries' => ['speicher' => SPEICHER], 'inverters' => ['inv1' => ['device_id' => 'inv1', 'battery_id' => 'speicher']]]);
+$b = battery();
+$b->RequestAction('PickDeviceId', 'speicher');
+check(in_array(['CapacityWh', 'value', 13500], $b->formUpdates, true) && in_array(['DeviceID', 'value', 'speicher'], $b->formUpdates, true), 'K9: picking an EOS device loads its id and values into the form');
+$b->properties = array_merge($b->properties, ['DeviceID' => 'speicher', 'CapacityWh' => 13500, 'MaxChargePowerW' => 3000, 'MinSoC' => 20, 'MaxSoC' => 90, 'ChargingEfficiency' => 0.97, 'DischargingEfficiency' => 0.97, 'LcosAmtKwh' => 0.05]);
+$be->calls = []; $b->ApplyChanges();
+check(eosMerges() === [] && $b->status === IS_ACTIVE, 'K9: Apply after the pick writes nothing');
+$b2 = battery('speicher'); $be->calls = []; $b2->ApplyChanges();
+check(eosMerges() === [] && (int) $be->live['devices']['batteries']['speicher']['capacity_wh'] === 13500, 'K9: a typed id with untouched defaults takes the EOS values instead of overwriting them');
+$state = (fn (): array => $this->batteryState('GRID_SUPPORT_EXPORT', 0.5, false))->call($b2);
+check($state['dischargeW'] === 1500.0, 'S4: the export setpoint follows the rated power EOS plans with (0.5 x 3000 W), not the Symcon limit: ' . $state['dischargeW']);
+
+eosLoad(['max_home_appliances' => 1, 'home_appliances' => ['dishwasher1' => HA], 'batteries' => ['battery1' => BAT], 'inverters' => INV]);
+$a = new EOSAppliance(1002); $a->Create(); connectToRealServer($a);
+$a->properties['TimeWindows'] = json_encode([['start_time' => '08:00', 'duration' => '6 hours']]); $a->ApplyChanges();
+check(($be->live['devices']['home_appliances']['dishwasher1']['time_windows']['windows'][0]['start_time'] ?? '') === '08:00', 'a new time window is written');
+$a->properties['TimeWindows'] = '[]'; $a->ApplyChanges();
+check(array_key_exists('time_windows', $be->live['devices']['home_appliances']['dishwasher1']) && $be->live['devices']['home_appliances']['dishwasher1']['time_windows'] === null, 'K12: emptied time windows are cleared in EOS (path PUT null)');
+eosLoad(['max_home_appliances' => 1, 'home_appliances' => ['dishwasher1' => HA + ['time_windows' => ['windows' => [['start_time' => '08:00:00.000000', 'duration' => '6 hours', 'day_of_week' => 'mon']]]]], 'batteries' => ['battery1' => BAT], 'inverters' => INV]);
+$a = new EOSAppliance(1002); $a->Create(); connectToRealServer($a);
+$a->RequestAction('PickDeviceId', 'dishwasher1');
+$rows = null;
+foreach ($a->formUpdates as [$field, $param, $value]) {
+    if ($field === 'TimeWindows' && $param === 'values') {
+        $rows = json_decode((string) $value, true);
+    }
+}
+check(($rows[0]['day_of_week'] ?? null) === 'mon', 'K14: loading keeps the EOSdash weekday of a time window');
+$a->properties['TimeWindows'] = json_encode($rows); $be->calls = []; $a->ApplyChanges();
+check(eosMerges() === [] && ($be->live['devices']['home_appliances']['dishwasher1']['time_windows']['windows'][0]['day_of_week'] ?? null) === 'mon', 'K14: the weekday survives Apply (no write, not dropped)');
+
+eosLoad(['max_batteries' => 1, 'batteries' => ['battery1' => BAT], 'inverters' => INV]);
+$b = battery(); $b->ApplyChanges();
+$b->properties['DeviceID'] = 'speicher'; $b->formUpdates = []; $b->ApplyChanges();
+check($b->status === 205 && str_contains($caption($b), 'old device battery1'), 'S1: after a rename the old entry blocks a second battery and the form points to the remove button');
+$form = json_decode($b->GetConfigurationForm(), true);
+check((element($form['elements'], 'RemoveOldEntry')['visible'] ?? false) === true, 'S1: the button "Remove old EOS entry" is shown');
+$b->RequestAction('RemoveOldEOSEntry', '');
+$be->putConfig(['general' => ['latitude' => 51.0]]);
+check(!isset($be->live['devices']['batteries']['battery1']), 'S1: the old entry is gone for good (map PUT, save, reset), also after a later merge');
+$b->ApplyChanges();
+check($b->status === IS_ACTIVE && isset($be->live['devices']['batteries']['speicher']) && ($be->live['devices']['inverters']['inv1']['battery_id'] ?? null) === 'speicher' && $be->runCheck() === [] , 'S1: Apply creates the renamed battery and the inverter points at it: ' . json_encode($be->runCheck()));
+
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

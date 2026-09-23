@@ -305,6 +305,30 @@
                             "edit": {
                                 "type": "ValidationTextBox"
                             }
+                        },
+                        {
+                            "name": "day_of_week",
+                            "caption": "day_of_week",
+                            "width": "100px",
+                            "visible": false,
+                            "save": true,
+                            "add": ""
+                        },
+                        {
+                            "name": "date",
+                            "caption": "date",
+                            "width": "100px",
+                            "visible": false,
+                            "save": true,
+                            "add": ""
+                        },
+                        {
+                            "name": "locale",
+                            "caption": "locale",
+                            "width": "100px",
+                            "visible": false,
+                            "save": true,
+                            "add": ""
                         }
                     ],
                     "values": []
@@ -313,6 +337,30 @@
                     "type": "Label",
                     "name": "ConfigInfo",
                     "caption": " "
+                },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Button",
+                            "name": "OverwriteEOS",
+                            "caption": "Overwrite EOS with these values",
+                            "onClick": "EOSHA_WriteConfigToEOS($id);"
+                        },
+                        {
+                            "type": "Button",
+                            "name": "LoadFromEOS",
+                            "caption": "Load values from EOS",
+                            "onClick": "EOSHA_ReadConfigFromEOS($id);"
+                        },
+                        {
+                            "type": "Button",
+                            "name": "RemoveOldEntry",
+                            "caption": "Remove old EOS entry",
+                            "visible": false,
+                            "onClick": "IPS_RequestAction($id, 'RemoveOldEOSEntry', '');"
+                        }
+                    ]
                 }
             ]
         }

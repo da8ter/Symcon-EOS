@@ -10,6 +10,7 @@ require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSControlDispatch.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigForm.php';
 require_once __DIR__ . '/../libs/EOSDeviceTimes.php';
 require_once __DIR__ . '/../libs/EOSVehicleConfig.php';
 
@@ -31,6 +32,7 @@ class EOSVehicle extends IPSModuleStrict
     use EOSControl;
     use EOSControlDispatch;
     use EOSDeviceConfigSync;
+    use EOSDeviceConfigForm;
     use EOSDeviceTimes;
     use EOSVehicleConfig;
 
@@ -38,6 +40,8 @@ class EOSVehicle extends IPSModuleStrict
     /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */
     private const DEVICE_COLLECTION = 'devices/electric_vehicles';
     private const SINGLE_DEVICE = true;
+    /** Configuration properties sent to EOS, with their defaults (also the base of a first sync). */
+    private const CONFIG_DEFAULTS = ['TargetSoC' => 80, 'CapacityWh' => 60000, 'MaxChargePowerW' => 11000, 'MaxSoC' => 100, 'ChargingEfficiency' => 0.90, 'ChargeRates' => '0, 0.25, 0.5, 0.75, 1'];
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
     private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'Retry', 'DeadlineExpiry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredSoCVar', 'RegisteredPluggedVar', 'RegisteredDepartureVar'];
@@ -56,20 +60,14 @@ class EOSVehicle extends IPSModuleStrict
         $this->RegisterPropertyBoolean('PushOnlyWhenPlugged', false);
         $this->RegisterPropertyInteger('DepartureSourceVariable', 0);
         $this->RegisterPropertyBoolean('SyncDepartureToEOS', true);
-        $this->RegisterPropertyInteger('TargetSoC', 80);
+        $this->registerConfigProperties();
         $this->RegisterPropertyInteger('StaleAfterMinutes', 180);
-        $this->RegisterPropertyInteger('CapacityWh', 60000);
-        $this->RegisterPropertyInteger('MaxChargePowerW', 11000);
         $this->RegisterPropertyInteger('Phases', 3);
         $this->RegisterPropertyInteger('Voltage', 230);
-        $this->RegisterPropertyInteger('MaxSoC', 100);
-        $this->RegisterPropertyFloat('ChargingEfficiency', 0.90);
-        $this->RegisterPropertyString('ChargeRates', '0, 0.25, 0.5, 0.75, 1');
         $this->RegisterPropertyInteger('MinChargeCurrentA', 6);
         $this->RegisterPropertyInteger('MinSwitchIntervalSec', 300);
         $this->registerControlProperties(self::CHARGE_NOW);
 
-        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeInteger('RegisteredPluggedVar', 0);
         $this->RegisterAttributeInteger('RegisteredDepartureVar', 0);

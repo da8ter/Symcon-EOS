@@ -52,13 +52,13 @@ $v->variables['Departure']['value'] = $now + 7200;
 $eos->config['devices']['electric_vehicles']['ev1']['min_soc_deadline_datetime'] = date('Y-m-d\TH:i:s.000000P', $now + 7200);
 $eos->calls = []; $v->ApplyChanges();
 check(array_filter($eos->calls, static fn ($c) => $c['Command'] === 'MergeConfig') === [], 'same timestamp in a different notation counts as equal');
-// window notation tolerance: "08:00:00" vs "08:00:00.000000"
+// notation tolerance of the comparison (three-way sync)
 $probeSync = new class($v) {
     public function __construct(private EOSVehicle $m) {}
-    public function diff(?array $eos, array $device): array { return (fn () => $this->configDiff($eos, $device))->call($this->m); }
+    public function eq(string $key, mixed $eos, mixed $ours): bool { return (fn () => $this->valuesEqual($key, $eos, $ours))->call($this->m); }
 };
-check($probeSync->diff(['time_windows' => ['windows' => [['start_time' => '08:00:00.000000', 'duration' => '6 hours', 'day_of_week' => null]]]], ['time_windows' => ['windows' => [['start_time' => '08:00:00', 'duration' => '6 hours']]]]) === [], 'EOS default fields and .000000 do not count as difference');
-check($probeSync->diff(null, ['a' => 1]) === ['a'] && $probeSync->diff(['a' => 1], ['a' => 1.0000001]) === [] && $probeSync->diff(['a' => 1], ['a' => 2]) === ['a'], 'diff: missing entry, float tolerance, real change');
+check($probeSync->eq('time_windows', ['windows' => [['start_time' => '08:00:00.000000', 'duration' => '6 hours', 'day_of_week' => null]]], ['windows' => [['start_time' => '08:00:00', 'duration' => '6 hours']]]), 'EOS default fields and .000000 do not count as difference');
+check(!$probeSync->eq('capacity_wh', null, 1) && $probeSync->eq('capacity_wh', 1, 1.0000001) && !$probeSync->eq('capacity_wh', 1, 2) && $probeSync->eq('max_charge_power_w', 3680.5, 3680), 'equality: missing value, float tolerance, real change, below 1 W for powers (K14)');
 
 // ---------------------------------------------------------------- meter: key registration and late parent (findings 4 and 6)
 echo "== Zähler\n";

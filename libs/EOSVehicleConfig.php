@@ -11,27 +11,21 @@ if (!trait_exists('EOSVehicleConfig')) {
     trait EOSVehicleConfig
     {
         /** Force-write the vehicle parameters to EOS (ApplyChanges does it automatically when they differ). */
-        public function WriteConfigToEOS(): bool
-        {
-            [$path, $device, $merge] = $this->deviceConfig();
-            return $this->syncDeviceConfig($path, $device, $merge, true);
-        }
-
         /** [config path, device entry, merge payload] for the EOS configuration. */
         private function deviceConfig(): array
         {
             $id = $this->ReadPropertyString('DeviceID');
             $rates = array_values(array_filter(array_map(
                 static fn (string $v): float => (float) trim($v),
-                explode(',', $this->ReadPropertyString('ChargeRates'))
+                explode(',', (string) $this->configValue('ChargeRates'))
             ), static fn (float $v): bool => $v >= 0.0 && $v <= 1.0));
             $ev = [
                 'device_id'           => $id,
-                'capacity_wh'         => $this->ReadPropertyInteger('CapacityWh'),
-                'max_charge_power_w'  => $this->ReadPropertyInteger('MaxChargePowerW'),
+                'capacity_wh'         => $this->configValue('CapacityWh'),
+                'max_charge_power_w'  => $this->configValue('MaxChargePowerW'),
                 'min_soc_percentage'  => $this->targetSoCForEOS(),
-                'max_soc_percentage'  => $this->ReadPropertyInteger('MaxSoC'),
-                'charging_efficiency' => $this->ReadPropertyFloat('ChargingEfficiency'),
+                'max_soc_percentage'  => $this->configValue('MaxSoC'),
+                'charging_efficiency' => $this->configValue('ChargingEfficiency'),
             ];
             if (count($rates) >= 2) {
                 sort($rates);
@@ -40,49 +34,34 @@ if (!trait_exists('EOSVehicleConfig')) {
             return [self::DEVICE_COLLECTION . '/' . $id, $ev, ['devices' => ['electric_vehicles' => [$id => $ev]]]];
         }
 
-        /** EOS requires min_soc_percentage < max_soc_percentage: a target of 100 % at max 100 % becomes 99 %. */
-        private function targetSoCForEOS(): int
+        /** Property => [EOS key, type] for loading EOS values into the form. */
+        private function configFieldMap(): array
         {
-            $target = $this->ReadPropertyInteger('TargetSoC');
-            $max = $this->ReadPropertyInteger('MaxSoC');
-            if ($target < $max) {
-                return $target;
-            }
-            $sent = max(0, $max - 1);
-            $note = $target . '>' . $sent;
-            if ($this->ReadAttributeString('TargetSoCNote') !== $note) {
-                $this->WriteAttributeString('TargetSoCNote', $note);
-                $this->LogMessage(sprintf($this->Translate('Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC'), $target, $sent), KL_NOTIFY);
-            }
-            return $sent;
-        }
-
-        public function ReadConfigFromEOS(): bool
-        {
-            $id = $this->ReadPropertyString('DeviceID');
-            $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/electric_vehicles/' . $id]);
-            $ev = $res['data'] ?? null;
-            if (($res['ok'] ?? false) !== true || !is_array($ev)) {
-                $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('No vehicle %s in EOS configuration.'), $id));
-                return false;
-            }
-            $map = [
+            return [
                 'CapacityWh'         => ['capacity_wh', 'int'],
                 'MaxChargePowerW'    => ['max_charge_power_w', 'int'],
                 'TargetSoC'          => ['min_soc_percentage', 'int'],
                 'MaxSoC'             => ['max_soc_percentage', 'int'],
                 'ChargingEfficiency' => ['charging_efficiency', 'float'],
+                'ChargeRates'        => ['charge_rates', 'rates'],
             ];
-            foreach ($map as $field => [$key, $type]) {
-                if (isset($ev[$key])) {
-                    $this->UpdateFormField($field, 'value', $type === 'int' ? (int) $ev[$key] : (float) $ev[$key]);
-                }
+        }
+
+        /** EOS requires min_soc_percentage < max_soc_percentage: a target of 100 % at max 100 % becomes 99 %. */
+        private function targetSoCForEOS(): int
+        {
+            $target = (int) $this->configValue('TargetSoC');
+            $max = (int) $this->configValue('MaxSoC');
+            if ($target < $max) {
+                return $target;
             }
-            if (is_array($ev['charge_rates'] ?? null)) {
-                $this->UpdateFormField('ChargeRates', 'value', implode(', ', $ev['charge_rates']));
+            $sent = max(0, $max - 1);
+            $note = $target . '>' . $sent;
+            if (!$this->configFromDefaults && $this->ReadAttributeString('TargetSoCNote') !== $note) {
+                $this->WriteAttributeString('TargetSoCNote', $note);
+                $this->LogMessage(sprintf($this->Translate('Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC'), $target, $sent), KL_NOTIFY);
             }
-            $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
-            return true;
+            return $sent;
         }
 
         /**

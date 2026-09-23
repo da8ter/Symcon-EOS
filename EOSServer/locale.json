@@ -23,7 +23,9 @@
             "Optimization started, result follows in the debug log and in the plan variables.": "Optimization started, result follows in the debug log and in the plan variables.",
             "Location taken from Symcon: %s / %s. Press Apply to store.": "Location taken from Symcon: %s / %s. Press Apply to store.",
             "Measurement keys could not be read from EOS (%s); nothing written.": "Measurement keys could not be read from EOS (%s); nothing written.",
-            "PV plane %d: horizon value \"%s\" is not a number": "PV plane %d: horizon value \"%s\" is not a number"
+            "PV plane %d: horizon value \"%s\" is not a number": "PV plane %d: horizon value \"%s\" is not a number",
+            "Device %s removed from EOS": "Device %s removed from EOS",
+            "Action": "Action"
         },
         "de": {
             "EOS Server": "EOS Server",
@@ -158,7 +160,9 @@
             "EOS version mismatch": "EOS-Version passt nicht",
             "No plan available yet": "Noch kein Plan vorhanden",
             "Measurement keys could not be read from EOS (%s); nothing written.": "Messwert-Schlüssel aus EOS nicht lesbar (%s); nichts geschrieben.",
-            "PV plane %d: horizon value \"%s\" is not a number": "PV-Ebene %d: Horizontwert „%s“ ist keine Zahl"
+            "PV plane %d: horizon value \"%s\" is not a number": "PV-Ebene %d: Horizontwert „%s“ ist keine Zahl",
+            "Device %s removed from EOS": "Gerät %s aus EOS entfernt",
+            "Action": "Aktion"
         }
     }
 }

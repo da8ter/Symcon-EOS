@@ -9,6 +9,7 @@ require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSControlDispatch.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigForm.php';
 require_once __DIR__ . '/../libs/EOSDeviceTimes.php';
 require_once __DIR__ . '/../libs/EOSApplianceConfig.php';
 
@@ -34,6 +35,7 @@ class EOSAppliance extends IPSModuleStrict
     use EOSControl;
     use EOSControlDispatch;
     use EOSDeviceConfigSync;
+    use EOSDeviceConfigForm;
     use EOSDeviceTimes;
     use EOSApplianceConfig;
 
@@ -41,6 +43,8 @@ class EOSAppliance extends IPSModuleStrict
     /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */
     private const DEVICE_COLLECTION = 'devices/home_appliances';
     private const SINGLE_DEVICE = false;
+    /** Configuration properties sent to EOS, with their defaults (also the base of a first sync). */
+    private const CONFIG_DEFAULTS = ['ConsumptionWh' => 2000, 'DurationH' => 3, 'NumCycles' => 1, 'ScheduleMode' => 'ONCE', 'TimeWindows' => '[]', 'MinCycleGapH' => 0, 'DeadlinePolicy' => 'BEST_EFFORT'];
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
     private const BLOCK_TIMERS = ['CyclesPush', 'SlotTimer', 'Watchdog', 'Retry', 'TimesExpiry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredDeadlineVar', 'RegisteredEarliestVar', 'RegisteredCyclesVar'];
@@ -55,13 +59,7 @@ class EOSAppliance extends IPSModuleStrict
         parent::Create();
 
         $this->RegisterPropertyString('DeviceID', 'dishwasher1');
-        $this->RegisterPropertyInteger('ConsumptionWh', 2000);
-        $this->RegisterPropertyInteger('DurationH', 3);
-        $this->RegisterPropertyInteger('NumCycles', 1);
-        $this->RegisterPropertyString('ScheduleMode', 'ONCE');
-        $this->RegisterPropertyString('TimeWindows', '[]');
-        $this->RegisterPropertyInteger('MinCycleGapH', 0);
-        $this->RegisterPropertyString('DeadlinePolicy', 'BEST_EFFORT');
+        $this->registerConfigProperties();
         $this->RegisterPropertyInteger('DeadlineSourceVariable', 0);
         $this->RegisterPropertyInteger('EarliestStartSourceVariable', 0);
         $this->RegisterPropertyInteger('CyclesCompletedSourceVariable', 0);
@@ -72,7 +70,6 @@ class EOSAppliance extends IPSModuleStrict
         $this->RegisterPropertyBoolean('AllowStop', false);
         $this->registerControlProperties(self::FALLBACK_NONE);
 
-        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeInteger('RegisteredDeadlineVar', 0);
         $this->RegisterAttributeInteger('RegisteredEarliestVar', 0);

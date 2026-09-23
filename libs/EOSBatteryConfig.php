@@ -11,39 +11,27 @@ if (!trait_exists('EOSBatteryConfig')) {
     trait EOSBatteryConfig
     {
         /** Force-write the battery parameters to EOS (ApplyChanges does it automatically when they differ). */
-        public function WriteConfigToEOS(): bool
-        {
-            [$path, $device, $merge] = $this->deviceConfig();
-            return $this->syncDeviceConfig($path, $device, $merge, true);
-        }
-
         /** [config path, device entry, merge payload] for the EOS configuration. */
         private function deviceConfig(): array
         {
             $id = $this->ReadPropertyString('DeviceID');
             $battery = [
                 'device_id'                         => $id,
-                'capacity_wh'                       => $this->ReadPropertyInteger('CapacityWh'),
-                'max_charge_power_w'                => $this->ReadPropertyInteger('MaxChargePowerW'),
-                'min_soc_percentage'                => $this->ReadPropertyInteger('MinSoC'),
-                'max_soc_percentage'                => $this->ReadPropertyInteger('MaxSoC'),
-                'charging_efficiency'               => $this->ReadPropertyFloat('ChargingEfficiency'),
-                'discharging_efficiency'            => $this->ReadPropertyFloat('DischargingEfficiency'),
-                'levelized_cost_of_storage_amt_kwh' => $this->ReadPropertyFloat('LcosAmtKwh'),
+                'capacity_wh'                       => $this->configValue('CapacityWh'),
+                'max_charge_power_w'                => $this->configValue('MaxChargePowerW'),
+                'min_soc_percentage'                => $this->configValue('MinSoC'),
+                'max_soc_percentage'                => $this->configValue('MaxSoC'),
+                'charging_efficiency'               => $this->configValue('ChargingEfficiency'),
+                'discharging_efficiency'            => $this->configValue('DischargingEfficiency'),
+                'levelized_cost_of_storage_amt_kwh' => $this->configValue('LcosAmtKwh'),
             ];
-            return ['devices/batteries/' . $id, $battery, ['devices' => ['batteries' => [$id => $battery]]]];
+            return [self::DEVICE_COLLECTION . '/' . $id, $battery, ['devices' => ['batteries' => [$id => $battery]]]];
         }
 
-        public function ReadConfigFromEOS(): bool
+        /** Property => [EOS key, type] for loading EOS values into the form. */
+        private function configFieldMap(): array
         {
-            $id = $this->ReadPropertyString('DeviceID');
-            $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/batteries/' . $id]);
-            $bat = $res['data'] ?? null;
-            if (($res['ok'] ?? false) !== true || !is_array($bat)) {
-                $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('No battery %s in EOS configuration.'), $id));
-                return false;
-            }
-            $map = [
+            return [
                 'CapacityWh'            => ['capacity_wh', 'int'],
                 'MaxChargePowerW'       => ['max_charge_power_w', 'int'],
                 'MinSoC'                => ['min_soc_percentage', 'int'],
@@ -52,13 +40,32 @@ if (!trait_exists('EOSBatteryConfig')) {
                 'DischargingEfficiency' => ['discharging_efficiency', 'float'],
                 'LcosAmtKwh'            => ['levelized_cost_of_storage_amt_kwh', 'float'],
             ];
-            foreach ($map as $field => [$key, $type]) {
-                if (isset($bat[$key])) {
-                    $this->UpdateFormField($field, 'value', $type === 'int' ? (int) $bat[$key] : (float) $bat[$key]);
-                }
-            }
-            $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
-            return true;
         }
+
+        /**
+         * This instance now owns battery $id: the (only) inverter must point at it, otherwise
+         * every GENETIC run aborts ("Inverter battery_id must match the configured battery").
+         */
+        protected function onDeviceSynced(string $id, string $previousId): void
+        {
+            $read = $this->readConfig('devices/inverters');
+            $inverters = ($read['state'] === 'ok' && is_array($read['value'])) ? $read['value'] : [];
+            if (count($inverters) !== 1) {
+                return;
+            }
+            $invId = (string) array_key_first($inverters);
+            $linked = (string) ($inverters[$invId]['battery_id'] ?? '');
+            $batteries = $this->readConfig(self::DEVICE_COLLECTION);
+            $linkedExists = $linked !== '' && is_array($batteries['value']) && array_key_exists($linked, $batteries['value']);
+            if ($linked === $id || ($linkedExists && $linked !== $previousId)) {
+                return; // already ours, or deliberately linked to another existing battery
+            }
+            $res = $this->forward(['Command' => 'SetConfig', 'Path' => 'devices/inverters/' . $invId . '/battery_id', 'Value' => $id]);
+            if (($res['ok'] ?? false) === true) {
+                $this->forward(['Command' => 'SaveConfig']);
+                $this->LogMessage(sprintf($this->Translate('Inverter %s now points at battery %s'), $invId, $id), KL_NOTIFY);
+            }
+        }
+
     }
 }

@@ -288,6 +288,7 @@ class EOSServer extends IPSModuleStrict
             case 'SetConfig':
             case 'MergeConfig':
             case 'SaveConfig':
+            case 'RemoveDevice':
                 return json_encode($this->forwardConfigCommand($command, $data));
 
             default:

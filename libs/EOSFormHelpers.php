@@ -109,13 +109,14 @@ if (!trait_exists('EOSFormHelpers')) {
         {
             switch ($ident) {
                 case 'PickDeviceId':
-                    if (trim((string) $value) !== '') {
-                        $this->UpdateFormField('DeviceID', 'value', trim((string) $value));
-                    }
+                    $this->pickDevice(trim((string) $value));
                     return true;
                 case 'FillFormFromEOS':
                     $this->SetTimerInterval('FormFill', 0);
-                    $this->ReadConfigFromEOS();
+                    $this->fillFormFromEOS();
+                    return true;
+                case 'RemoveOldEOSEntry':
+                    $this->removeOldEOSEntry();
                     return true;
                 case 'SetActionTarget':
                     // Form onChange: point the open action pickers at the newly chosen target.

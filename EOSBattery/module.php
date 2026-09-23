@@ -10,6 +10,7 @@ require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSControlDispatch.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
+require_once __DIR__ . '/../libs/EOSDeviceConfigForm.php';
 require_once __DIR__ . '/../libs/EOSBatteryConfig.php';
 
 /**
@@ -29,13 +30,17 @@ class EOSBattery extends IPSModuleStrict
     use EOSFormHelpers;
     use EOSControl;
     use EOSControlDispatch;
-    use EOSDeviceConfigSync;
-    use EOSBatteryConfig;
+    use EOSDeviceConfigForm;
+    use EOSDeviceConfigSync, EOSBatteryConfig {
+        EOSBatteryConfig::onDeviceSynced insteadof EOSDeviceConfigSync; // the battery links the inverter
+    }
 
     private const MODULE_GUID = '{F4B30383-1210-4169-93DA-5C9664447B42}';
     /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */
     private const DEVICE_COLLECTION = 'devices/batteries';
     private const SINGLE_DEVICE = true;
+    /** Configuration properties sent to EOS, with their defaults (also the base of a first sync). */
+    private const CONFIG_DEFAULTS = ['CapacityWh' => 10000, 'MaxChargePowerW' => 5000, 'MinSoC' => 10, 'MaxSoC' => 95, 'ChargingEfficiency' => 0.95, 'DischargingEfficiency' => 0.95, 'LcosAmtKwh' => 0.0];
     /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
     private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'Retry'];
     private const SOURCE_ATTRIBUTES = ['RegisteredSoCVar'];
@@ -49,19 +54,12 @@ class EOSBattery extends IPSModuleStrict
         $this->RegisterPropertyString('DeviceID', 'battery1');
         $this->registerSoCProperties();
         $this->RegisterPropertyInteger('StaleAfterMinutes', 180);
-        $this->RegisterPropertyInteger('CapacityWh', 10000);
-        $this->RegisterPropertyInteger('MaxChargePowerW', 5000);
+        $this->registerConfigProperties();
         $this->RegisterPropertyInteger('MaxDischargePowerW', 5000);
-        $this->RegisterPropertyInteger('MinSoC', 10);
-        $this->RegisterPropertyInteger('MaxSoC', 95);
-        $this->RegisterPropertyFloat('ChargingEfficiency', 0.95);
-        $this->RegisterPropertyFloat('DischargingEfficiency', 0.95);
-        $this->RegisterPropertyFloat('LcosAmtKwh', 0.0);
         $this->RegisterPropertyBoolean('AllowGridCharge', true);
         $this->RegisterPropertyBoolean('AllowGridExport', false);
         $this->registerControlProperties(self::BATTERY_MODES['SELF_CONSUMPTION']['value']);
 
-        $this->registerDevicePicker();
         $this->registerPlanAttributes();
         $this->RegisterAttributeString('SolutionSubset', '{}');
         $this->RegisterAttributeString('PlausibilityWarned', '');
@@ -319,7 +317,9 @@ class EOSBattery extends IPSModuleStrict
     {
         $factor = (is_nan($factor) || is_infinite($factor)) ? 0.0 : max(0.0, min(1.0, $factor));
         $mode = $this->eosBatteryMode($modeId);
-        $maxCharge = max(0, $this->ReadPropertyInteger('MaxChargePowerW'));
+        // EOS factors refer to EOS' own max_charge_power_w; until it is known, the property.
+        $eosMax = $this->eosValue('max_charge_power_w');
+        $maxCharge = max(0, is_numeric($eosMax) ? (int) round((float) $eosMax) : $this->ReadPropertyInteger('MaxChargePowerW'));
         $maxDischarge = max(0, $this->ReadPropertyInteger('MaxDischargePowerW'));
         $degraded = '';
         if ($applyPolicy && $mode['known']) {
@@ -340,7 +340,8 @@ class EOSBattery extends IPSModuleStrict
         }
         $chargeW = $mode['chargeFromFactor'] ? round($factor * $maxCharge) : 0.0;
         if ($mode['id'] === 'GRID_SUPPORT_EXPORT') {
-            $dischargeW = round($factor * $maxDischarge);
+            // The export factor is relative to the rated power EOS plans with, capped by the inverter limit.
+            $dischargeW = min((float) $maxDischarge, round($factor * $maxCharge));
         } else {
             $dischargeW = $mode['discharge'] ? (float) $maxDischarge : 0.0;
         }

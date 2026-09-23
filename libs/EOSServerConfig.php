@@ -128,7 +128,47 @@ if (!trait_exists('EOSServerConfig')) {
             return $res['ok'];
         }
 
-        /** ForwardData GetConfig / SetConfig / MergeConfig / SaveConfig. */
+        /**
+         * Delete a device entry. EOS keeps a removed map key in its runtime settings and
+         * brings it back with the next merge, so: map without the key -> save -> reset
+         * (reload from the file), all in this one call (no other child can write between,
+         * Symcon serialises the calls of this instance).
+         */
+        protected function removeDevice(string $collection, string $id): array
+        {
+            if (preg_match('#^devices/(batteries|electric_vehicles|inverters|home_appliances)$#', $collection) !== 1 || $id === '') {
+                return ['ok' => false, 'status' => 0, 'error' => 'invalid device ' . $collection . '/' . $id];
+            }
+            $current = $this->client()->getConfigPath($collection);
+            if (!$current['ok']) {
+                return ['ok' => false, 'status' => $current['status'], 'error' => $current['error']];
+            }
+            $map = is_array($current['data']) ? $current['data'] : [];
+            if (!array_key_exists($id, $map)) {
+                return ['ok' => true, 'status' => 200, 'error' => null];
+            }
+            unset($map[$id]);
+            $clean = new stdClass(); // stays a JSON object, also when it becomes empty
+            foreach ($map as $key => $entry) {
+                // computed fields of the GET answer are not settable
+                $clean->{$key} = array_filter(is_array($entry) ? $entry : [], static fn (mixed $v, string $k): bool => !str_starts_with($k, 'measurement_key') && $k !== 'capacity_estimate', ARRAY_FILTER_USE_BOTH);
+            }
+            foreach ([
+                fn (): array => $this->client()->putConfigPath($collection, $clean),
+                fn (): array => $this->client()->saveConfigFile(),
+                fn (): array => $this->client()->resetConfig(),
+            ] as $step) {
+                $res = $step();
+                if (!$res['ok']) {
+                    $this->SetValue('LastError', 'remove ' . $collection . '/' . $id . ': ' . (string) $res['error']);
+                    return ['ok' => false, 'status' => $res['status'], 'error' => $res['error']];
+                }
+            }
+            $this->LogMessage(sprintf($this->Translate('Device %s removed from EOS'), $collection . '/' . $id), KL_NOTIFY);
+            return ['ok' => true, 'status' => 200, 'error' => null];
+        }
+
+        /** ForwardData GetConfig / SetConfig / MergeConfig / SaveConfig / RemoveDevice. */
         protected function forwardConfigCommand(string $command, array $data): array
         {
             switch ($command) {
@@ -148,6 +188,9 @@ if (!trait_exists('EOSServerConfig')) {
                 case 'SaveConfig':
                     $res = $this->client()->saveConfigFile();
                     return ['ok' => $res['ok'], 'status' => $res['status'], 'error' => $res['error']];
+
+                case 'RemoveDevice':
+                    return $this->removeDevice((string) ($data['Collection'] ?? ''), (string) ($data['DeviceID'] ?? ''));
             }
             return ['ok' => false, 'error' => 'unknown command ' . $command];
         }
