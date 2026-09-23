@@ -91,12 +91,23 @@ if (!trait_exists('EOSPlanDevice')) {
          */
         protected function isDuplicateDeviceId(string $deviceId): bool
         {
+            $unreadable = false;
             foreach (self::EOS_DEVICE_MODULE_GUIDS as $guid) {
                 foreach (IPS_GetInstanceListByModuleID($guid) as $id) {
-                    if ($id !== $this->InstanceID && $id < $this->InstanceID && (string) IPS_GetProperty($id, 'DeviceID') === $deviceId) {
+                    if ($id >= $this->InstanceID) {
+                        continue;
+                    }
+                    // During a module reload a sibling may be mid-recreation: Symcon warns and answers false.
+                    $other = @IPS_GetProperty($id, 'DeviceID');
+                    if (!is_string($other)) {
+                        $unreadable = true;
+                    } elseif ($other === $deviceId) {
                         return true;
                     }
                 }
+            }
+            if ($unreadable) {
+                $this->RegisterOnceTimer('ApplyLater', 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
             }
             return false;
         }

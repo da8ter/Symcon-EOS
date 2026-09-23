@@ -292,6 +292,10 @@ $ha->properties['DeviceID'] = 'dryer1'; $ha->properties['CyclesCompletedSourceVa
 check($ha->status === IS_ACTIVE && isset($ha->messages[28]), 'an appliance with its own id works');
 $ha->properties['DeviceID'] = 'battery1'; $ha->ApplyChanges();
 check($ha->status === 203 && !isset($ha->messages[28]) && $ha->timers['CyclesPush']['ms'] === 0, 'K38: ids are unique across device kinds; the source registered before is released');
+$GLOBALS['unreadable'][$first->InstanceID] = true; $GLOBALS['sdkWarnings'] = []; $ha->onceTimers = [];
+$ha->properties['DeviceID'] = 'dryer1'; $ha->ApplyChanges();
+check($ha->status === IS_ACTIVE && in_array('ApplyLater', array_column($ha->onceTimers, 'name'), true) && $GLOBALS['sdkWarnings'] === [], 'K38: during a module reload a sibling that cannot be read is skipped without a warning, and the check runs again');
+unset($GLOBALS['unreadable'][$first->InstanceID]); $ha->onceTimers = [];
 unset($GLOBALS['objects'][1100], $GLOBALS['objects'][1300]);
 $GLOBALS['registry'] = false;
 

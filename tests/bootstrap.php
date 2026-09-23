@@ -292,6 +292,11 @@ function IPS_GetInstanceListByModuleID(string $guid): array
 }
 function IPS_GetProperty(int $id, string $name): mixed
 {
+    // Module reload: a sibling that is being re-created answers with a warning and false (log of 23.09.2026).
+    if (!empty($GLOBALS['unreadable'][$id])) {
+        sdkWarn('InstanceInterface is not available');
+        return false;
+    }
     if (isset($GLOBALS['objects'][$id])) {
         return $GLOBALS['objects'][$id]->properties[$name] ?? null;
     }
@@ -414,7 +419,11 @@ function connectToServer(IPSModuleStrict $m): void
  * code itself are bugs. The doubles raise E_USER_WARNING: a module handler may absorb
  * it, otherwise it is recorded like Symcon's output. Everything else aborts the test.
  */
+error_reporting(E_ALL);
 set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+    if ((error_reporting() & $severity) === 0) {
+        return true; // silenced with @, as PHP itself does
+    }
     if ($severity === E_USER_WARNING) {
         $GLOBALS['sdkWarnings'][] = $message;
         return true;
