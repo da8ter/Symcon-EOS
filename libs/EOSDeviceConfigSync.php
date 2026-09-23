@@ -105,7 +105,6 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             if ($eos === null) {
                 return $this->createDeviceEntry($id, $device, $merge, $previousId);
             }
-            $this->WriteAttributeString('EOSValues', json_encode(['id' => $id, 'max_charge_power_w' => $eos['max_charge_power_w'] ?? null]));
             $base = $this->syncedBase($id) ?? $this->adoptionBase($device, $eos);
             $class = $this->classifyConfig($device, $eos, $base);
             if ($force) {
@@ -122,11 +121,13 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 }
                 foreach ($class['push'] as $key) {
                     $newBase[$key] = $device[$key];
+                    $eos[$key] = $device[$key]; // what EOS holds now (EOSValues below)
                 }
                 $this->forward(['Command' => 'SaveConfig']);
                 $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS (%s)'), implode(', ', $class['push'])), KL_NOTIFY);
             }
             $this->WriteAttributeString('SyncedConfig', json_encode(['v' => 1, 'id' => $id, 'base' => $newBase, 'ts' => $this->eosNow()]));
+            $this->rememberEOSValues($id, $eos);
             $this->UpdateFormField('ConfigInfo', 'caption', $this->syncText($class, $device, $eos));
             $this->ensureDeviceMaximum();
             if ($previousId !== $id) {
@@ -157,6 +158,7 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             $this->ensureDeviceMaximum();
             $this->forward(['Command' => 'SaveConfig']);
             $this->WriteAttributeString('SyncedConfig', json_encode(['v' => 1, 'id' => $id, 'base' => $device, 'ts' => $this->eosNow()]));
+            $this->rememberEOSValues($id, $device);
             $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS (%s)'), $this->Translate('all fields')), KL_NOTIFY);
             $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('Written to EOS: %s'), $this->Translate('all fields')));
             $this->onDeviceSynced($id, $previousId);
@@ -221,6 +223,25 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 return $pick['eos'];
             }
             return null;
+        }
+
+        /** Re-read the EOS values the control math uses when older than $maxAge s (EOSdash may change them at any time). */
+        protected function refreshEOSValues(int $maxAge): void
+        {
+            $id = $this->ReadPropertyString('DeviceID');
+            $values = $this->eosJsonDecode($this->ReadAttributeString('EOSValues'), []);
+            if (is_array($values) && ($values['id'] ?? '') === $id && $this->eosNow() - (int) ($values['ts'] ?? 0) < $maxAge) {
+                return;
+            }
+            $read = $this->readConfig(self::DEVICE_COLLECTION . '/' . $id . '/max_charge_power_w');
+            if ($read['state'] === 'ok') {
+                $this->rememberEOSValues($id, ['max_charge_power_w' => $read['value']]);
+            }
+        }
+
+        private function rememberEOSValues(string $id, array $entry): void
+        {
+            $this->WriteAttributeString('EOSValues', json_encode(['id' => $id, 'max_charge_power_w' => $entry['max_charge_power_w'] ?? null, 'ts' => $this->eosNow()]));
         }
 
         /** A value of this device's EOS entry as last read (e.g. max_charge_power_w for the control math). */

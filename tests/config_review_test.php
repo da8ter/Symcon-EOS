@@ -159,5 +159,19 @@ $filled = array_column(array_filter($cf->formUpdates, static fn (array $u): bool
 check(!array_key_exists('ConsumptionWh', $filled) && ($filled['DurationH'] ?? null) === 4, 'R8 (README, conflict row): FormFill loads what only EOS changed, a conflict keeps the Symcon value in the field: ' . json_encode($filled));
 drop(1332);
 
+// ---------------------------------------------------------------- R8-6: the control math follows the power EOS holds
+echo "== Leistung aus EOS aktuell\n";
+eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV, 'max_batteries' => 1]);
+$ev6 = batteryAt(1340); $ev6->ApplyChanges();
+$ev6->properties['MaxChargePowerW'] = 3000; $ev6->ApplyChanges(); // written to EOS
+$power = (fn (): array => $this->batteryState('FORCED_CHARGE', 1.0, false))->call($ev6)['chargeW'];
+check($power === 3000.0, 'R8-6: after writing max_charge_power_w the control computes with the new 3000 W at once, not the old 5000 W: ' . $power);
+$be->putConfigPath('devices/batteries/battery1/max_charge_power_w', 2500); // EOSdash
+setClock($now + 1000); $ev6->PushSoC();
+$power = (fn (): array => $this->batteryState('FORCED_CHARGE', 1.0, false))->call($ev6)['chargeW'];
+check($power === 2500.0, 'R8-6: an EOSdash change of max_charge_power_w reaches the control with the next SoC push after 15 min: ' . $power);
+setClock($now);
+drop(1340);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

@@ -247,6 +247,12 @@ class EOSBattery extends IPSModuleStrict
         $this->fetchSolutionSubset();
     }
 
+    /** EOSdash may change the rated power the plan uses: keep it fresh for the control math (every 15 min). */
+    protected function afterSoCPush(): void
+    {
+        $this->refreshEOSValues(900);
+    }
+
     protected function onPlanProcessed(?array $active): void
     {
         $this->scheduleControl($active, 'plan');
