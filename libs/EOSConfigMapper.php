@@ -10,6 +10,9 @@ declare(strict_types=1);
 if (!trait_exists('EOSConfigMapper')) {
     trait EOSConfigMapper
     {
+        /** Problems found by PropertiesToConfig(); EOS would reject the whole write for any of them. */
+        private array $configErrors = [];
+
         /** Static fallback provider lists (v0.4.0rc1) used until a config was loaded from EOS. */
         public const PROVIDER_FALLBACK = [
             'elecprice'    => ['ElecPriceAkkudoktor', 'ElecPriceEnergyCharts', 'ElecPriceFixed', 'ElecPriceImport', 'ElecPriceSMARD', 'ElecPriceTibber'],
@@ -104,6 +107,7 @@ if (!trait_exists('EOSConfigMapper')) {
          */
         protected function PropertiesToConfig(): array
         {
+            $this->configErrors = [];
             $cfg = [];
 
             $general = [];
@@ -119,7 +123,7 @@ if (!trait_exists('EOSConfigMapper')) {
             $cfg['ems'] = [
                 'mode'          => $this->ReadPropertyString('EmsMode'),
                 'interval'      => $this->ReadPropertyInteger('EmsInterval'),
-                'startup_delay' => $this->ReadPropertyInteger('EmsStartupDelay'),
+                'startup_delay' => max(1, $this->ReadPropertyInteger('EmsStartupDelay')), // EOS minimum is 1 s
             ];
 
             $seed = $this->ReadPropertyInteger('OptSeed');
@@ -409,7 +413,14 @@ if (!trait_exists('EOSConfigMapper')) {
                 }
                 $horizon = trim((string) ($row['userhorizon'] ?? ''));
                 if ($horizon !== '') {
-                    $plane['userhorizon'] = array_map('floatval', array_filter(array_map('trim', explode(',', $horizon)), static fn (string $v): bool => $v !== ''));
+                    // A list for EOS: array_values() closes the gaps an empty item would leave.
+                    $tokens = array_values(array_filter(array_map('trim', explode(',', $horizon)), static fn (string $v): bool => $v !== ''));
+                    foreach ($tokens as $token) {
+                        if (!is_numeric($token)) {
+                            $this->configErrors[] = sprintf($this->Translate('PV plane %d: horizon value "%s" is not a number'), count($planes) + 1, $token);
+                        }
+                    }
+                    $plane['userhorizon'] = array_map('floatval', $tokens);
                 }
                 $planes[] = $plane;
             }

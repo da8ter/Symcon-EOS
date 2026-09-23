@@ -10,16 +10,10 @@ declare(strict_types=1);
 if (!trait_exists('EOSMeasurementBundle')) {
     trait EOSMeasurementBundle
     {
+        /** Script API: same path as the device instances, so the newest record keeps every SoC value. */
         public function PutMeasurement(string $Key, float $Value, string $DateTime): bool
         {
-            if ($DateTime === '') {
-                $DateTime = $this->eosIsoNow();
-            }
-            $res = $this->client()->putMeasurementValue($Key, $Value, $DateTime);
-            if (!$res['ok']) {
-                $this->SetValue('LastError', 'measurement ' . $Key . ': ' . (string) $res['error']);
-            }
-            return $res['ok'];
+            return $this->forwardPutMeasurement(['Key' => $Key, 'Value' => $Value, 'DateTime' => $DateTime !== '' ? $DateTime : $this->eosIsoNow()])['ok'];
         }
 
         /** ForwardData PutMeasurement: the value plus all cached sticky values in one record. */
@@ -70,7 +64,6 @@ if (!trait_exists('EOSMeasurementBundle')) {
          * these "sticky" keys and re-send all of them whenever a different key is
          * written, so the newest record always carries every device value.
          */
-        /** Remember SoC / cycle values so they can be re-sent with every other measurement. */
         private function rememberSticky(string $key, float $value): void
         {
             if (!$this->isStickyKey($key)) {

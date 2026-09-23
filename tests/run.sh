@@ -9,3 +9,4 @@ echo "Syntax und JSON in Ordnung."
 php tests/control_test.php | tail -1
 php tests/sync_meter_test.php | tail -1
 php tests/server_test.php | tail -1
+php tests/config_test.php | tail -1

@@ -61,6 +61,26 @@ if (!trait_exists('EOSServerConfig')) {
         public function WriteConfigToEOS(): bool
         {
             $merge = $this->PropertiesToConfig();
+            if ($this->configErrors !== []) {
+                // EOS rejects the whole request for one bad field: refuse before sending anything.
+                $this->UpdateFormField('ConfigInfo', 'caption', implode(' · ', $this->configErrors));
+                $this->SetValue('LastError', 'write config: ' . implode(' · ', $this->configErrors));
+                return false;
+            }
+            if (isset($merge['measurement'])) {
+                // EOS replaces lists: keep the keys registered by the meter instances (and in EOSdash).
+                $current = $this->client()->getConfigPath('measurement');
+                if (!$current['ok'] || !is_array($current['data'])) {
+                    $message = sprintf($this->Translate('Measurement keys could not be read from EOS (%s); nothing written.'), (string) $current['error']);
+                    $this->UpdateFormField('ConfigInfo', 'caption', $message);
+                    $this->SetValue('LastError', 'write config: ' . $message);
+                    return false;
+                }
+                foreach ($merge['measurement'] as $field => $keys) {
+                    $existing = is_array($current['data'][$field] ?? null) ? array_map('strval', $current['data'][$field]) : [];
+                    $merge['measurement'][$field] = array_values(array_unique(array_merge($existing, $keys)));
+                }
+            }
             $this->SendDebug('WriteConfig', json_encode($merge, JSON_UNESCAPED_UNICODE), 0);
             $res = $this->client()->putConfig($merge);
             if (!$res['ok']) {
@@ -114,19 +134,20 @@ if (!trait_exists('EOSServerConfig')) {
             switch ($command) {
                 case 'GetConfig':
                     $res = $this->client()->getConfigPath((string) ($data['Path'] ?? ''));
-                    return ['ok' => $res['ok'], 'data' => $res['data'], 'error' => $res['error']];
+                    // An EOS error answer is a problem body, never configuration data.
+                    return ['ok' => $res['ok'], 'status' => $res['status'], 'data' => $res['ok'] ? $res['data'] : null, 'error' => $res['error']];
 
                 case 'SetConfig':
                     $res = $this->client()->putConfigPath((string) ($data['Path'] ?? ''), $data['Value'] ?? null);
-                    return ['ok' => $res['ok'], 'error' => $res['error']];
+                    return ['ok' => $res['ok'], 'status' => $res['status'], 'error' => $res['error']];
 
                 case 'MergeConfig':
                     $res = $this->client()->putConfig(is_array($data['Value'] ?? null) ? $data['Value'] : []);
-                    return ['ok' => $res['ok'], 'error' => $res['error']];
+                    return ['ok' => $res['ok'], 'status' => $res['status'], 'error' => $res['error']];
 
                 case 'SaveConfig':
                     $res = $this->client()->saveConfigFile();
-                    return ['ok' => $res['ok'], 'error' => $res['error']];
+                    return ['ok' => $res['ok'], 'status' => $res['status'], 'error' => $res['error']];
             }
             return ['ok' => false, 'error' => 'unknown command ' . $command];
         }

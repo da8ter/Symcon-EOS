@@ -25,7 +25,7 @@
                     "type": "ValidationTextBox",
                     "name": "DeviceID",
                     "caption": "EOS device ID (free text; a new device is created in EOS on Apply)",
-                    "validate": "^[A-Za-z0-9_-]+$"
+                    "validate": "^[A-Za-z][A-Za-z0-9_-]*$"
                 },
                 {
                     "type": "SelectVariable",

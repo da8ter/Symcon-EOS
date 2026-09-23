@@ -29,6 +29,10 @@ if (!trait_exists('EOSPlanDevice')) {
         public const STATUS_BAD_DEVICE_ID = 201;
         public const STATUS_NO_SOURCE = 202;
         public const STATUS_DUPLICATE_ID = 203;
+        /** EOS already holds another device of a kind GENETIC supports only once (battery, vehicle). */
+        public const STATUS_OTHER_DEVICE = 205;
+        /** Min. SoC not below max. SoC: EOS would reject the device configuration. */
+        public const STATUS_BAD_LIMITS = 206;
         /** Never sleep longer than this before re-evaluating the plan (ms). */
         public const MAX_SLOT_TIMER_MS = 6 * 3600 * 1000;
         /** A plan whose first instruction is at most this far ahead is not "without instruction" (s). */
@@ -95,7 +99,8 @@ if (!trait_exists('EOSPlanDevice')) {
 
         protected function validDeviceId(string $deviceId): bool
         {
-            return $deviceId !== '' && preg_match('/^[A-Za-z0-9_-]+$/', $deviceId) === 1;
+            // Leading letter: a purely numeric id like "0" becomes a JSON list in the device map.
+            return preg_match('/^[A-Za-z][A-Za-z0-9_-]*$/', $deviceId) === 1;
         }
 
         // ------------------------------------------------------------------ plan handling

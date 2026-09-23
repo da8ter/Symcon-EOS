@@ -49,6 +49,8 @@ final class FakeEOSBackend
     /** '' | 'connect' (curl error 7) | 'timeout' (curl error 28) */
     public string $down = '';
     public int $measurementMaxAge = 300;
+    /** > 0: GET /v1/config/<path> answers with this HTTP error (e.g. 500) */
+    public int $getConfigStatus = 0;
 
     public function __construct()
     {
@@ -222,6 +224,9 @@ final class FakeEOSBackend
         $this->calls[] = ['GET', '/v1/config/' . $path];
         if (($down = $this->unreachable()) !== null) {
             return $down;
+        }
+        if ($this->getConfigStatus > 0) {
+            return $this->problem($this->getConfigStatus, 'Internal Server Error', 'simulated failure', '/v1/config/' . $path);
         }
         $node = $this->effective();
         foreach (array_values(array_filter(explode('/', str_replace('.', '/', $path)), static fn (string $p): bool => $p !== '')) as $part) {

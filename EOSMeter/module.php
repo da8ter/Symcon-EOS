@@ -40,6 +40,7 @@ class EOSMeter extends IPSModuleStrict
         $this->RegisterPropertyBoolean('PushOnChange', false);
 
         $this->RegisterAttributeString('RegisteredVars', '[]');
+        $this->RegisterAttributeInteger('KeysRepairTs', 0);
         $this->RegisterAttributeInteger('LastPushTs', 0);
 
         $this->RegisterVariableInteger('LastPush', $this->Translate('Last push'), $this->eosDateTimePresentation('Repeat'), 10);
@@ -124,6 +125,14 @@ class EOSMeter extends IPSModuleStrict
             return false;
         }
         $res = $this->forward(['Command' => 'PutSamples', 'Samples' => $samples]);
+        if (($res['ok'] ?? false) !== true && str_contains((string) ($res['error'] ?? ''), 'No energy channel')
+            && $this->eosNow() - $this->ReadAttributeInteger('KeysRepairTs') >= 600) {
+            // EOS no longer knows a key (e.g. a server "Write to EOS" replaced the list): register and send again.
+            $this->WriteAttributeInteger('KeysRepairTs', $this->eosNow());
+            if ($this->WriteKeysToEOS()) {
+                $res = $this->forward(['Command' => 'PutSamples', 'Samples' => $samples]);
+            }
+        }
         if (($res['ok'] ?? false) !== true) {
             $this->SetValue('LastError', (string) ($res['error'] ?? '?'));
             $this->UpdateFormField('ActionResult', 'caption', (string) ($res['error'] ?? '?'));

@@ -57,16 +57,16 @@ if (!trait_exists('EOSSoCPush')) {
             }
         }
 
-        /** Override to suppress pushes (e.g. EV not plugged in). */
-        protected function socPushAllowed(): bool
+        /** Override to replace the value that is sent (e.g. an unplugged vehicle keeps its last value). */
+        protected function socValueForPush(float $factor): float
         {
-            return true;
+            return $factor;
         }
 
         public function PushSoC(): bool
         {
             $varId = $this->ReadPropertyInteger('SoCSourceVariable');
-            if ($varId <= 0 || !IPS_VariableExists($varId) || !$this->parentUsable() || !$this->socPushAllowed()) {
+            if ($varId <= 0 || !IPS_VariableExists($varId) || !$this->parentUsable()) {
                 return false;
             }
             $raw = (float) GetValue($varId);
@@ -75,7 +75,7 @@ if (!trait_exists('EOSSoCPush')) {
                 $this->SendDebug('PushSoC', 'value ' . $raw . ' > 1 interpreted as percent', 0);
                 $factor /= 100.0;
             }
-            $factor = max(0.0, min(1.0, round($factor, 4)));
+            $factor = $this->socValueForPush(max(0.0, min(1.0, round($factor, 4))));
 
             $res = $this->forward([
                 'Command'  => 'PutMeasurement',

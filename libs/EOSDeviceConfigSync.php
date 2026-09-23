@@ -8,30 +8,65 @@ declare(strict_types=1);
  * loading when the configuration form opens, and the "Device in EOS" picker.
  *
  * The using class must use EOSCommon, EOSPlanDevice and EOSFormHelpers
- * (setFormAttribute) and provide deviceConfig(): [path, device, merge] plus
- * ReadConfigFromEOS().
+ * (setFormAttribute), define DEVICE_COLLECTION (e.g. 'devices/batteries') and
+ * SINGLE_DEVICE (true when GENETIC supports only one device of the kind) and
+ * provide deviceConfig(): [path, device, merge] plus ReadConfigFromEOS().
  */
 if (!trait_exists('EOSDeviceConfigSync')) {
     trait EOSDeviceConfigSync
     {
         /**
+         * Read a configuration path. state: 'ok' (value may be null for a null field),
+         * 'missing' (EOS answered 404) or 'error' (anything else: nothing may be
+         * concluded from it, nothing may be written).
+         */
+        protected function readConfig(string $path): array
+        {
+            $res = $this->forward(['Command' => 'GetConfig', 'Path' => $path]);
+            if (($res['ok'] ?? false) === true) {
+                return ['state' => 'ok', 'value' => $res['data'] ?? null, 'error' => ''];
+            }
+            if ((int) ($res['status'] ?? 0) === 404) {
+                return ['state' => 'missing', 'value' => null, 'error' => ''];
+            }
+            return ['state' => 'error', 'value' => null, 'error' => (string) ($res['error'] ?? 'no response from EOS Server')];
+        }
+
+        /**
          * Keep the device entry in the EOS configuration equal to the Symcon properties.
          * Without $force nothing is sent when EOS already holds the same values, so the
          * automatic call from ApplyChanges() is free of side effects on every restart.
+         * Sets STATUS_OTHER_DEVICE (and writes nothing) when EOS already holds another
+         * device of a kind GENETIC supports only once.
          */
         protected function syncDeviceConfig(string $path, array $device, array $merge, bool $force): bool
         {
             // null means "not set here": never delete a value the user maintains in EOSdash.
-            $device = array_filter($device, static fn ($v): bool => $v !== null);
+            $device = array_filter($device, static fn (mixed $v): bool => $v !== null);
             if (!$this->parentUsable()) {
                 $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('EOS Server not available, configuration not compared.'));
                 return false;
             }
-            $current = $this->forward(['Command' => 'GetConfig', 'Path' => $path]);
-            $eos = is_array($current['data'] ?? null) ? $current['data'] : null;
+            $read = $this->readConfig($path);
+            if ($read['state'] === 'error') {
+                $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('EOS configuration could not be read (%s); nothing compared, nothing written.'), $read['error']));
+                return false;
+            }
+            $eos = is_array($read['value']) ? $read['value'] : null;
+            if ($eos === null) {
+                $other = $this->otherDevicesInEOS();
+                if ($other !== '') {
+                    $message = sprintf($this->Translate('EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.'), $other);
+                    $this->SetStatus(self::STATUS_OTHER_DEVICE);
+                    $this->UpdateFormField('ConfigInfo', 'caption', $message);
+                    $this->LogMessage($message, KL_WARNING);
+                    return false;
+                }
+            }
             $diff = $this->configDiff($eos, $device);
             if (!$force && $diff === []) {
                 $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('EOS configuration matches this instance.'));
+                $this->ensureDeviceMaximum();
                 return true;
             }
             $res = $this->forward(['Command' => 'MergeConfig', 'Value' => $this->withoutNulls($merge)]);
@@ -40,11 +75,53 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
                 return false;
             }
+            $this->ensureDeviceMaximum();
             $save = $this->forward(['Command' => 'SaveConfig']);
             $keys = $diff !== [] ? implode(', ', $diff) : $this->Translate('all fields');
             $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS (%s)'), $keys), KL_NOTIFY);
             $this->UpdateFormField('ConfigInfo', 'caption', ($save['ok'] ?? false) ? sprintf($this->Translate('Written to EOS: %s'), $keys) : (string) ($save['error'] ?? '?'));
             return (bool) ($save['ok'] ?? false);
+        }
+
+        /** Other device ids in EOS for a kind GENETIC supports only once; '' when none (or not such a kind). */
+        protected function otherDevicesInEOS(): string
+        {
+            if (!self::SINGLE_DEVICE) {
+                return '';
+            }
+            $read = $this->readConfig(self::DEVICE_COLLECTION);
+            $ids = ($read['state'] === 'ok' && is_array($read['value'])) ? array_map('strval', array_keys($read['value'])) : [];
+            return implode(', ', array_values(array_diff($ids, [$this->ReadPropertyString('DeviceID')])));
+        }
+
+        /**
+         * devices/max_<kind> must allow this device: raised on its own, independent of the
+         * device entry (a matching entry with max 0 makes every GENETIC run abort). Never
+         * lowered; null means "no limit".
+         */
+        protected function ensureDeviceMaximum(): void
+        {
+            $kind = basename(self::DEVICE_COLLECTION);
+            $read = $this->readConfig('devices/max_' . $kind);
+            if ($read['state'] !== 'ok' || $read['value'] === null || !is_numeric($read['value'])) {
+                return;
+            }
+            $needed = 1;
+            if (!self::SINGLE_DEVICE) {
+                $all = $this->readConfig(self::DEVICE_COLLECTION);
+                $ids = ($all['state'] === 'ok' && is_array($all['value'])) ? array_map('strval', array_keys($all['value'])) : [];
+                $needed = count(array_unique(array_merge($ids, [$this->ReadPropertyString('DeviceID')])));
+            }
+            if ((int) $read['value'] >= $needed) {
+                return;
+            }
+            $res = $this->forward(['Command' => 'SetConfig', 'Path' => 'devices/max_' . $kind, 'Value' => $needed]);
+            if (($res['ok'] ?? false) !== true) {
+                $this->LogMessage(sprintf($this->Translate('Writing device configuration to EOS failed: %s'), (string) ($res['error'] ?? '?')), KL_WARNING);
+                return;
+            }
+            $this->forward(['Command' => 'SaveConfig']);
+            $this->LogMessage(sprintf($this->Translate('Raised %s to %d in EOS'), 'devices/max_' . $kind, $needed), KL_NOTIFY);
         }
 
         /**
@@ -59,13 +136,12 @@ if (!trait_exists('EOSDeviceConfigSync')) {
 
         protected function armFormFillIfDiffers(string $path, array $device): void
         {
-            $device = array_filter($device, static fn ($v): bool => $v !== null);
+            $device = array_filter($device, static fn (mixed $v): bool => $v !== null);
             if (!$this->parentUsable()) {
                 return;
             }
-            $current = $this->forward(['Command' => 'GetConfig', 'Path' => $path]);
-            $eos = is_array($current['data'] ?? null) ? $current['data'] : null;
-            if ($eos !== null && $this->configDiff($eos, $device) !== []) {
+            $read = $this->readConfig($path);
+            if ($read['state'] === 'ok' && is_array($read['value']) && $this->configDiff($read['value'], $device) !== []) {
                 $this->SetTimerInterval('FormFill', 1500);
             }
         }
@@ -86,14 +162,20 @@ if (!trait_exists('EOSDeviceConfigSync')) {
         /** Text for the form: does EOS hold the same values as this instance? */
         protected function eosConfigSummary(string $path, array $device): string
         {
-            $device = array_filter($device, static fn ($v): bool => $v !== null);
+            $device = array_filter($device, static fn (mixed $v): bool => $v !== null);
             if (!$this->parentUsable()) {
                 return $this->Translate('EOS Server not available, configuration not compared.');
             }
-            $current = $this->forward(['Command' => 'GetConfig', 'Path' => $path]);
-            $eos = is_array($current['data'] ?? null) ? $current['data'] : null;
+            $read = $this->readConfig($path);
+            if ($read['state'] === 'error') {
+                return sprintf($this->Translate('EOS configuration could not be read (%s); nothing compared, nothing written.'), $read['error']);
+            }
+            $eos = is_array($read['value']) ? $read['value'] : null;
             if ($eos === null) {
-                return $this->Translate('Device not in EOS yet; it is created on Apply.');
+                $other = $this->otherDevicesInEOS();
+                return $other !== ''
+                    ? sprintf($this->Translate('EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.'), $other)
+                    : $this->Translate('Device not in EOS yet; it is created on Apply.');
             }
             $diff = $this->configDiff($eos, $device);
             if ($diff === []) {
@@ -101,7 +183,7 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             }
             $parts = [];
             foreach ($diff as $key) {
-                $parts[] = $key . ': EOS ' . $this->eosShorten(json_encode($eos[$key] ?? null, JSON_UNESCAPED_UNICODE), 40) . ' / Symcon ' . $this->eosShorten(json_encode($device[$key], JSON_UNESCAPED_UNICODE), 40);
+                $parts[] = $key . ': EOS ' . $this->eosShorten((string) json_encode($eos[$key] ?? null, JSON_UNESCAPED_UNICODE), 40) . ' / Symcon ' . $this->eosShorten((string) json_encode($device[$key], JSON_UNESCAPED_UNICODE), 40);
             }
             return $this->Translate('EOS differs; its values are loaded into the form. Apply stores them in Symcon, Cancel keeps the Symcon values:') . ' ' . implode(' · ', $parts);
         }
@@ -164,18 +246,21 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             $this->RegisterPropertyString('EOSDevicePick', '');
         }
 
-        /** Fill the select named EOSDevicePick with the device ids EOS knows in $collectionPath (e.g. devices/batteries). */
-        protected function fillDevicePicker(array &$form, string $collectionPath): void
+        /** Fill the select named EOSDevicePick with the device ids EOS knows in DEVICE_COLLECTION. */
+        protected function fillDevicePicker(array &$form): void
         {
             $current = $this->ReadPropertyString('DeviceID');
             $options = [['caption' => sprintf($this->Translate('- select from EOS (current: %s) -'), $current), 'value' => '']];
-            if ($this->parentUsable()) {
-                $res = $this->forward(['Command' => 'GetConfig', 'Path' => $collectionPath]);
-                foreach (array_keys(is_array($res['data'] ?? null) ? $res['data'] : []) as $id) {
+            if (!$this->parentUsable()) {
+                $options[0]['caption'] = $this->Translate('- EOS Server not available -');
+            } else {
+                $read = $this->readConfig(self::DEVICE_COLLECTION);
+                if ($read['state'] === 'error') {
+                    $options[0]['caption'] = $this->Translate('- EOS configuration not readable -');
+                }
+                foreach (array_keys(($read['state'] === 'ok' && is_array($read['value'])) ? $read['value'] : []) as $id) {
                     $options[] = ['caption' => (string) $id . ((string) $id === $current ? ' ✓' : ''), 'value' => (string) $id];
                 }
-            } else {
-                $options[0]['caption'] = $this->Translate('- EOS Server not available -');
             }
             $this->setFormAttribute($form['elements'], 'EOSDevicePick', 'options', $options);
         }

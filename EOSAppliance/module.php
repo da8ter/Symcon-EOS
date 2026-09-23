@@ -32,6 +32,9 @@ class EOSAppliance extends IPSModuleStrict
     use EOSApplianceConfig;
 
     private const MODULE_GUID = '{A7E2C4D9-3F61-4B8E-B2D5-6C9F0E1A7B34}';
+    /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */
+    private const DEVICE_COLLECTION = 'devices/home_appliances';
+    private const SINGLE_DEVICE = false;
     private const CONTROL_PREFIX = 'EOSHA';
     private const MODE_OFF = 0;
     private const MODE_RUN = 1;
@@ -160,7 +163,7 @@ class EOSAppliance extends IPSModuleStrict
         [$path, $device] = $this->deviceConfig();
         $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
         $this->armFormFillIfDiffers($path, $device);
-        $this->fillDevicePicker($form, dirname($path));
+        $this->fillDevicePicker($form);
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 

@@ -9,6 +9,7 @@ require_once __DIR__ . '/../libs/EOSControlBindings.php';
 require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
+require_once __DIR__ . '/../libs/EOSBatteryConfig.php';
 
 /**
  * EOS Battery: represents one stationary battery known to EOS.
@@ -27,8 +28,12 @@ class EOSBattery extends IPSModuleStrict
     use EOSFormHelpers;
     use EOSControl;
     use EOSDeviceConfigSync;
+    use EOSBatteryConfig;
 
     private const MODULE_GUID = '{F4B30383-1210-4169-93DA-5C9664447B42}';
+    /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */
+    private const DEVICE_COLLECTION = 'devices/batteries';
+    private const SINGLE_DEVICE = true;
     private const CONTROL_PREFIX = 'EOSBAT';
 
     public function Create(): void
@@ -106,9 +111,17 @@ class EOSBattery extends IPSModuleStrict
         }
 
         $this->SetStatus(IS_ACTIVE);
+        if ($this->ReadPropertyInteger('MinSoC') >= $this->ReadPropertyInteger('MaxSoC')) {
+            // EOS rejects such a battery; keep pushing and controlling with the entry EOS has.
+            $this->SetStatus(self::STATUS_BAD_LIMITS);
+        } else {
+            [$path, $device, $merge] = $this->deviceConfig();
+            $this->syncDeviceConfig($path, $device, $merge, false);
+            if ($this->GetStatus() === self::STATUS_OTHER_DEVICE) {
+                return;
+            }
+        }
         $this->SetTimerInterval('SoCPush', $this->ReadPropertyInteger('PushInterval') * 1000);
-        [$path, $device, $merge] = $this->deviceConfig();
-        $this->syncDeviceConfig($path, $device, $merge, false);
         $this->PushSoC();
         $this->RefreshPlan();
     }
@@ -136,7 +149,7 @@ class EOSBattery extends IPSModuleStrict
         [$path, $device] = $this->deviceConfig();
         $this->setFormAttribute($form['elements'], 'ConfigInfo', 'caption', $this->eosConfigSummary($path, $device));
         $this->armFormFillIfDiffers($path, $device);
-        $this->fillDevicePicker($form, dirname($path));
+        $this->fillDevicePicker($form);
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
@@ -183,59 +196,6 @@ class EOSBattery extends IPSModuleStrict
     public function GetTileState(): string
     {
         return json_encode($this->tileState(), JSON_UNESCAPED_UNICODE);
-    }
-
-    // ------------------------------------------------------------------ device configuration in EOS
-
-    /** Force-write the battery parameters to EOS (ApplyChanges does it automatically when they differ). */
-    public function WriteConfigToEOS(): bool
-    {
-        [$path, $device, $merge] = $this->deviceConfig();
-        return $this->syncDeviceConfig($path, $device, $merge, true);
-    }
-
-    /** [config path, device entry, merge payload] for the EOS configuration. */
-    private function deviceConfig(): array
-    {
-        $id = $this->ReadPropertyString('DeviceID');
-        $battery = [
-            'device_id'                         => $id,
-            'capacity_wh'                       => $this->ReadPropertyInteger('CapacityWh'),
-            'max_charge_power_w'                => $this->ReadPropertyInteger('MaxChargePowerW'),
-            'min_soc_percentage'                => $this->ReadPropertyInteger('MinSoC'),
-            'max_soc_percentage'                => $this->ReadPropertyInteger('MaxSoC'),
-            'charging_efficiency'               => $this->ReadPropertyFloat('ChargingEfficiency'),
-            'discharging_efficiency'            => $this->ReadPropertyFloat('DischargingEfficiency'),
-            'levelized_cost_of_storage_amt_kwh' => $this->ReadPropertyFloat('LcosAmtKwh'),
-        ];
-        return ['devices/batteries/' . $id, $battery, ['devices' => ['batteries' => [$id => $battery]]]];
-    }
-
-    public function ReadConfigFromEOS(): bool
-    {
-        $id = $this->ReadPropertyString('DeviceID');
-        $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/batteries/' . $id]);
-        $bat = $res['data'] ?? null;
-        if (($res['ok'] ?? false) !== true || !is_array($bat)) {
-            $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('No battery %s in EOS configuration.'), $id));
-            return false;
-        }
-        $map = [
-            'CapacityWh'            => ['capacity_wh', 'int'],
-            'MaxChargePowerW'       => ['max_charge_power_w', 'int'],
-            'MinSoC'                => ['min_soc_percentage', 'int'],
-            'MaxSoC'                => ['max_soc_percentage', 'int'],
-            'ChargingEfficiency'    => ['charging_efficiency', 'float'],
-            'DischargingEfficiency' => ['discharging_efficiency', 'float'],
-            'LcosAmtKwh'            => ['levelized_cost_of_storage_amt_kwh', 'float'],
-        ];
-        foreach ($map as $field => [$key, $type]) {
-            if (isset($bat[$key])) {
-                $this->UpdateFormField($field, 'value', $type === 'int' ? (int) $bat[$key] : (float) $bat[$key]);
-            }
-        }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values from EOS loaded into the form because they differ. Apply stores them in Symcon, Cancel keeps the Symcon values.'));
-        return true;
     }
 
     // ------------------------------------------------------------------ plan hooks (display)

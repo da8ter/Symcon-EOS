@@ -102,7 +102,11 @@
             "- select from EOS -": "- select from EOS -",
             "- select from EOS (current: %s) -": "- select from EOS (current: %s) -",
             "- EOS Server not available -": "- EOS Server not available -",
-            "EOS device ID (free text; a new device is created in EOS on Apply)": "EOS device ID (free text; a new device is created in EOS on Apply)"
+            "EOS device ID (free text; a new device is created in EOS on Apply)": "EOS device ID (free text; a new device is created in EOS on Apply)",
+            "EOS configuration could not be read (%s); nothing compared, nothing written.": "EOS configuration could not be read (%s); nothing compared, nothing written.",
+            "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.": "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.",
+            "Raised %s to %d in EOS": "Raised %s to %d in EOS",
+            "- EOS configuration not readable -": "- EOS configuration not readable -"
         },
         "de": {
             "EOS Appliance": "EOS Haushaltsgerät",
@@ -233,7 +237,11 @@
             "- select from EOS -": "- aus EOS wählen -",
             "- select from EOS (current: %s) -": "- aus EOS wählen (aktuell: %s) -",
             "- EOS Server not available -": "- EOS Server nicht verfügbar -",
-            "EOS device ID (free text; a new device is created in EOS on Apply)": "EOS Geräte-ID (Freitext; ein neues Gerät wird beim Übernehmen in EOS angelegt)"
+            "EOS device ID (free text; a new device is created in EOS on Apply)": "EOS Geräte-ID (Freitext; ein neues Gerät wird beim Übernehmen in EOS angelegt)",
+            "EOS configuration could not be read (%s); nothing compared, nothing written.": "EOS-Konfiguration nicht lesbar (%s); nichts verglichen, nichts geschrieben.",
+            "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.": "EOS hat bereits %s; als Gerät auswählen oder in EOSdash entfernen. Nichts angelegt.",
+            "Raised %s to %d in EOS": "%s in EOS auf %d angehoben",
+            "- EOS configuration not readable -": "- EOS-Konfiguration nicht lesbar -"
         }
     }
 }

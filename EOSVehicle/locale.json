@@ -113,7 +113,15 @@
             "- select from EOS -": "- select from EOS -",
             "- select from EOS (current: %s) -": "- select from EOS (current: %s) -",
             "- EOS Server not available -": "- EOS Server not available -",
-            "EOS device ID (free text; a new device is created in EOS on Apply)": "EOS device ID (free text; a new device is created in EOS on Apply)"
+            "EOS device ID (free text; a new device is created in EOS on Apply)": "EOS device ID (free text; a new device is created in EOS on Apply)",
+            "EOS configuration could not be read (%s); nothing compared, nothing written.": "EOS configuration could not be read (%s); nothing compared, nothing written.",
+            "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.": "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.",
+            "Raised %s to %d in EOS": "Raised %s to %d in EOS",
+            "- EOS configuration not readable -": "- EOS configuration not readable -",
+            "EOS already has another device of this kind": "EOS already has another device of this kind",
+            "Max. SoC must be greater than 0 (configuration not written to EOS)": "Max. SoC must be greater than 0 (configuration not written to EOS)",
+            "Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC": "Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC",
+            "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)": "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)"
         },
         "de": {
             "EOS Vehicle": "EOS E-Auto",
@@ -158,7 +166,6 @@
             "Push interval (s)": "Push-Intervall (s)",
             "Minimum gap between change-triggered pushes (s)": "Mindestabstand bei Push durch Wertänderung (s)",
             "Plugged-in source variable (optional)": "Quellvariable „angesteckt“ (optional)",
-            "Push SoC only while plugged in": "SoC nur senden, wenn angesteckt",
             "Departure time source variable (unix timestamp, optional)": "Quellvariable Abfahrtszeit (Unix-Zeitstempel, optional)",
             "Write departure time to EOS automatically": "Abfahrtszeit automatisch nach EOS schreiben",
             "Target SoC at departure (%)": "Ziel-SoC bei Abfahrt (%)",
@@ -259,7 +266,15 @@
             "- select from EOS -": "- aus EOS wählen -",
             "- select from EOS (current: %s) -": "- aus EOS wählen (aktuell: %s) -",
             "- EOS Server not available -": "- EOS Server nicht verfügbar -",
-            "EOS device ID (free text; a new device is created in EOS on Apply)": "EOS Geräte-ID (Freitext; ein neues Gerät wird beim Übernehmen in EOS angelegt)"
+            "EOS device ID (free text; a new device is created in EOS on Apply)": "EOS Geräte-ID (Freitext; ein neues Gerät wird beim Übernehmen in EOS angelegt)",
+            "EOS configuration could not be read (%s); nothing compared, nothing written.": "EOS-Konfiguration nicht lesbar (%s); nichts verglichen, nichts geschrieben.",
+            "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.": "EOS hat bereits %s; als Gerät auswählen oder in EOSdash entfernen. Nichts angelegt.",
+            "Raised %s to %d in EOS": "%s in EOS auf %d angehoben",
+            "- EOS configuration not readable -": "- EOS-Konfiguration nicht lesbar -",
+            "EOS already has another device of this kind": "EOS hat bereits ein anderes Gerät dieser Art",
+            "Max. SoC must be greater than 0 (configuration not written to EOS)": "Max. SoC muss größer als 0 sein (Konfiguration nicht nach EOS geschrieben)",
+            "Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC": "Ziel-SoC %d %% wird als %d %% gesendet: EOS verlangt ihn unter dem Max. SoC",
+            "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)": "SoC-Quelle nur angesteckt verwenden (abgesteckt wird der letzte Wert gesendet)"
         }
     }
 }

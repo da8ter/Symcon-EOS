@@ -17,7 +17,7 @@ if (!trait_exists('EOSApplianceConfig')) {
             return $this->syncDeviceConfig($path, $device, $merge, true);
         }
 
-        /** [config path, device entry, merge payload]; raises devices/max_home_appliances when needed. */
+        /** [config path, device entry, merge payload]; devices/max_home_appliances is handled by ensureDeviceMaximum(). */
         private function deviceConfig(): array
         {
             $id = $this->ReadPropertyString('DeviceID');
@@ -44,15 +44,7 @@ if (!trait_exists('EOSApplianceConfig')) {
             $earliest = $this->earliestStart();
             $appliance['earliest_start_datetime'] = $earliest > $this->eosNow() ? $this->eosIsoNow($earliest) : null;
 
-            $merge = ['devices' => ['home_appliances' => [$id => $appliance]]];
-            if ($this->parentUsable()) {
-                $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/max_home_appliances']);
-                $count = $this->applianceCountInEOS();
-                if ((int) ($res['data'] ?? 0) < $count) {
-                    $merge['devices']['max_home_appliances'] = $count;
-                }
-            }
-            return ['devices/home_appliances/' . $id, $appliance, $merge];
+            return [self::DEVICE_COLLECTION . '/' . $id, $appliance, ['devices' => ['home_appliances' => [$id => $appliance]]]];
         }
 
         public function ReadConfigFromEOS(): bool
@@ -145,16 +137,6 @@ if (!trait_exists('EOSApplianceConfig')) {
                 return false;
             }
             return true;
-        }
-
-        private function applianceCountInEOS(): int
-        {
-            $res = $this->forward(['Command' => 'GetConfig', 'Path' => 'devices/home_appliances']);
-            $existing = is_array($res['data'] ?? null) ? array_keys($res['data']) : [];
-            if (!in_array($this->ReadPropertyString('DeviceID'), $existing, true)) {
-                $existing[] = $this->ReadPropertyString('DeviceID');
-            }
-            return count($existing);
         }
     }
 }

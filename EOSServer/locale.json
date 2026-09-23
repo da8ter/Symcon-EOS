@@ -21,7 +21,9 @@
             "Configuration written to EOS.": "Configuration written to EOS.",
             "Configuration saved to EOS.config.json.": "Configuration saved to EOS.config.json.",
             "Optimization started, result follows in the debug log and in the plan variables.": "Optimization started, result follows in the debug log and in the plan variables.",
-            "Location taken from Symcon: %s / %s. Press Apply to store.": "Location taken from Symcon: %s / %s. Press Apply to store."
+            "Location taken from Symcon: %s / %s. Press Apply to store.": "Location taken from Symcon: %s / %s. Press Apply to store.",
+            "Measurement keys could not be read from EOS (%s); nothing written.": "Measurement keys could not be read from EOS (%s); nothing written.",
+            "PV plane %d: horizon value \"%s\" is not a number": "PV plane %d: horizon value \"%s\" is not a number"
         },
         "de": {
             "EOS Server": "EOS Server",
@@ -45,7 +47,6 @@
             "Configuration saved to EOS.config.json.": "Konfiguration in EOS.config.json gespeichert.",
             "Optimization started, result follows in the debug log and in the plan variables.": "Optimierung gestartet, Ergebnis folgt im Debug-Log und in den Plan-Variablen.",
             "Location taken from Symcon: %s / %s. Press Apply to store.": "Standort aus Symcon übernommen: %s / %s. Mit Übernehmen speichern.",
-
             "Connection": "Verbindung",
             "Host or IP of the EOS server. From a Symcon Docker container use host.docker.internal, not localhost.": "Host oder IP des EOS-Servers. Aus einem Symcon-Docker-Container host.docker.internal statt localhost verwenden.",
             "Host": "Host",
@@ -60,7 +61,6 @@
             "Start optimization": "Optimierung starten",
             "Open EOSdash": "EOSdash öffnen",
             "Open API docs": "API-Doku öffnen",
-
             "EOS configuration": "EOS-Konfiguration",
             "Symcon writes to EOS only when you press a button here. Load the current configuration first, press Apply, then adjust and write back.": "Symcon schreibt nur auf Knopfdruck nach EOS. Zuerst die aktuelle Konfiguration laden, Übernehmen drücken, dann anpassen und zurückschreiben.",
             "Load from EOS": "Aus EOS laden",
@@ -151,13 +151,14 @@
             "Merge object (JSON)": "Merge-Objekt (JSON)",
             "Write merge object": "Merge-Objekt schreiben",
             "Result": "Ergebnis",
-
             "Instance is being created": "Instanz wird erstellt",
             "EOS connected": "EOS verbunden",
             "Instance inactive": "Instanz inaktiv",
             "EOS not reachable": "EOS nicht erreichbar",
             "EOS version mismatch": "EOS-Version passt nicht",
-            "No plan available yet": "Noch kein Plan vorhanden"
+            "No plan available yet": "Noch kein Plan vorhanden",
+            "Measurement keys could not be read from EOS (%s); nothing written.": "Messwert-Schlüssel aus EOS nicht lesbar (%s); nichts geschrieben.",
+            "PV plane %d: horizon value \"%s\" is not a number": "PV-Ebene %d: Horizontwert „%s“ ist keine Zahl"
         }
     }
 }

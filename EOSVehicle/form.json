@@ -25,7 +25,7 @@
                     "type": "ValidationTextBox",
                     "name": "DeviceID",
                     "caption": "EOS device ID (free text; a new device is created in EOS on Apply)",
-                    "validate": "^[A-Za-z0-9_-]+$"
+                    "validate": "^[A-Za-z][A-Za-z0-9_-]*$"
                 },
                 {
                     "type": "SelectVariable",
@@ -78,7 +78,7 @@
                 {
                     "type": "CheckBox",
                     "name": "PushOnlyWhenPlugged",
-                    "caption": "Push SoC only while plugged in"
+                    "caption": "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)"
                 },
                 {
                     "type": "SelectVariable",
@@ -439,6 +439,16 @@
             "code": 203,
             "icon": "error",
             "caption": "Device ID already used by another instance"
+        },
+        {
+            "code": 205,
+            "icon": "error",
+            "caption": "EOS already has another device of this kind"
+        },
+        {
+            "code": 206,
+            "icon": "error",
+            "caption": "Max. SoC must be greater than 0 (configuration not written to EOS)"
         }
     ]
 }
