@@ -35,6 +35,9 @@ class EOSAppliance extends IPSModuleStrict
     /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */
     private const DEVICE_COLLECTION = 'devices/home_appliances';
     private const SINGLE_DEVICE = false;
+    /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
+    private const BLOCK_TIMERS = ['CyclesPush', 'SlotTimer', 'Watchdog', 'TimesExpiry'];
+    private const SOURCE_ATTRIBUTES = ['RegisteredDeadlineVar', 'RegisteredEarliestVar', 'RegisteredCyclesVar'];
     private const CONTROL_PREFIX = 'EOSHA';
     private const MODE_OFF = 0;
     private const MODE_RUN = 1;
@@ -107,21 +110,23 @@ class EOSAppliance extends IPSModuleStrict
             return;
         }
 
+        $deviceId = $this->ReadPropertyString('DeviceID');
+        // An id that is invalid or used by another instance blocks everything (see EOSBattery).
+        if (!$this->validDeviceId($deviceId)) {
+            $this->blockDevice(self::STATUS_BAD_DEVICE_ID);
+            return;
+        }
+        if ($this->isDuplicateDeviceId($deviceId)) {
+            $this->blockDevice(self::STATUS_DUPLICATE_ID);
+            return;
+        }
+        $this->SetStatus(IS_ACTIVE);
         $this->setupControl();
         $this->registerOptionalSource('DeadlineSourceVariable', 'RegisteredDeadlineVar');
         $this->registerOptionalSource('EarliestStartSourceVariable', 'RegisteredEarliestVar');
         $this->registerOptionalSource('CyclesCompletedSourceVariable', 'RegisteredCyclesVar');
-        $deviceId = $this->ReadPropertyString('DeviceID');
         $this->SetTimerInterval('CyclesPush', 0);
 
-        if (!$this->validDeviceId($deviceId)) {
-            $this->SetStatus(self::STATUS_BAD_DEVICE_ID);
-            return;
-        }
-        if ($this->isDuplicateDeviceId($deviceId)) {
-            $this->SetStatus(self::STATUS_DUPLICATE_ID);
-            return;
-        }
         if (!$this->parentUsable()) {
             $this->SetStatus(self::STATUS_NO_PARENT);
             return;

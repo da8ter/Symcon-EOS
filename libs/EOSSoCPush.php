@@ -71,7 +71,7 @@ if (!trait_exists('EOSSoCPush')) {
         public function PushSoC(): bool
         {
             $varId = $this->ReadPropertyInteger('SoCSourceVariable');
-            if ($varId <= 0 || !IPS_VariableExists($varId) || !$this->parentUsable()) {
+            if ($varId <= 0 || !IPS_VariableExists($varId) || !$this->parentUsable() || $this->deviceBlocked()) {
                 return false;
             }
             $raw = (float) GetValue($varId);

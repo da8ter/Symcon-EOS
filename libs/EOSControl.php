@@ -181,6 +181,9 @@ if (!trait_exists('EOSControl')) {
         /** Fast path for onPlanProcessed()/watchdog: store the desired state, defer the writes. */
         protected function scheduleControl(?array $active, string $trigger): void
         {
+            if ($this->deviceBlocked()) {
+                return;
+            }
             $desired = $this->computeDesired($active, $trigger);
             if ($desired === null) {
                 return;
@@ -203,7 +206,7 @@ if (!trait_exists('EOSControl')) {
         /** Timer callback: write the stored desired state. */
         protected function runDispatch(bool $force = false): void
         {
-            if ($this->ReadPropertyInteger('ControlMode') === self::CONTROL_DISPLAY) {
+            if ($this->ReadPropertyInteger('ControlMode') === self::CONTROL_DISPLAY || $this->deviceBlocked()) {
                 return;
             }
             $desired = $this->eosJsonDecode($this->ReadAttributeString('Desired'), []);
@@ -363,6 +366,9 @@ if (!trait_exists('EOSControl')) {
                 case 'ControlActive':
                     $on = (bool) $value;
                     $this->SetValue('ControlActive', $on);
+                    if ($this->deviceBlocked()) {
+                        return true; // switch state kept, nothing written under a foreign id
+                    }
                     if (!$on) {
                         // Release only from a control mode that actually writes; "display only" never touches the device.
                         $mode = $this->ReadPropertyInteger('ControlMode');
@@ -414,7 +420,7 @@ if (!trait_exists('EOSControl')) {
         /** Watchdog (60 s): stale/valid_until, manual auto-return, heartbeat, retries. */
         protected function runWatchdog(): void
         {
-            if ($this->ReadPropertyInteger('ControlMode') === self::CONTROL_DISPLAY) {
+            if ($this->ReadPropertyInteger('ControlMode') === self::CONTROL_DISPLAY || $this->deviceBlocked()) {
                 return;
             }
             $active = $this->activeInstruction();
@@ -432,6 +438,9 @@ if (!trait_exists('EOSControl')) {
         /** Form button / script API: re-evaluate now and write synchronously. */
         protected function applyControlNow(bool $force): bool
         {
+            if ($this->deviceBlocked()) {
+                return false;
+            }
             $desired = $this->computeDesired($this->activeInstruction(), 'user');
             if ($desired === null) {
                 $this->UpdateFormField('ControlResult', 'caption', (string) $this->GetValue('LastControlResult'));

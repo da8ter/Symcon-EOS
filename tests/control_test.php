@@ -266,4 +266,31 @@ $m->properties['TargetGridChargeVariable'] = 25; $m->ApplyChanges();
 check(str_contains($m->attributes['ControlProblem'], 'GridCharge') && str_contains($m->attributes['ControlProblem'], 'not actionable'), 'K15: standard action switched off (custom action 1) is not actionable: ' . $m->attributes['ControlProblem']);
 $m->properties['TargetGridChargeVariable'] = 0;
 
+// ---------------------------------------------------------------- T15 an id this instance does not own blocks everything (K38)
+echo "== Gesperrte Geräte-ID\n";
+$GLOBALS['registry'] = true;
+resetWorld();
+$eos->instructions = []; $eos->instruction('battery1', $now - 5, 'FORCED_CHARGE', 1.0); $eos->freshPlan($now - 30);
+$first = battery(2); $first->ApplyChanges(); $first->fireOnce();
+worldVar(26, 1, 0, true); worldVar(27, 2, 30.0, false);
+$second = new EOSBattery(1100); $second->Create(); connectToServer($second);
+$second->properties['SoCSourceVariable'] = 27; $second->properties['ControlMode'] = 2; $second->properties['TargetChargePowerVariable'] = 26;
+$second->ApplyChanges(); $second->fireOnce();
+check($second->status === 203 && $second->messages === [] && $second->timers['Watchdog']['ms'] === 0 && $second->timers['SoCPush']['ms'] === 0 && $second->timers['SlotTimer']['ms'] === 0, 'K38: second battery keeping the default id -> status 203, no source messages, watchdog, push and slot timer stopped');
+resetWorld(); $calls = count($eos->calls);
+$second->PushSoC(); $second->RefreshPlan();
+$second->ReceiveData(json_encode(['DataID' => '{EAB78E68-BFF7-4608-BA75-9ECDB5165208}', 'Event' => 'PlanUpdated', 'Plan' => $eos->plan, 'Instructions' => $eos->instructions]));
+$second->fireOnce(); $second->Dispatch(); $second->Watchdog(); $second->fireOnce(); $second->ApplyControl(true); $second->RequestAction('ControlActive', true); $second->fireOnce();
+check(count($eos->calls) === $calls && writesTo(26) === [] && $second->onceTimers === [], 'K38: a blocked instance neither pushes, nor processes plans, nor writes to its targets');
+$first->ApplyChanges(); $first->fireOnce();
+check($first->status === IS_ACTIVE, 'K38: the instance with the lower InstanceID keeps working');
+worldVar(28, 1, 0, false);
+$ha = new EOSAppliance(1300); $ha->Create(); connectToServer($ha);
+$ha->properties['DeviceID'] = 'dryer1'; $ha->properties['CyclesCompletedSourceVariable'] = 28; $ha->ApplyChanges();
+check($ha->status === IS_ACTIVE && isset($ha->messages[28]), 'an appliance with its own id works');
+$ha->properties['DeviceID'] = 'battery1'; $ha->ApplyChanges();
+check($ha->status === 203 && !isset($ha->messages[28]) && $ha->timers['CyclesPush']['ms'] === 0, 'K38: ids are unique across device kinds; the source registered before is released');
+unset($GLOBALS['objects'][1100], $GLOBALS['objects'][1300]);
+$GLOBALS['registry'] = false;
+
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

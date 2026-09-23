@@ -34,6 +34,9 @@ class EOSBattery extends IPSModuleStrict
     /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */
     private const DEVICE_COLLECTION = 'devices/batteries';
     private const SINGLE_DEVICE = true;
+    /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
+    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog'];
+    private const SOURCE_ATTRIBUTES = ['RegisteredSoCVar'];
     private const CONTROL_PREFIX = 'EOSBAT';
 
     public function Create(): void
@@ -88,19 +91,22 @@ class EOSBattery extends IPSModuleStrict
             return;
         }
 
-        $this->setupControl();
-        $hasSource = $this->setupSoCSource();
         $deviceId = $this->ReadPropertyString('DeviceID');
-        $this->SetTimerInterval('SoCPush', 0);
-
+        // An id that is invalid or used by another instance blocks everything: no pushes,
+        // no plans, no hardware writes under a device id this instance does not own.
         if (!$this->validDeviceId($deviceId)) {
-            $this->SetStatus(self::STATUS_BAD_DEVICE_ID);
+            $this->blockDevice(self::STATUS_BAD_DEVICE_ID);
             return;
         }
         if ($this->isDuplicateDeviceId($deviceId)) {
-            $this->SetStatus(self::STATUS_DUPLICATE_ID);
+            $this->blockDevice(self::STATUS_DUPLICATE_ID);
             return;
         }
+        $this->SetStatus(IS_ACTIVE); // leaves a blocking status before control and sources start again
+        $this->setupControl();
+        $hasSource = $this->setupSoCSource();
+        $this->SetTimerInterval('SoCPush', 0);
+
         if (!$hasSource) {
             $this->SetStatus(self::STATUS_NO_SOURCE);
             return;
@@ -118,6 +124,7 @@ class EOSBattery extends IPSModuleStrict
             [$path, $device, $merge] = $this->deviceConfig();
             $this->syncDeviceConfig($path, $device, $merge, false);
             if ($this->GetStatus() === self::STATUS_OTHER_DEVICE) {
+                $this->blockDevice(self::STATUS_OTHER_DEVICE);
                 return;
             }
         }

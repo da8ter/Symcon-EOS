@@ -84,17 +84,47 @@ if (!trait_exists('EOSPlanDevice')) {
             return is_array($decoded) ? $decoded : ['ok' => false, 'error' => 'no response from EOS Server'];
         }
 
+        /**
+         * Another battery, vehicle or appliance instance uses the same device id (EOS needs
+         * ids unique across all device kinds). Tie-break: the instance with the lowest
+         * InstanceID keeps working, so a second instance never disables the first one.
+         */
         protected function isDuplicateDeviceId(string $deviceId): bool
         {
-            foreach (IPS_GetInstanceListByModuleID(self::MODULE_GUID) as $id) {
-                if ($id === $this->InstanceID) {
-                    continue;
-                }
-                if ((string) IPS_GetProperty($id, 'DeviceID') === $deviceId) {
-                    return true;
+            foreach (self::EOS_DEVICE_MODULE_GUIDS as $guid) {
+                foreach (IPS_GetInstanceListByModuleID($guid) as $id) {
+                    if ($id !== $this->InstanceID && $id < $this->InstanceID && (string) IPS_GetProperty($id, 'DeviceID') === $deviceId) {
+                        return true;
+                    }
                 }
             }
             return false;
+        }
+
+        /** Statuses in which the instance must neither push, nor process plans, nor drive hardware. */
+        protected function deviceBlocked(): bool
+        {
+            return in_array($this->GetStatus(), [self::STATUS_BAD_DEVICE_ID, self::STATUS_DUPLICATE_ID, self::STATUS_OTHER_DEVICE], true);
+        }
+
+        /**
+         * Enter a blocking status: stop every timer and give up all source-variable
+         * messages (re-registered by the next ApplyChanges), so nothing is sent or written
+         * under a device id this instance does not own.
+         */
+        protected function blockDevice(int $status): void
+        {
+            $this->SetStatus($status);
+            foreach (self::BLOCK_TIMERS as $timer) {
+                $this->SetTimerInterval($timer, 0);
+            }
+            foreach (self::SOURCE_ATTRIBUTES as $attribute) {
+                $var = $this->ReadAttributeInteger($attribute);
+                if ($var > 0) {
+                    $this->UnregisterMessage($var, VM_UPDATE);
+                    $this->WriteAttributeInteger($attribute, 0);
+                }
+            }
         }
 
         protected function validDeviceId(string $deviceId): bool
@@ -119,6 +149,9 @@ if (!trait_exists('EOSPlanDevice')) {
             if ($this->GetStatus() === self::STATUS_NO_PARENT && $this->parentUsable()) {
                 $this->RegisterOnceTimer('ApplyLater', 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
             }
+            if ($this->deviceBlocked()) {
+                return '';
+            }
             if ($event === 'PlanUpdated') {
                 $this->storePlan($data['Plan'] ?? [], is_array($data['Instructions'] ?? null) ? $data['Instructions'] : []);
                 $this->onPlanStored();
@@ -131,7 +164,7 @@ if (!trait_exists('EOSPlanDevice')) {
 
         public function RefreshPlan(): bool
         {
-            if (!$this->parentUsable()) {
+            if (!$this->parentUsable() || $this->deviceBlocked()) {
                 return false;
             }
             $res = $this->forward(['Command' => 'GetPlanForResource', 'ResourceID' => $this->ReadPropertyString('DeviceID')]);
@@ -156,6 +189,9 @@ if (!trait_exists('EOSPlanDevice')) {
         public function ProcessPlan(): void
         {
             $this->SetTimerInterval('SlotTimer', 0);
+            if ($this->deviceBlocked()) {
+                return;
+            }
             $list = $this->eosJsonDecode($this->ReadAttributeString('Instructions'), []);
             $list = is_array($list) ? $list : [];
             $now = $this->eosNow();

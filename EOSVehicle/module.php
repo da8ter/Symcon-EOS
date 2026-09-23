@@ -34,6 +34,9 @@ class EOSVehicle extends IPSModuleStrict
     /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */
     private const DEVICE_COLLECTION = 'devices/electric_vehicles';
     private const SINGLE_DEVICE = true;
+    /** Stopped and released when the device id is invalid or not ours (blockDevice()). */
+    private const BLOCK_TIMERS = ['SoCPush', 'SlotTimer', 'Watchdog', 'DeadlineExpiry'];
+    private const SOURCE_ATTRIBUTES = ['RegisteredSoCVar', 'RegisteredPluggedVar', 'RegisteredDepartureVar'];
     private const CONTROL_PREFIX = 'EOSEV';
     /** Manual / fallback values reuse the battery enumeration: 0 = no charging, 5 = charge at max power. */
     private const CHARGE_OFF = 0;
@@ -103,21 +106,23 @@ class EOSVehicle extends IPSModuleStrict
             return;
         }
 
+        $deviceId = $this->ReadPropertyString('DeviceID');
+        // An id that is invalid or used by another instance blocks everything (see EOSBattery).
+        if (!$this->validDeviceId($deviceId)) {
+            $this->blockDevice(self::STATUS_BAD_DEVICE_ID);
+            return;
+        }
+        if ($this->isDuplicateDeviceId($deviceId)) {
+            $this->blockDevice(self::STATUS_DUPLICATE_ID);
+            return;
+        }
+        $this->SetStatus(IS_ACTIVE);
         $this->setupControl();
         $hasSource = $this->setupSoCSource();
         $this->registerOptionalSource('PluggedSourceVariable', 'RegisteredPluggedVar');
         $this->registerOptionalSource('DepartureSourceVariable', 'RegisteredDepartureVar');
-        $deviceId = $this->ReadPropertyString('DeviceID');
         $this->SetTimerInterval('SoCPush', 0);
 
-        if (!$this->validDeviceId($deviceId)) {
-            $this->SetStatus(self::STATUS_BAD_DEVICE_ID);
-            return;
-        }
-        if ($this->isDuplicateDeviceId($deviceId)) {
-            $this->SetStatus(self::STATUS_DUPLICATE_ID);
-            return;
-        }
         if (!$hasSource) {
             $this->SetStatus(self::STATUS_NO_SOURCE);
             return;
@@ -134,6 +139,7 @@ class EOSVehicle extends IPSModuleStrict
             [$path, $device, $merge] = $this->deviceConfig();
             $this->syncDeviceConfig($path, $device, $merge, false);
             if ($this->GetStatus() === self::STATUS_OTHER_DEVICE) {
+                $this->blockDevice(self::STATUS_OTHER_DEVICE);
                 return;
             }
         }

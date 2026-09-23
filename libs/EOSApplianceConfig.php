@@ -107,7 +107,7 @@ if (!trait_exists('EOSApplianceConfig')) {
          */
         private function reconcileTimes(): bool
         {
-            if (!$this->parentUsable()) {
+            if (!$this->parentUsable() || $this->deviceBlocked()) {
                 return false;
             }
             $now = $this->eosNow();
@@ -138,7 +138,7 @@ if (!trait_exists('EOSApplianceConfig')) {
         /** Without a source variable 0 is reported; EOS rejects runs without a value for the current day. */
         private function sendCyclesCompleted(): bool
         {
-            if (!$this->parentUsable()) {
+            if (!$this->parentUsable() || $this->deviceBlocked()) {
                 return false;
             }
             $var = $this->ReadPropertyInteger('CyclesCompletedSourceVariable');

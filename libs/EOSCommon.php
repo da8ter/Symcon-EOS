@@ -24,6 +24,9 @@ if (!trait_exists('EOSCommon')) {
         /** Module GUID of the EOS Server splitter. */
         public const EOS_SERVER_GUID = '{8042C326-0C4E-400A-9973-8AF1F9E59E71}';
 
+        /** Battery, vehicle and appliance modules: EOS requires device ids unique across all of them. */
+        public const EOS_DEVICE_MODULE_GUIDS = ['{F4B30383-1210-4169-93DA-5C9664447B42}', '{5D0C0E3A-7B1F-4E7A-9C7E-2E6E4B1A8F21}', '{A7E2C4D9-3F61-4B8E-B2D5-6C9F0E1A7B34}'];
+
         public const EOS_MODE_UNKNOWN = 99;
 
         /**

@@ -112,7 +112,7 @@ if (!trait_exists('EOSVehicleConfig')) {
          */
         private function reconcileDeparture(): bool
         {
-            if (!$this->parentUsable()) {
+            if (!$this->parentUsable() || $this->deviceBlocked()) {
                 return false;
             }
             $now = $this->eosNow();
