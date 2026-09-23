@@ -158,8 +158,10 @@ gestartet), hat den geplanten Lauf damit erledigt. Weil EOS bei jedem Lauf neue 
 Instanz nach einem Impuls weitere Starts für die **Laufdauer**; die Gnadenfrist begrenzt nur späte Starts, ein
 laufendes Gerät behält seine Freigabe. Mit Quellvariable „läuft“ gilt der Start erst als gelungen, wenn sie wahr
 wird; bleibt sie 5 Minuten nach dem Impuls falsch, fällt die Sperre mit Warnung, und die Gnadenfrist erlaubt genau
-einen neuen Versuch (RUN-Aktion und Freigabe werden dafür wieder scharf). Bleibt auch er ohne Lauf, warnt die
-Instanz und startet nicht erneut.
+einen neuen Versuch über die Bindung, die den Impuls trägt: die RUN-Aktion feuert erneut, Option 3 läuft erneut mit
+`Start = true`. Bleibt auch er ohne Lauf, warnt die Instanz und startet nicht erneut. Trägt nur die Freigabe den
+Impuls, ist kein neuer möglich (sie hält schon „an“): Warnung, die Sperre bleibt. Nach einem erfolgten Impuls senden
+Heartbeat und Wiederholung `Start = false`.
 
 Den Impuls trägt, in dieser Reihenfolge: die RUN-Aktion aus Option 2, sonst die Freigabe (Wechsel aus → an), sonst
 Option 3 mit `Start = true`. Ohne eine dieser Bindungen sperrt die Instanz die Steuerung („keine Bindung, die das

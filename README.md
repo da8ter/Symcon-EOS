@@ -153,13 +153,15 @@ Jede Geräte-Instanz merkt sich den zuletzt abgeglichenen Stand ihres EOS-Eintra
 - Batterie und E-Auto gibt es in EOS nur je einmal (GENETIC rechnet mit genau einer Batterie und höchstens einem
   E-Auto). Hat EOS schon ein anderes, zeigt die Instanz Status 205 und legt kein zweites an. Nach einem Wechsel der
   Geräte-ID (bei allen Gerätearten) bleibt der alte Eintrag stehen, bis „Alten EOS-Eintrag entfernen“ ihn dauerhaft
-  löscht (auch aus `EOS.config.json`); der Knopf erscheint, solange der alte Eintrag existiert. Die Batterie zieht
+  löscht (auch aus `EOS.config.json`); der Knopf erscheint, solange der alte Eintrag existiert und keiner anderen
+  Instanz gehört. Die Batterie zieht
   dabei die `battery_id` des Wechselrichters nach. Scheitert das Entfernen halb, stellt der Server den Eintrag
   wieder her.
 - Geräte-IDs beginnen mit einem Buchstaben und sind je EOS Server über Batterien, E-Autos und Haushaltsgeräte
-  hinweg eindeutig. Die ID gehört der Instanz, die sie zuerst beansprucht hat; der EOS Server merkt sich das. Eine
-  später angelegte Instanz mit derselben ID zeigt Status 203, auch mit kleinerer InstanceID. In 201/203/205 schreibt
-  eine Instanz weder in EOS noch an ihre Hardware.
+  hinweg eindeutig. Die ID gehört der Instanz, die sie zuerst beansprucht hat; der EOS Server merkt sich das, auch
+  während EOS nicht erreichbar ist. Eine später angelegte Instanz mit derselben ID zeigt Status 203, auch mit
+  kleinerer InstanceID. Ist der EOS Server deaktiviert, entscheidet die Instanz nichts und wartet in 104. In
+  201/203/205 schreibt eine Instanz weder in EOS noch an ihre Hardware.
 - Widersprüchliche Grenzen (Batterie: Min-SoC ≥ Max-SoC; E-Auto: Max-SoC 0) gehen nicht nach EOS (Status 206).
   Ein Ziel-SoC ≥ Max-SoC geht als Max-SoC − 1 nach EOS, weil EOS das Ziel unter dem Maximum verlangt.
 - **Zeiten** (Abfahrt des E-Autos, Fertig-bis und frühester Start des Haushaltsgeräts) schreibt die Instanz je Feld
@@ -237,7 +239,8 @@ Haushaltsgerät: ein Startimpuls je geplantem Lauf, nur innerhalb der Gnadenfris
 sperrt die Instanz weitere Starts für die Laufdauer, auch wenn EOS neu plant. Die Gnadenfrist begrenzt nur späte
 Starts: ein gestartetes oder laufendes Gerät behält seine Freigabe, auch mit „Stoppen erlauben“. Mit Quellvariable
 „läuft“ fällt die Sperre, wenn das Gerät 5 Minuten nach dem Impuls nicht läuft; dann folgt ein neuer Versuch in der
-Gnadenfrist, bei erneutem Ausbleiben eine Warnung und kein weiterer. Läuft das Gerät zum geplanten Start schon (von
+Gnadenfrist über die RUN-Aktion oder Option 3, bei erneutem Ausbleiben eine Warnung und kein weiterer. Hängt der
+Start nur an der Freigabe, ist kein neuer Impuls möglich: Warnung, die Sperre bleibt. Läuft das Gerät zum geplanten Start schon (von
 Hand gestartet), gilt der geplante Lauf als erledigt. Der Impuls geht an die RUN-Aktion (Option 2), sonst an die
 Freigabe (Flanke aus → an), sonst an Option 3 mit `Start = true`. Manuell „Läuft“ startet einmal auf der Flanke,
 nicht bei erneutem Setzen und nicht, wenn das Gerät schon läuft. Stoppen nur wenn erlaubt.
