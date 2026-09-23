@@ -192,18 +192,18 @@ $a->properties['ModeAction_RUN'] = json_encode(['actionID' => '{START}', 'parame
 $eos->instructions = []; $eos->instruction('dishwasher1', $now - 300, 'RUN'); $eos->freshPlan($now - 30);
 $a->ApplyChanges(); $a->fireOnce();
 check(writesTo(40) === [true] && count($GLOBALS['runActions']) === 1 && $GLOBALS['runActions'][0][0] === '{START}', 'RUN within grace: enable + one start action');
-check(json_decode($a->attributes['StartedInstructionIds'], true) === ['dishwasher1@' . ($now - 300)], 'start recorded by instruction id');
+check($a->attributes['StartPulseTs'] > 0 && $a->attributes['StartConfirmedTs'] >= $a->attributes['StartPulseTs'], 'start recorded (pulse and confirmation)');
 $c = count($GLOBALS['runActions']); $a->RefreshPlan(); $a->fireOnce(); $a->Watchdog(); $a->fireOnce();
 check(count($GLOBALS['runActions']) === $c && writesTo(40) === [true], 'no second start for the same instruction');
 resetWorld();
 $eos->instructions = []; $eos->instruction('dishwasher1', $now - 5400, 'RUN'); $a->RefreshPlan(); $a->fireOnce();
 check($GLOBALS['runActions'] === [] && str_contains((string) $a->value('LastControlResult'), 'missed'), 'start 90 min late is skipped (grace 30 min)');
 // failed start: enable write fails -> not recorded (finding 2)
-resetWorld(); $GLOBALS['world'][40]['fail'] = true;
+resetWorld(); $GLOBALS['world'][40]['fail'] = true; $a->attributes['StartPulseTs'] = 0; $a->attributes['StartConfirmedTs'] = 0; $a->attributes['LastSent'] = '{}';
 $eos->instructions = []; $eos->instruction('dishwasher1', $now - 60, 'RUN'); $a->RefreshPlan(); $a->fireOnce();
-check(!in_array('dishwasher1@' . ($now - 60), json_decode($a->attributes['StartedInstructionIds'], true), true), 'failed enable write: instruction not recorded as started');
+check($a->attributes['StartConfirmedTs'] === 0, 'failed enable write: start not confirmed');
 $GLOBALS['world'][40]['fail'] = false; $a->attributes['LastSent'] = '{}'; $a->RefreshPlan(); $a->fireOnce();
-check(in_array('dishwasher1@' . ($now - 60), json_decode($a->attributes['StartedInstructionIds'], true), true), 'successful retry records the start');
+check($a->attributes['StartConfirmedTs'] > 0 && count($GLOBALS['runActions']) === 1, 'successful retry confirms the start without a second start action');
 resetWorld();
 $eos->instructions = []; $eos->instruction('dishwasher1', $now - 5, 'OFF'); $a->RefreshPlan(); $a->fireOnce();
 check($GLOBALS['actions'] === [], 'OFF without AllowStop writes nothing');
@@ -234,17 +234,17 @@ $a2->properties['ControlMode'] = 2; $a2->properties['TargetEnableVariable'] = 41
 $a2->properties['ModeAction_RUN'] = json_encode(['actionID' => '{FAIL}', 'parameters' => ['TARGET' => 41]]);
 $eos->instructions = []; $eos->instruction('dishwasher1', $now - 60, 'RUN'); $eos->freshPlan($now - 30);
 $a2->ApplyChanges(); $a2->fireOnce();
-check(json_decode($a2->attributes['StartedInstructionIds'], true) === [] && lastSent($a2)['row']['fail'] === 1 && lastSent($a2)['targets']['Enable']['fail'] === 1, 'enable write and start action failed: nothing recorded');
+check($a2->attributes['StartPulseTs'] === 0 && lastSent($a2)['row']['fail'] === 1 && lastSent($a2)['targets']['Enable']['fail'] === 1, 'enable write and start action failed: nothing recorded');
 // start action now works, enable write still failing and inside its backoff
 $a2->properties['ModeAction_RUN'] = json_encode(['actionID' => '{START}', 'parameters' => ['TARGET' => 41]]);
 $ls = lastSent($a2); $ls['row']['failTs'] = $now - 120; $a2->attributes['LastSent'] = json_encode($ls); resetWorld();
 $a2->Dispatch();
-check(count($GLOBALS['runActions']) === 1 && lastSent($a2)['row']['modeRaw'] === 'RUN', 'start action retried and succeeded');
-check(json_decode($a2->attributes['StartedInstructionIds'], true) === [], 'start not recorded while the enable write is still failing (review round 2)');
+check(count($GLOBALS['runActions']) === 1 && str_starts_with((string) lastSent($a2)['row']['modeRaw'], 'RUN@'), 'start action retried and succeeded');
+check($a2->attributes['StartPulseTs'] > 0 && $a2->attributes['StartConfirmedTs'] === 0, 'start pulse recorded, not confirmed while the enable write is still failing (review round 2)');
 $GLOBALS['world'][41]['fail'] = false;
 $ls = lastSent($a2); $ls['targets']['Enable']['failTs'] = $now - 120; $a2->attributes['LastSent'] = json_encode($ls);
 $a2->Dispatch();
-check(json_decode($a2->attributes['StartedInstructionIds'], true) === ['dishwasher1@' . ($now - 60)] && $GLOBALS['world'][41]['value'] === true, 'once the enable write succeeds the start is recorded');
+check($a2->attributes['StartConfirmedTs'] > 0 && $GLOBALS['world'][41]['value'] === true, 'once the enable write succeeds the start is confirmed');
 
 // ---------------------------------------------------------------- T14 Symcon reports failures by return value (K45, K15)
 echo "== Symcon-Fehlerbild\n";
@@ -354,5 +354,61 @@ check($own->attributes['ControlReady'] === false && str_contains($own->attribute
 $ha = new EOSAppliance(1002); $ha->Create(); connectToServer($ha);
 $ha->properties['ControlMode'] = 2; $ha->properties['ModeAction_OFF'] = json_encode(['actionID' => '{OK}', 'parameters' => []]); $ha->ApplyChanges();
 check($ha->attributes['ControlReady'] === false && str_contains($ha->attributes['ControlProblem'], 'start the appliance'), 'K17: an appliance without a binding that can start it is not ready');
+
+// ---------------------------------------------------------------- T17 appliance start once, EV dwell hold (K35, K1, K36)
+echo "== Start und Verweilzeit\n";
+setClock($now);
+worldVar(70, 0, false, true); worldVar(71, 0, false, false);
+$hw = new EOSAppliance(1002); $hw->Create(); connectToServer($hw);
+$hw->properties['ControlMode'] = 2; $hw->properties['TargetEnableVariable'] = 70;
+$hw->properties['ModeAction_RUN'] = json_encode(['actionID' => '{START}', 'parameters' => []]);
+resetWorld();
+$eos->instructions = []; $eos->instruction('dishwasher1', $now - 120, 'RUN'); $eos->freshPlan($now - 60);
+$hw->ApplyChanges(); $hw->fireOnce();
+check(count($GLOBALS['runActions']) === 1, 'RUN within grace starts once');
+setClock($now + 600);
+$eos->instructions = []; $eos->instruction('dishwasher1', $now - 120, 'RUN'); $eos->freshPlan($now + 540); // re-plan: same start, new id
+$hw->RefreshPlan(); $hw->fireOnce(); $hw->ApplyChanges(); $hw->fireOnce();
+$hw->RequestAction('ControlActive', false); $hw->RequestAction('ControlActive', true); $hw->fireOnce(); $hw->ApplyControl(true);
+check(count($GLOBALS['runActions']) === 1, 'K35: a re-plan with a new instruction id plus Apply, master switch and "apply now" does not start the running appliance again');
+setClock($now + 4 * 3600);
+$eos->instructions = []; $eos->instruction('dishwasher1', $now + 4 * 3600 - 60, 'RUN'); $eos->freshPlan($now + 4 * 3600 - 30);
+$hw->RefreshPlan(); $hw->fireOnce();
+check(count($GLOBALS['runActions']) === 2, 'K35: after the run duration a new planned start fires again');
+setClock($now);
+// K1: manual "run" starts on the edge only
+resetWorld();
+$eos->instructions = []; $eos->instruction('dishwasher1', $now - 60, 'OFF'); $eos->freshPlan($now - 30);
+$hw->attributes['StartPulseTs'] = 0; $hw->ApplyChanges(); $hw->fireOnce();
+$hw->RequestAction('ManualMode', 1); $hw->fireOnce();
+check(count($GLOBALS['runActions']) === 1, 'K1: manual "run" starts once');
+$hw->ApplyChanges(); $hw->fireOnce(); $hw->RequestAction('ControlActive', false); $hw->RequestAction('ControlActive', true); $hw->fireOnce(); $hw->ApplyControl(true); $hw->Watchdog(); $hw->fireOnce();
+check(count($GLOBALS['runActions']) === 1, 'K1: Apply, master switch, "apply now" and watchdog do not start it again');
+$hw->RequestAction('ManualMode', 0); $hw->fireOnce(); $hw->RequestAction('ManualMode', 1); $hw->fireOnce();
+check(count($GLOBALS['runActions']) === 2, 'K1: leaving and re-entering "run" is a new start');
+$hw->RequestAction('ManualMode', 100); $hw->fireOnce();
+// D3: a start that never shows up as running releases the lockout
+resetWorld();
+$hw->properties['RunningSourceVariable'] = 71; $hw->attributes['StartPulseTs'] = 0;
+$eos->instructions = []; $eos->instruction('dishwasher1', $now - 60, 'RUN'); $eos->freshPlan($now - 30);
+$hw->ApplyChanges(); $hw->fireOnce();
+setClock($now + 400); $hw->ApplyChanges(); $hw->fireOnce();
+check(count($GLOBALS['runActions']) === 2 && count(array_filter($hw->logs, static fn (array $l): bool => str_contains($l[1], 'did not report running'))) === 1, 'D3: not running 5 min after the pulse: the lockout is released and the start retried within the grace period');
+setClock($now);
+unset($GLOBALS['objects'][1002]);
+
+// K36: the dwell hold keeps charging as last written
+worldVar(72, 3, '', true); worldVar(73, 2, 0.0, true); worldVar(74, 0, false, true);
+$car = new EOSVehicle(1001); $car->Create(); connectToServer($car);
+$car->properties['SoCSourceVariable'] = 30; $car->properties['ControlMode'] = 2; $car->properties['FallbackMode'] = 0;
+$car->properties['TargetModeVariable'] = 72; $car->properties['TargetCurrentVariable'] = 73; $car->properties['TargetChargeAllowedVariable'] = 74;
+$car->properties['ModeMap'] = json_encode([['mode' => 'IDLE', 'value' => 'off'], ['mode' => 'GRID_SUPPORT_IMPORT', 'value' => 'pv'], ['mode' => 'FORCED_CHARGE', 'value' => 'fast']]);
+$car->properties['ModeAction_FORCED_CHARGE'] = json_encode(['actionID' => '{FAST}', 'parameters' => []]);
+$GLOBALS['world'][31]['value'] = true;
+$eos->instructions = []; $eos->instruction('ev1', $now - 5, 'GRID_SUPPORT_IMPORT', 0.25); $eos->freshPlan($now - 30);
+$car->ApplyChanges(); $car->fireOnce(); resetWorld();
+$eos->instructions = []; $eos->instruction('ev1', $now - 5, 'IDLE', 1.0); $car->RefreshPlan(); $car->fireOnce();
+check($GLOBALS['actions'] === [] && $GLOBALS['runActions'] === [] && str_contains((string) $car->value('LastControlResult'), 'held back'), 'K36: IDLE (factor 1.0) inside the dwell time keeps the last charging state: no 11 kW, no FORCED_CHARGE action');
+unset($GLOBALS['objects'][1001]);
 
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

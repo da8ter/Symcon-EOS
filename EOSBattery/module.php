@@ -385,7 +385,7 @@ class EOSBattery extends IPSModuleStrict
         } elseif (in_array($state['modeRaw'], ['GRID_SUPPORT_EXPORT', 'PEAK_SHAVING'], true) && $soc <= $this->ReadPropertyInteger('MinSoC')) {
             $message = sprintf('SoC %.0f %% is at or below min SoC while %s is planned', $soc, $state['modeRaw']);
         }
-        $id = (string) ($instruction['id'] ?? ($instruction['execution_time'] ?? ''));
+        $id = (string) ($instruction['execution_time'] ?? '') . '|' . $state['modeRaw']; // EOS ids change with every run
         if ($message !== '' && $id !== $this->ReadAttributeString('PlausibilityWarned')) {
             $this->LogMessage($message . ' - battery limits in EOS and Symcon may differ, press "Write to EOS"', KL_WARNING);
             $this->WriteAttributeString('PlausibilityWarned', $id);

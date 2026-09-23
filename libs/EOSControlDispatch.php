@@ -83,10 +83,13 @@ if (!trait_exists('EOSControlDispatch')) {
                 }
             }
             $modeRaw = (string) ($desired['modeRaw'] ?? '');
+            // The mode-row action fires once per row key: the mode, or a finer key a device sets
+            // (the appliance: RUN plus the planned start, so each new cycle fires once).
+            $rowKey = $modeRaw !== '' ? (string) ($desired['rowKey'] ?? $modeRaw) : '';
             $row = is_array($last['row'] ?? null) ? $last['row'] : ['modeRaw' => null, 'fail' => 0, 'failTs' => 0];
-            $rowPending = $modeRaw !== '' && $modeRaw !== (string) ($row['modeRaw'] ?? '');
-            // Backoff only for retrying the mode that failed; a new mode fires at once.
-            $rowDue = $rowPending && ((int) ($row['fail'] ?? 0) === 0 || ($row['failMode'] ?? null) !== $modeRaw
+            $rowPending = $rowKey !== '' && $rowKey !== (string) ($row['modeRaw'] ?? '');
+            // Backoff only for retrying the key that failed; a new key fires at once.
+            $rowDue = $rowPending && ((int) ($row['fail'] ?? 0) === 0 || ($row['failMode'] ?? null) !== $rowKey
                 || $now - (int) ($row['failTs'] ?? 0) >= $this->backoffSeconds((int) $row['fail']));
             $chg = is_array($last['chg'] ?? null) ? $last['chg'] : ['fail' => 0, 'failTs' => 0];
             return [
@@ -95,6 +98,7 @@ if (!trait_exists('EOSControlDispatch')) {
                 'retry'       => $retry,
                 'heartbeat'   => $heartbeat,
                 'modeRaw'     => $modeRaw,
+                'rowKey'      => $rowKey,
                 'modeChanged' => !isset($last['modeRaw']) || $modeRaw !== (string) $last['modeRaw'],
                 'row'         => $row,
                 'rowPending'  => $rowPending,
@@ -185,8 +189,8 @@ if (!trait_exists('EOSControlDispatch')) {
                     if (!$result['ok']) {
                         $rowDone = false;
                         $failed[] = $result['text'];
-                        $sameMode = ($row['failMode'] ?? null) === $modeRaw;
-                        $row = ['modeRaw' => $row['modeRaw'] ?? null, 'fail' => $sameMode ? (int) ($row['fail'] ?? 0) + 1 : 1, 'failTs' => $now, 'failMode' => $modeRaw];
+                        $sameKey = ($row['failMode'] ?? null) === $plan['rowKey'];
+                        $row = ['modeRaw' => $row['modeRaw'] ?? null, 'fail' => $sameKey ? (int) ($row['fail'] ?? 0) + 1 : 1, 'failTs' => $now, 'failMode' => $plan['rowKey']];
                         $outcome['row'] = 'failed';
                     } elseif (empty($result['skipped'])) {
                         $rowFired = true;
@@ -194,7 +198,7 @@ if (!trait_exists('EOSControlDispatch')) {
                     }
                 }
                 if ($rowDone) {
-                    $row = ['modeRaw' => $modeRaw, 'fail' => 0, 'failTs' => 0];
+                    $row = ['modeRaw' => $plan['rowKey'], 'fail' => 0, 'failTs' => 0];
                 }
             } elseif ($plan['rowPending']) {
                 $outcome['row'] = 'waiting'; // failed before, still in its backoff

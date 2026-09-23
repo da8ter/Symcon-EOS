@@ -113,7 +113,8 @@
             "control binding problem": "control binding problem",
             "a variable of this instance cannot be a target": "a variable of this instance cannot be a target",
             "Option 3: run an instance action or script on every change, mode change and heartbeat": "Option 3: run an instance action or script on every change, mode change and heartbeat",
-            "Re-send setpoints every (s), 0 = off, at least 5": "Re-send setpoints every (s), 0 = off, at least 5"
+            "Re-send setpoints every (s), 0 = off, at least 5": "Re-send setpoints every (s), 0 = off, at least 5",
+            "%s did not report running after the start; the start may be retried": "%s did not report running after the start; the start may be retried"
         },
         "de": {
             "EOS Appliance": "EOS Haushaltsgerät",
@@ -254,7 +255,8 @@
             "control binding problem": "Problem mit einer Steuerungsbindung",
             "a variable of this instance cannot be a target": "eine Variable dieser Instanz kann kein Ziel sein",
             "Option 3: run an instance action or script on every change, mode change and heartbeat": "Option 3: Bei jeder Änderung, jedem Moduswechsel und jedem Heartbeat Instanzaktion oder Skript ausführen",
-            "Re-send setpoints every (s), 0 = off, at least 5": "Sollwerte erneut senden alle (s), 0 = aus, mindestens 5"
+            "Re-send setpoints every (s), 0 = off, at least 5": "Sollwerte erneut senden alle (s), 0 = aus, mindestens 5",
+            "%s did not report running after the start; the start may be retried": "%s meldet nach dem Start keinen Betrieb; der Start darf wiederholt werden"
         }
     }
 }

@@ -274,6 +274,7 @@ if (!trait_exists('EOSControl')) {
         protected function changeManualMode(int $mode): void
         {
             $this->SetValue('ManualMode', $mode);
+            $this->onManualModeChanged($mode);
             $minutes = $this->ReadPropertyInteger('ManualReturnMinutes');
             $this->WriteAttributeInteger('ManualUntil', ($mode !== self::MANUAL_AUTO && $minutes > 0) ? $this->eosNow() + $minutes * 60 : 0);
             // The hardware state is unknown after manual operation: write once.
@@ -310,6 +311,7 @@ if (!trait_exists('EOSControl')) {
             $until = $this->ReadAttributeInteger('ManualUntil');
             if ((int) $this->GetValue('ManualMode') !== self::MANUAL_AUTO && $until > 0 && $this->eosNow() >= $until) {
                 $this->SetValue('ManualMode', self::MANUAL_AUTO);
+                $this->onManualModeChanged(self::MANUAL_AUTO);
                 $this->WriteAttributeInteger('ManualUntil', 0);
                 $this->WriteAttributeString('LastSent', '{}');
                 $this->LogMessage($this->Translate('Manual mode ended, back to automatic'), KL_NOTIFY);
@@ -363,6 +365,11 @@ if (!trait_exists('EOSControl')) {
         protected function rowActionAllowed(array $desired, string $modeRaw): bool
         {
             return true;
+        }
+
+        /** Hook: the manual mode was set by the user, a script or the automatic return. */
+        protected function onManualModeChanged(int $mode): void
+        {
         }
 
         /** Hook: a desired state was dispatched (not in simulation); see EOSControlDispatch::deviceSideOk(). */

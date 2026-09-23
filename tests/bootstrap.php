@@ -93,7 +93,8 @@ final class FakeEOS
     /** Instruction for a device at $ts (unix). */
     public function instruction(string $device, int $ts, string $mode, float $factor = 1.0): void
     {
-        $this->instructions[] = ['id' => $device . '@' . $ts, 'resource_id' => $device, 'actuator_id' => $device,
+        // EOS 0.4.0rc1 gives every instruction a fresh "<resource_id>@<uuid4>" on every EMS run.
+        $this->instructions[] = ['id' => $device . '@' . bin2hex(random_bytes(8)), 'resource_id' => $device, 'actuator_id' => $device,
             'execution_time' => date(DATE_ATOM, $ts), 'operation_mode_id' => $mode, 'operation_mode_factor' => $factor];
     }
 

@@ -73,6 +73,7 @@ class EOSVehicle extends IPSModuleStrict
         $this->RegisterAttributeInteger('RegisteredDepartureVar', 0);
         $this->RegisterAttributeString('LastPluggedSoC', '');
         $this->RegisterAttributeString('TargetSoCNote', '');
+        $this->RegisterAttributeString('LastChargeDesired', '{}');
         $this->RegisterAttributeBoolean('DepartureByScript', false);
         $this->RegisterAttributeString('PastDeadlineWarned', '');
         $this->RegisterAttributeInteger('LastChargeState', -1);
@@ -336,8 +337,18 @@ class EOSVehicle extends IPSModuleStrict
             $previous = $this->ReadAttributeInteger('LastChargeState');
             $dwell = $this->ReadPropertyInteger('MinSwitchIntervalSec');
             if ($previous >= 0 && $state['charging'] !== ($previous === 1) && $this->eosNow() - $this->ReadAttributeInteger('LastChargeSwitchTs') < $dwell) {
-                $state = $previous === 1 ? $this->vehicleState('FORCED_CHARGE', max($state['factor'], 0.01), true) : $this->vehicleState('IDLE', 0.0, true);
-                $degraded = $this->Translate('switch held back (minimum interval)');
+                if ($previous === 0) {
+                    $state = $this->vehicleState('IDLE', 0.0, true);
+                    $degraded = $this->Translate('switch held back (minimum interval)');
+                } else {
+                    // Keep charging exactly as last written (EOS sends IDLE with factor 1.0, so a
+                    // state rebuilt from it would charge at full power under a new mode).
+                    $held = $this->eosJsonDecode($this->ReadAttributeString('LastChargeDesired'), []);
+                    if (is_array($held) && isset($held['targets'])) {
+                        $held['degraded'] = $this->Translate('switch held back (minimum interval)');
+                        return $held;
+                    }
+                }
             }
         }
         return $this->desiredFromVehicleState($state, (string) ($instruction['execution_time'] ?? ''), $degraded);
@@ -358,12 +369,22 @@ class EOSVehicle extends IPSModuleStrict
         return $this->desiredFromVehicleState($state, '', '');
     }
 
+    /** Dwell clock and held state follow the charge binding (ChargeAllowed, else current/power/mode). */
     protected function onDispatched(array $desired, array $outcome): void
     {
-        if (!$outcome['success']) {
-            return; // the wallbox did not take the new state; keep the dwell clock as it was
+        $keys = isset($outcome['targets']['ChargeAllowed']) ? ['ChargeAllowed'] : array_values(array_intersect(['CurrentA', 'PowerW', 'Mode'], array_keys($outcome['targets'])));
+        foreach ($keys as $key) {
+            if ($outcome['targets'][$key] !== 'ok' && $outcome['targets'][$key] !== 'same') {
+                return; // the wallbox did not take the new state; keep the dwell clock as it was
+            }
+        }
+        if ($keys === [] && !$outcome['success']) {
+            return;
         }
         $charging = !empty($desired['targets']['ChargeAllowed']) ? 1 : 0;
+        if ($charging === 1) {
+            $this->WriteAttributeString('LastChargeDesired', json_encode($desired));
+        }
         if ($this->ReadAttributeInteger('LastChargeState') !== $charging) {
             $this->WriteAttributeInteger('LastChargeState', $charging);
             $this->WriteAttributeInteger('LastChargeSwitchTs', $this->eosNow());
