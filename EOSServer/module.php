@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../libs/EOSClient.php';
 require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSConfigMapper.php';
+require_once __DIR__ . '/../libs/EOSConfigFormValues.php';
 require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSMeasurementBundle.php';
 require_once __DIR__ . '/../libs/EOSServerConfig.php';
@@ -20,6 +21,7 @@ class EOSServer extends IPSModuleStrict
 {
     use EOSCommon;
     use EOSConfigMapper;
+    use EOSConfigFormValues;
     use EOSFormHelpers;
     use EOSMeasurementBundle;
     use EOSServerConfig;
