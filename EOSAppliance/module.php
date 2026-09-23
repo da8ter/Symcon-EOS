@@ -9,6 +9,7 @@ require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSControlDispatch.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
+require_once __DIR__ . '/../libs/EOSDeviceTimes.php';
 require_once __DIR__ . '/../libs/EOSApplianceConfig.php';
 
 /**
@@ -33,6 +34,7 @@ class EOSAppliance extends IPSModuleStrict
     use EOSControl;
     use EOSControlDispatch;
     use EOSDeviceConfigSync;
+    use EOSDeviceTimes;
     use EOSApplianceConfig;
 
     private const MODULE_GUID = '{A7E2C4D9-3F61-4B8E-B2D5-6C9F0E1A7B34}';
