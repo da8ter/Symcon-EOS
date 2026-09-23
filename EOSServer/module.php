@@ -66,6 +66,8 @@ class EOSServer extends IPSModuleStrict
         $this->RegisterAttributeInteger('TransportTimeouts', 0);
         $this->RegisterAttributeInteger('OptimizeRequestedTs', 0);
         $this->RegisterAttributeString('PlanMissingExplained', '');
+        // Device id => owning device instance (ClaimDevice): one owner per id at this server.
+        $this->RegisterAttributeString('DeviceOwners', '{}');
 
         $this->RegisterVariableBoolean('Connected', $this->Translate('Connected'), $this->eosBoolPresentation('Offline', 'Online', 0xFF0000, 0x00A000, 'Network'), 10);
         $this->RegisterVariableString('Version', $this->Translate('EOS version'), $this->eosValuePresentation('Information'), 20);
@@ -354,6 +356,9 @@ class EOSServer extends IPSModuleStrict
             case 'SaveConfig':
             case 'RemoveDevice':
                 return $this->reply($this->forwardConfigCommand($command, $data));
+
+            case 'ClaimDevice':
+                return $this->reply($this->claimDevice((string) ($data['DeviceID'] ?? ''), (int) ($data['InstanceID'] ?? 0)));
 
             default:
                 return json_encode(['ok' => false, 'error' => 'unknown command ' . $command]);

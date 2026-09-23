@@ -156,7 +156,9 @@
             "SoC %.0f %% is at or below the minimum SoC while EOS plans %s.": "SoC %.0f %% is at or below the minimum SoC while EOS plans %s.",
             "The SoC limits in EOS and Symcon probably differ; the instance form shows the comparison.": "The SoC limits in EOS and Symcon probably differ; the instance form shows the comparison.",
             "The EOS plan contains no instructions for %s": "The EOS plan contains no instructions for %s",
-            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon"
+            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon",
+            "The device id is invalid or not owned by this instance; nothing written to EOS.": "The device id is invalid or not owned by this instance; nothing written to EOS.",
+            "The device id is invalid; nothing loaded.": "The device id is invalid; nothing loaded."
         },
         "de": {
             "EOS Battery": "EOS Batterie",
@@ -342,7 +344,9 @@
             "SoC %.0f %% is at or below the minimum SoC while EOS plans %s.": "SoC %.0f %% liegt auf oder unter dem minimalen SoC, EOS plant aber %s.",
             "The SoC limits in EOS and Symcon probably differ; the instance form shows the comparison.": "Die SoC-Grenzen in EOS und Symcon weichen vermutlich ab; das Instanzformular zeigt den Vergleich.",
             "The EOS plan contains no instructions for %s": "Der EOS-Plan enthält keine Anweisungen für %s",
-            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "Der EOS-Plan ist %d s in die Zukunft datiert (generated_at); Uhren von EOS-Rechner und Symcon prüfen"
+            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "Der EOS-Plan ist %d s in die Zukunft datiert (generated_at); Uhren von EOS-Rechner und Symcon prüfen",
+            "The device id is invalid or not owned by this instance; nothing written to EOS.": "Die Geräte-ID ist ungültig oder gehört nicht dieser Instanz; nichts nach EOS geschrieben.",
+            "The device id is invalid; nothing loaded.": "Die Geräte-ID ist ungültig; nichts geladen."
         }
     }
 }

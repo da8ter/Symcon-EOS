@@ -227,6 +227,45 @@ if (!trait_exists('EOSServerConfig')) {
         }
 
         /** ForwardData GetConfig / SetConfig / MergeConfig / SaveConfig / RemoveDevice. */
+        /**
+         * One owner per device id at this server: the first instance that claims an id keeps it
+         * (stored, so a restart or a newly added instance with the default id changes nothing).
+         * A record whose instance is gone, moved to another server or uses another id now is
+         * replaced; an instance that changed its id gives up its old one.
+         */
+        protected function claimDevice(string $id, int $claimant): array
+        {
+            if ($id === '' || $claimant <= 0) {
+                return ['ok' => false, 'status' => 0, 'error' => 'DeviceID and InstanceID required'];
+            }
+            $owners = $this->eosJsonDecode($this->ReadAttributeString('DeviceOwners'), []);
+            $owners = is_array($owners) ? $owners : [];
+            $owner = (int) ($owners[$id] ?? 0);
+            if ($owner !== $claimant && !$this->ownsDevice($owner, $id)) {
+                $owner = $claimant;
+            }
+            $next = [];
+            foreach ($owners as $key => $iid) {
+                if ((int) $iid !== $claimant || (string) $key === $id) {
+                    $next[(string) $key] = (int) $iid;
+                }
+            }
+            $next[$id] = $owner;
+            if ($next !== $owners) {
+                $this->WriteAttributeString('DeviceOwners', json_encode($next));
+            }
+            return ['ok' => true, 'status' => 200, 'owner' => $owner];
+        }
+
+        private function ownsDevice(int $iid, string $id): bool
+        {
+            if ($iid <= 0 || !IPS_InstanceExists($iid) || (int) IPS_GetInstance($iid)['ConnectionID'] !== $this->InstanceID) {
+                return false;
+            }
+            $current = @IPS_GetProperty($iid, 'DeviceID');
+            return !is_string($current) || $current === $id; // unreadable during a module reload: the owner stays
+        }
+
         protected function forwardConfigCommand(string $command, array $data): array
         {
             switch ($command) {

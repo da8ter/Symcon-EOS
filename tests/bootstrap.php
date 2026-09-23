@@ -42,6 +42,9 @@ final class FakeEOS
     public bool $configReadFails = false;
     /** true: PutMeasurement is rejected (as EOS does for an unknown key) */
     public bool $putFails = false;
+    /** Device id => owning instance (ClaimDevice, as the EOS Server keeps it); claimFails: no answer. */
+    public array $owners = [];
+    public bool $claimFails = false;
 
     public function handle(array $data): array
     {
@@ -82,6 +85,22 @@ final class FakeEOS
                 }
                 unset($node);
                 return ['ok' => true];
+            case 'ClaimDevice':
+                if ($this->claimFails) {
+                    return ['ok' => false, 'error' => 'unreachable'];
+                }
+                $id = (string) $data['DeviceID'];
+                $claimant = (int) $data['InstanceID'];
+                if (!$GLOBALS['registry']) {
+                    return ['ok' => true, 'owner' => $claimant]; // like IPS_GetInstanceListByModuleID: other instances only with the registry
+                }
+                $owner = (int) ($this->owners[$id] ?? 0);
+                if ($owner !== $claimant && ($GLOBALS['objects'][$owner]->properties['DeviceID'] ?? null) !== $id) {
+                    $owner = $claimant;
+                }
+                $this->owners = array_filter($this->owners, static fn (int $iid, string $key): bool => $iid !== $claimant || $key === $id, ARRAY_FILTER_USE_BOTH);
+                $this->owners[$id] = $owner;
+                return ['ok' => true, 'owner' => $owner];
             case 'PutMeasurement':
                 return $this->putFails ? ['ok' => false, 'error' => "HTTP 404: Key 'x' is not available."] : ['ok' => true, 'data' => null];
             case 'SaveConfig':

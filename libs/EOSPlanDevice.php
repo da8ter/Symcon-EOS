@@ -76,25 +76,40 @@ if (!trait_exists('EOSPlanDevice')) {
             return in_array($status, [IS_ACTIVE, 202, 203], true);
         }
 
-        protected function forward(array $payload): array
+        protected function forward(array $payload, bool $quiet = false): array
         {
             $payload['DataID'] = self::EOS_TX_GUID;
-            $raw = $this->SendDataToParent(json_encode($payload));
+            // quiet: during a module reload the parent may be mid-recreation (Symcon warns and answers nothing).
+            $raw = $quiet ? @$this->SendDataToParent(json_encode($payload)) : $this->SendDataToParent(json_encode($payload));
             $decoded = json_decode((string) $raw, true);
             return is_array($decoded) ? $decoded : ['ok' => false, 'error' => 'no response from EOS Server'];
         }
 
         /**
-         * Another battery, vehicle or appliance instance uses the same device id (EOS needs
-         * ids unique across all device kinds). Tie-break: the instance with the lowest
-         * InstanceID keeps working, so a second instance never disables the first one.
+         * Is the device id owned by another battery, vehicle or appliance instance at the same
+         * EOS Server (EOS needs ids unique across all device kinds)? The server keeps one owner
+         * per id: the first instance that claimed it keeps it, so a newly added instance with the
+         * default id never disables a configured one. Without an answer the local rule decides.
          */
+        protected function deviceIdTaken(string $deviceId): bool
+        {
+            if ($this->parentUsable()) {
+                $res = $this->forward(['Command' => 'ClaimDevice', 'DeviceID' => $deviceId, 'InstanceID' => $this->InstanceID], true);
+                if (($res['ok'] ?? false) === true && isset($res['owner'])) {
+                    return (int) $res['owner'] !== $this->InstanceID;
+                }
+            }
+            return $this->isDuplicateDeviceId($deviceId);
+        }
+
+        /** Local rule, only while the server cannot answer: the lowest InstanceID at the same server keeps the id. */
         protected function isDuplicateDeviceId(string $deviceId): bool
         {
             $unreadable = false;
+            $parent = (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
             foreach (self::EOS_DEVICE_MODULE_GUIDS as $guid) {
                 foreach (IPS_GetInstanceListByModuleID($guid) as $id) {
-                    if ($id >= $this->InstanceID) {
+                    if ($id >= $this->InstanceID || (int) IPS_GetInstance($id)['ConnectionID'] !== $parent) {
                         continue;
                     }
                     // During a module reload a sibling may be mid-recreation: Symcon warns and answers false.

@@ -115,12 +115,13 @@ class EOSVehicle extends IPSModuleStrict
             $this->blockDevice(self::STATUS_BAD_DEVICE_ID);
             return;
         }
-        if ($this->isDuplicateDeviceId($deviceId)) {
+        if ($this->deviceIdTaken($deviceId)) {
             $this->blockDevice(self::STATUS_DUPLICATE_ID);
             return;
         }
+        $wasBlocked = $this->deviceBlocked(); // e.g. 205 from the last Apply: no release under that status
         $this->SetStatus(IS_ACTIVE);
-        $this->setupControl();
+        $this->setupControl(!$wasBlocked);
         $hasSource = $this->setupSoCSource();
         $this->registerOptionalSource('PluggedSourceVariable', 'RegisteredPluggedVar');
         $this->registerOptionalSource('DepartureSourceVariable', 'RegisteredDepartureVar');

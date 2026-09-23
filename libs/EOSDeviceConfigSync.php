@@ -87,6 +87,11 @@ if (!trait_exists('EOSDeviceConfigSync')) {
         /** Force-write every differing field ("Overwrite EOS with these values"). */
         public function WriteConfigToEOS(): bool
         {
+            if ($this->deviceBlocked() || !$this->validDeviceId($this->ReadPropertyString('DeviceID'))) {
+                // Invalid, foreign or refused id: the entry is not ours to write (201/203/205).
+                $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('The device id is invalid or not owned by this instance; nothing written to EOS.'));
+                return false;
+            }
             [$path, $device, $merge] = $this->deviceConfig();
             return $this->syncDeviceConfig($path, $device, $merge, true);
         }

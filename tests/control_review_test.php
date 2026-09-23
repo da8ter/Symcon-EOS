@@ -248,5 +248,38 @@ $ev->properties['ControlMode'] = 2; $ev->ApplyChanges(); $ev->fireOnce();
 check(!in_array(true, writesTo(33), true), 'R6-9: vehicle: an expired manual charge is not switched on again (live risk: 11 kW for the 300 s dwell): ' . json_encode(writesTo(33)));
 unset($GLOBALS['objects'][1041]);
 
+// ---------------------------------------------------------------- R6-7, R6-10: blocked instances never write; R6-8: id ownership
+echo "== Gesperrte Instanzen, Geräte-ID-Hoheit\n";
+$GLOBALS['registry'] = true;
+setClock($now);
+$owner = bat(1050); planFor('battery1', 'NON_EXPORT'); $owner->ApplyChanges(); $owner->fireOnce();
+$dup = bat(1049); $dup->ApplyChanges(); $dup->fireOnce(); // lower InstanceID, added later, default id
+check($owner->status === IS_ACTIVE && $dup->status === 203, 'R6-8: a newly added instance with the default id is blocked, not the configured one with the higher InstanceID: owner ' . $owner->status . ', new ' . $dup->status);
+$owner->ApplyChanges(); $dup->ApplyChanges();
+check($owner->status === IS_ACTIVE && $dup->status === 203, 'R6-8: ... and it stays that way after a restart (the server keeps the owner)');
+$calls = count($eos->calls);
+check($dup->WriteConfigToEOS() === false && array_filter(array_slice($eos->calls, $calls), static fn (array $c): bool => in_array($c['Command'], ['MergeConfig', 'SetConfig', 'SaveConfig'], true)) === [],
+    'R6-7: "Overwrite EOS" does nothing in status 203 (the entry belongs to the other instance)');
+$bad = bat(1051, ['DeviceID' => '']); $bad->ApplyChanges(); $calls = count($eos->calls);
+check($bad->status === 201 && $bad->WriteConfigToEOS() === false && array_filter(array_slice($eos->calls, $calls), static fn (array $c): bool => in_array($c['Command'], ['MergeConfig', 'SetConfig', 'SaveConfig'], true)) === [],
+    'R6-7: ... nor in status 201 (an empty id would write a battery "" or the whole map)');
+unset($GLOBALS['objects'][1049], $GLOBALS['objects'][1051]);
+$owner->properties['DeviceID'] = 'speicher1'; $owner->ApplyChanges(); // renamed: EOS still has battery1, the second battery is refused
+check($owner->status === 205, 'setup: renamed battery -> status 205 (EOS already has battery1)');
+resetWorld(); $owner->properties['ControlMode'] = 0; $owner->ApplyChanges();
+check($GLOBALS['actions'] === [] && $GLOBALS['runActions'] === [], 'R6-10: leaving "active" in status 205 writes no fallback to the hardware: ' . json_encode($GLOBALS['actions']));
+unset($GLOBALS['objects'][1050]);
+
+// Without a usable answer from the server the local rule decides, within the same server only.
+$eos->claimFails = true;
+$x = bat(1052); $x->ApplyChanges();
+$y = bat(1053); $GLOBALS['instances'][1053]['ConnectionID'] = 3000; $GLOBALS['instances'][3000] = ['ConnectionID' => 0, 'InstanceStatus' => IS_ACTIVE]; $y->ApplyChanges();
+check($x->status === IS_ACTIVE && $y->status !== 203, 'R6-8: the same id on another EOS Server is no duplicate: ' . $y->status);
+$z = bat(1054); $z->ApplyChanges();
+check($z->status === 203, 'R6-8: without the server the lowest InstanceID on the same server keeps the id');
+$eos->claimFails = false;
+unset($GLOBALS['objects'][1052], $GLOBALS['objects'][1053], $GLOBALS['objects'][1054]);
+$GLOBALS['registry'] = false;
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

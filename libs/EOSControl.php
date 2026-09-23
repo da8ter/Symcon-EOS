@@ -108,8 +108,8 @@ if (!trait_exists('EOSControl')) {
             $this->RegisterTimer('Retry', 0, self::CONTROL_PREFIX . '_Dispatch($_IPS[\'TARGET\']);');
         }
 
-        /** From ApplyChanges(): validate bindings, handle mode transitions, arm the watchdog. */
-        protected function setupControl(): void
+        /** From ApplyChanges(): validate bindings, handle mode transitions, arm the watchdog. $releaseAllowed false: blocked before, write nothing. */
+        protected function setupControl(bool $releaseAllowed = true): void
         {
             if (!$this->ReadAttributeBoolean('ControlInitDone')) {
                 $this->SetValue('ControlActive', true);
@@ -119,7 +119,7 @@ if (!trait_exists('EOSControl')) {
             $previous = $this->ReadAttributeInteger('LastControlMode');
             $current = $this->ReadPropertyInteger('ControlMode');
             // Release once when "active" is left; not again when the master switch already released.
-            if ($previous === self::CONTROL_ACTIVE && $current !== self::CONTROL_ACTIVE && $this->ReadPropertyBoolean('ReleaseOnDisable') && (bool) $this->GetValue('ControlActive')) {
+            if ($releaseAllowed && $previous === self::CONTROL_ACTIVE && $current !== self::CONTROL_ACTIVE && $this->ReadPropertyBoolean('ReleaseOnDisable') && (bool) $this->GetValue('ControlActive')) {
                 $this->releaseDevice('disable', false);
             }
             if ($previous !== $current) {

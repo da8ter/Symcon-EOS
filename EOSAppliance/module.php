@@ -128,7 +128,7 @@ class EOSAppliance extends IPSModuleStrict
             $this->blockDevice(self::STATUS_BAD_DEVICE_ID);
             return;
         }
-        if ($this->isDuplicateDeviceId($deviceId)) {
+        if ($this->deviceIdTaken($deviceId)) {
             $this->blockDevice(self::STATUS_DUPLICATE_ID);
             return;
         }

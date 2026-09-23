@@ -13,6 +13,10 @@ if (!trait_exists('EOSDeviceConfigForm')) {
         /** Load every mapped field of the EOS entry into the open form ("Load values from EOS"). */
         public function ReadConfigFromEOS(): bool
         {
+            if (!$this->validDeviceId($this->ReadPropertyString('DeviceID'))) {
+                $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('The device id is invalid; nothing loaded.'));
+                return false;
+            }
             $read = $this->readConfig(self::DEVICE_COLLECTION . '/' . $this->ReadPropertyString('DeviceID'));
             if ($read['state'] !== 'ok' || !is_array($read['value'])) {
                 $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('No device %s in EOS configuration.'), $this->ReadPropertyString('DeviceID')));
