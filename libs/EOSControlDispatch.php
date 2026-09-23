@@ -309,8 +309,9 @@ if (!trait_exists('EOSControlDispatch')) {
             }
             // Counted from this moment, not from the second the dispatch started: writes take time, and
             // SetTimerInterval starts counting when it is called, so whole seconds would add up per cycle.
+            // The 500 ms lead makes eosNow() reach the due second when the timer fires; it also keeps the interval above 0 (= off).
             $delayMs = (int) round((min($due) - $this->eosNowFloat()) * 1000);
-            $this->SetTimerInterval('Retry', min(3600000, max(1000, $delayMs)) + 500);
+            $this->SetTimerInterval('Retry', min(3600000, max(0, $delayMs)) + 500);
         }
     }
 }

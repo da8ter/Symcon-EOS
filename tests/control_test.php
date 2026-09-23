@@ -227,6 +227,9 @@ check(lastSent($m)['targets']['ChargePowerW']['fail'] === 2, 'after the 60 s bac
 resetWorld(); setClock($now + 130.8);
 $m->Dispatch();
 check(writesTo(20) === ['now'] && $m->timers['Retry']['ms'] === 29700, 'K48: the next heartbeat is counted from when the timer is armed, so fractions of a second do not add up (live 30/31 s): ' . $m->timers['Retry']['ms']);
+resetWorld(); setClock($now + 159.6);
+$m->Dispatch();
+check(writesTo(20) === [] && $m->timers['Retry']['ms'] === 900, 'K48: a heartbeat due in 0.4 s is not pushed back to 1.5 s (live: retry, then heartbeat 2 s later): ' . $m->timers['Retry']['ms']);
 setClock(null);
 $GLOBALS['world'][21]['fail'] = false;
 
