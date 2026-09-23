@@ -358,7 +358,8 @@ class EOSServer extends IPSModuleStrict
                 return $this->reply($this->forwardConfigCommand($command, $data));
 
             case 'ClaimDevice':
-                return $this->reply($this->claimDevice((string) ($data['DeviceID'] ?? ''), (int) ($data['InstanceID'] ?? 0)));
+                // Answered by this instance, not by EOS: must not count as "EOS reachable" (reply()).
+                return (string) json_encode($this->claimDevice((string) ($data['DeviceID'] ?? ''), (int) ($data['InstanceID'] ?? 0)));
 
             default:
                 return json_encode(['ok' => false, 'error' => 'unknown command ' . $command]);

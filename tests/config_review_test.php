@@ -85,6 +85,10 @@ check($b->status === IS_ACTIVE && (json_decode(realServer()->attributes['DeviceO
 drop(1100);
 $c = batteryAt(1200, 'speicher1'); $c->ApplyChanges();
 check(!in_array($c->status, [203], true), 'R6-8: an owner that was deleted frees its id: ' . $c->status);
+$be->down = 'connect'; $b->ApplyChanges();                    // the sync meets an unreachable EOS
+$down = realServer()->status; $b->ApplyChanges();              // the next claim is answered by the server itself
+check($down === 201 && realServer()->status === 201, 'regression: a claim does not count as "EOS reachable" (server stays 201): ' . $down . ' -> ' . realServer()->status);
+$be->down = ''; realServer()->PollHealth();
 drop(1050, 1200);
 $GLOBALS['registry'] = false;
 

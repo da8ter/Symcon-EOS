@@ -49,6 +49,8 @@ if (!trait_exists('EOSPlanDevice')) {
             $this->RegisterAttributeString('PlanMeta', '{}');
             $this->RegisterAttributeBoolean('EmptyPlanWarned', false);
             $this->RegisterAttributeBoolean('SkewWarned', false);
+            // Asks the EOS Server for the id owner again when it could not answer (see deviceIdTaken()).
+            $this->RegisterTimer('ClaimRetry', 0, 'IPS_ApplyChanges($_IPS[\'TARGET\']);');
         }
 
         protected function registerPlanVariables(int $position): void
@@ -93,11 +95,16 @@ if (!trait_exists('EOSPlanDevice')) {
          */
         protected function deviceIdTaken(string $deviceId): bool
         {
-            if ($this->parentUsable()) {
+            // The owners live in the EOS Server instance, not in EOS: asked also while EOS is unreachable.
+            $parent = (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
+            if ($parent > 0 && IPS_InstanceExists($parent)) {
                 $res = $this->forward(['Command' => 'ClaimDevice', 'DeviceID' => $deviceId, 'InstanceID' => $this->InstanceID], true);
                 if (($res['ok'] ?? false) === true && isset($res['owner'])) {
+                    $this->SetTimerInterval('ClaimRetry', 0);
                     return (int) $res['owner'] !== $this->InstanceID;
                 }
+                // No answer (e.g. the server is being re-created by a module reload): decide locally for now, ask again.
+                $this->SetTimerInterval('ClaimRetry', 30000);
             }
             return $this->isDuplicateDeviceId($deviceId);
         }

@@ -350,5 +350,22 @@ $manual = array_map(static fn (array $r): bool => (bool) ($r[1]['Start'] ?? fals
 check(count(array_filter($manual)) <= 1 && end($manual) === false, 'regression: ... also for manual "run": the heartbeat does not send the start again: ' . json_encode($manual));
 unset($GLOBALS['objects'][1081]);
 
+// ---------------------------------------------------------------- regression check: the id owner survives an EOS outage
+echo "== Regression: Geräte-ID-Hoheit bei EOS-Ausfall\n";
+$GLOBALS['registry'] = true; $eos->owners = [];
+setClock($now);
+$ow = bat(1091); planFor('battery1', 'NON_EXPORT'); $ow->ApplyChanges();  // configured owner
+$nw = bat(1089); $nw->ApplyChanges();                                       // added later, lower InstanceID
+$GLOBALS['instances'][2000]['InstanceStatus'] = 201;                        // EOS unreachable, the EOS Server instance still answers
+$ow->ApplyChanges(); $nw->ApplyChanges();
+check($ow->status !== 203 && $nw->status === 203, 'regression: while EOS is unreachable the server still decides the id owner; the configured one is not blocked: owner ' . $ow->status . ', new ' . $nw->status);
+$GLOBALS['instances'][2000]['InstanceStatus'] = IS_ACTIVE;
+$eos->claimFails = true; $ow->ApplyChanges(); $eos->claimFails = false;
+check(($ow->timers['ClaimRetry']['ms'] ?? 0) === 30000, 'regression: a server that cannot answer (e.g. mid-reload) is asked again in 30 s: ' . json_encode($ow->timers['ClaimRetry'] ?? null));
+$ow->fireTimer('ClaimRetry');
+check($ow->status === IS_ACTIVE && $ow->timers['ClaimRetry']['ms'] === 0, 'regression: ... the retry settles it and stops');
+unset($GLOBALS['objects'][1089], $GLOBALS['objects'][1091]);
+$GLOBALS['registry'] = false;
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
