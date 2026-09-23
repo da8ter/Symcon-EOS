@@ -7,7 +7,7 @@ declare(strict_types=1);
  * automatic compare-and-write on ApplyChanges, comparison text and EOS-to-form
  * loading when the configuration form opens, and the "Device in EOS" picker.
  *
- * The using class must use EOSCommon, EOSPlanDevice and EOSControlBindings
+ * The using class must use EOSCommon, EOSPlanDevice and EOSFormHelpers
  * (setFormAttribute) and provide deviceConfig(): [path, device, merge] plus
  * ReadConfigFromEOS().
  */

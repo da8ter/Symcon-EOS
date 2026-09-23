@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSPlanDevice.php';
 require_once __DIR__ . '/../libs/EOSControlBindings.php';
+require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
 require_once __DIR__ . '/../libs/EOSApplianceConfig.php';
@@ -25,6 +26,7 @@ class EOSAppliance extends IPSModuleStrict
     use EOSCommon;
     use EOSPlanDevice;
     use EOSControlBindings;
+    use EOSFormHelpers;
     use EOSControl;
     use EOSDeviceConfigSync;
     use EOSApplianceConfig;

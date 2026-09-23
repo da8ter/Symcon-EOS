@@ -6,6 +6,7 @@ require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSPlanDevice.php';
 require_once __DIR__ . '/../libs/EOSSoCPush.php';
 require_once __DIR__ . '/../libs/EOSControlBindings.php';
+require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
 
@@ -23,6 +24,7 @@ class EOSBattery extends IPSModuleStrict
     use EOSPlanDevice;
     use EOSSoCPush;
     use EOSControlBindings;
+    use EOSFormHelpers;
     use EOSControl;
     use EOSDeviceConfigSync;
 

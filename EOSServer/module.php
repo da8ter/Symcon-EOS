@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../libs/EOSClient.php';
 require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSConfigMapper.php';
+require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 
 /**
  * EOS Server: splitter that talks to an Akkudoktor-EOS instance.
@@ -17,6 +18,7 @@ class EOSServer extends IPSModuleStrict
 {
     use EOSCommon;
     use EOSConfigMapper;
+    use EOSFormHelpers;
 
     private const STATUS_INACTIVE = 104;
     private const STATUS_UNREACHABLE = 201;
@@ -103,19 +105,21 @@ class EOSServer extends IPSModuleStrict
             'LoadProvider'      => 'load',
             'WeatherProvider'   => 'weather',
         ];
-        $this->walkForm($form['elements'], function (array &$el) use ($providers, $config): void {
+        $this->formWalk($form['elements'], function (array &$el) use ($providers, $config): bool {
             $name = $el['name'] ?? '';
             if (($el['type'] ?? '') === 'Select' && isset($providers[$name])) {
                 $el['options'] = $this->ProviderOptions(is_array($config) ? $config : [], $providers[$name]);
             }
+            return false;
         });
         $client = $this->client();
-        $this->walkForm($form['actions'], function (array &$el) use ($client): void {
+        $this->formWalk($form['actions'], function (array &$el) use ($client): bool {
             if (($el['name'] ?? '') === 'DashboardLink') {
                 $el['caption'] = 'EOSdash: ' . $client->dashboardUrl();
             } elseif (($el['name'] ?? '') === 'SwaggerLink') {
                 $el['caption'] = 'API: ' . $client->swaggerUrl();
             }
+            return false;
         });
         return json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
@@ -606,20 +610,5 @@ class EOSServer extends IPSModuleStrict
             }
         }
         return ['ok' => true, 'tz' => $solution['solution']['tz'] ?? null, 'series' => $series];
-    }
-
-    /** Apply $fn to every element (recursively into items) of a form section. */
-    private function walkForm(array &$elements, callable $fn): void
-    {
-        foreach ($elements as &$el) {
-            if (!is_array($el)) {
-                continue;
-            }
-            $fn($el);
-            if (isset($el['items']) && is_array($el['items'])) {
-                $this->walkForm($el['items'], $fn);
-            }
-        }
-        unset($el);
     }
 }
