@@ -7,36 +7,52 @@ fest. Drei Mechanismen stehen zur Verfügung und lassen sich kombinieren:
 | Option im Formular | Felder | Wann sinnvoll |
 | --- | --- | --- |
 | **Option 1: Bei Moduswechsel Werte in Variablen schreiben** | „Modus-Variable“ mit Tabelle „Wert je EOS-Modus“, „Soll-Ladeleistung“, „Entladen erlaubt“ … (nur schaltbare Variablen wählbar) | Das Hersteller-Modul hat schaltbare Variablen (evcc, openWB, Modbus, MQTT, Shelly …). Der Wert wird auf den Typ der Variable umgewandelt (Bool/Int/Float/String) und per `RequestAction` geschrieben. |
-| **Option 2: Je EOS-Modus eine Instanzaktion ausführen** und **Option 3: Bei jedem EOS-Moduswechsel Instanzaktion oder Skript ausführen** | ein Auswahlfeld pro Modus (Option 2), „Aktion bei jedem Wechsel“ (Option 3) | Das Modul bietet Aktionen an (z. B. „Ladestrom setzen“), oder ein fertiger Ablauf soll beim Wechsel laufen. Das Feld „Ziel für Aktionen“ (Variable oder Instanz, Standard: die Modus-Variable) öffnet die Auswahl direkt mit den Aktionen dieses Geräts. Kontext (Modus, Leistung …) wird als Parameter mitgegeben, eigene Parameter der Aktion (TARGET, VALUE) gewinnen. |
+| **Option 2: Je EOS-Modus eine Instanzaktion ausführen** und **Option 3: Bei jeder Änderung, jedem Moduswechsel und jedem Heartbeat Instanzaktion oder Skript ausführen** | ein Auswahlfeld pro Modus (Option 2), „Aktion bei jedem Wechsel“ (Option 3) | Das Modul bietet Aktionen an (z. B. „Ladestrom setzen“), oder ein fertiger Ablauf soll beim Wechsel laufen. Das Feld „Ziel für Aktionen“ (Variable oder Instanz, Standard: die Modus-Variable) öffnet die Auswahl direkt mit den Aktionen dieses Geräts. Kontext (Modus, Leistung …) wird als Parameter mitgegeben, eigene Parameter der Aktion (TARGET, VALUE) gewinnen. |
 | **Option 3, Skript** | „Skript bei jedem Wechsel“ | Alles andere. Das Skript bekommt den Kontext in `$_IPS` (siehe unten). |
 
-Reihenfolge je Wechsel: Option 1 → Option 2 → Option 3 (Aktion, dann Skript). Geschrieben wird
-nur, was sich geändert hat; die Aktion je Modus feuert nur beim Wechsel in den Modus (Flanke), nie beim
-Heartbeat.
+Reihenfolge je Durchlauf: Option 1 → Option 2 → Option 3 (Aktion, dann Skript).
+
+- **Option 1** schreibt nur, was sich geändert hat, plus beim Heartbeat alle Ziele erneut. Erfolg erkennt die
+  Instanz am Rückgabewert von `RequestAction`; Symcon wirft dabei keine Ausnahme. Ein fehlgeschlagenes, gelöschtes
+  oder nicht schaltbares Ziel wird gemerkt und nach 60 s × Anzahl Fehlschläge (höchstens 300 s) erneut versucht;
+  ein anderer Sollwert geht sofort hinaus.
+- **Option 2** feuert nur beim Wechsel in den Modus (Flanke), nie beim Heartbeat; fehlgeschlagen wird sie mit
+  demselben Abstand wiederholt. Als fehlgeschlagen gilt eine Aktion, deren Ausgabe eine PHP-Fehlermeldung enthält
+  (Zeile mit `Fatal error:`, `Warning:` …) oder die Symcon nicht kennt; sonstige Ausgabe gilt als Erfolg und steht
+  gekürzt im Ergebnis-Text.
+- **Option 3** läuft bei jeder Änderung, jedem Moduswechsel, jedem Heartbeat, nach einer gefeuerten Modus-Aktion
+  und beim erzwungenen Schreiben (`EOSBAT_ApplyControl($id, true)`), nicht aber für reine Wiederholungen von
+  Option 1. Scheitert sie selbst, wiederholt sie sich mit eigenem Abstand. Das Skript startet über
+  `IPS_RunScriptEx` asynchron: „OK“ heißt gestartet, nicht fertig.
 
 ## Kontext für Aktionen und Skripte (`$_IPS`)
 
 | Schlüssel | Inhalt |
 | --- | --- |
 | `InstanceID`, `DeviceID` | Symcon-Instanz und EOS-Geräte-ID |
-| `Reason` | `plan`, `fallback`, `manual`, `heartbeat`, `disable` (Steuerung abgeschaltet), `user` |
+| `Reason` | Warum jetzt: `plan`, `fallback`, `manual` (Quelle bei Änderung oder Moduswechsel), `force` (erzwungenes Schreiben), `disable` (Steuerung abgeschaltet oder „Aktiv“ verlassen), `heartbeat`, `retry` (nur Wiederholung) |
 | `Source` | Quelle des Sollzustands: `plan`, `fallback`, `manual` |
 | `ModeRaw`, `Mode` | EOS-Modus als Text und als Zahl der Betriebsmodus-Variable |
 | `Factor` | `operation_mode_factor` 0–1 |
 | `ExecutionTime` | Beginn der Anweisung (ISO 8601), leer bei Fallback/manuell |
 | `Simulation` | `true` im Steuerungsmodus „Simulation“ (dann werden Skripte und Aktionen NICHT ausgeführt) |
 | `Changed` | Kommagetrennte Liste der geänderten Ziele |
+| `Retried` | Kommagetrennte Liste der Ziele, die nach einem Fehlschlag erneut geschrieben werden |
+| `Heartbeat` | `true`, wenn der Durchlauf ein Heartbeat ist |
+| `ModeChanged` | `true`, wenn der EOS-Modus seit dem letzten Durchlauf gewechselt hat |
+| `Resync` | `true` beim ersten Durchlauf nach Übernehmen oder Symcon-Neustart: der Gerätezustand war unbekannt, der Durchlauf schreibt alles neu |
 | `Degraded` | Text, wenn die Politik den Modus abgeschwächt hat (z. B. Netzladen nicht erlaubt) |
 | Batterie | `PowerW` (Soll-Ladeleistung), `DischargePowerW`, `DischargeAllowed`, `GridCharge` |
 | E-Auto | `ChargeAllowed`, `CurrentA`, `PowerW`, `Plugged` |
-| Haushaltsgerät | `Run`, `Start` (echter Startimpuls), `InstructionId` |
+| Haushaltsgerät | `Run`, `Start` (echter Startimpuls), `InstructionId` (ändert sich bei jedem EOS-Lauf) |
 
 ## Batterie
 
 ### Wechselrichter mit Modus-Variable (Modbus, MQTT, Hersteller-Modul)
 
 1. Zielvariable **Betriebsmodus** auf die Modus-Variable des Hersteller-Moduls (Int oder String) legen.
-2. In der Tabelle „Wert je EOS-Modus“ je Zeile den Wert eintragen, den das Modul erwartet, z. B. für ein
+2. In der Tabelle „Wert je EOS-Modus“ je Zeile den Wert eintragen, den das Modul erwartet. Jeder Wert muss zum
+   Typ der Modus-Variable passen, sonst sperrt die Instanz die Steuerung mit einem Hinweis. Beispiel für ein
    Modul mit `0 = Automatik, 1 = Laden sperren, 2 = Entladen sperren, 3 = Netzladen`:
 
    | EOS | Wert |
@@ -51,7 +67,9 @@ Heartbeat.
 
    Leere Zeile = für diesen Modus wird die Modus-Variable nicht geschrieben.
 3. Zusätzlich **Soll-Ladeleistung (W)** auf das Register/die Variable für die Netzladeleistung legen. Bei
-   Netzladen steht dort `Faktor × max. Ladeleistung`, sonst 0.
+   Netzladen steht dort `Faktor × max. Ladeleistung` (Wert aus dem EOS-Geräteeintrag), sonst 0. Der
+   Einspeise-Sollwert bei `GRID_SUPPORT_EXPORT` ist derselbe Faktor × max. Ladeleistung, höchstens die max.
+   Entladeleistung.
 4. **Entladen erlaubt (Bool)** bzw. **Entladeleistungs-Grenze (W)** für Module, die Entladen sperren können.
 
 ### evcc (MQTT)
@@ -118,7 +136,7 @@ if ($_IPS['ChargeAllowed']) {
 
 - Laden, wenn EOS einen Faktor > 0 in einem Lademodus plant; Strom = `Faktor × max. Ladeleistung / (Phasen × Spannung)`.
 - Unter dem **Mindest-Ladestrom** (Standard 6 A) wird auf den Mindeststrom angehoben, weil das Auto sonst gar nicht lädt.
-- **Mindestabstand Laden Ein/Aus** (Standard 300 s) verhindert Schützflattern durch stochastische Neuplanung; Leistungsstufen wechseln sofort.
+- **Mindestabstand Laden Ein/Aus** (Standard 300 s) verhindert Schützflattern durch stochastische Neuplanung; in der Wartezeit bleibt der zuletzt erfolgreich geschriebene Ladezustand stehen (ohne einen solchen hält die Instanz nichts zurück), Leistungsstufen wechseln sofort.
 - Mit Steckervariable: nicht angesteckt → Sollzustand „aus“, einmal geschrieben; Einstecken wertet sofort neu aus.
 - Fallback Standard: Laden erlaubt mit maximaler Leistung (ein leeres Auto ist das größere Risiko als ein voller Tarif).
 
@@ -131,20 +149,30 @@ wenn **Stoppen erlauben** aktiv ist (Spülmaschinen nicht mitten im Programm aus
 
 ### Gerät mit Start-API (Home Connect, Miele …)
 
-In Option 2 die Aktion für `RUN` auf die Start-Aktion des Moduls
-legen. Der Startimpuls kommt genau einmal je EOS-Anweisung, nur innerhalb der **Gnadenfrist** (Standard 30 min
-nach geplantem Start) und nicht, wenn die optionale Quellvariable „läuft“ schon wahr ist.
+In Option 2 die Aktion für `RUN` auf die Start-Aktion des Moduls legen. Der Startimpuls kommt einmal je
+geplantem Lauf, nur innerhalb der **Gnadenfrist** (Standard 30 min nach geplantem Start) und nicht, wenn die
+optionale Quellvariable „läuft“ schon wahr ist. Weil EOS bei jedem Lauf neue Anweisungs-IDs vergibt, sperrt die
+Instanz nach einem Impuls weitere Starts für die **Laufdauer**. Mit Quellvariable „läuft“ gilt der Start erst als
+bestätigt, wenn sie wahr wird; bleibt sie 5 Minuten nach dem Impuls falsch, fällt die Sperre mit Warnung, und die
+Gnadenfrist erlaubt einen neuen Versuch.
+
+Den Impuls trägt, in dieser Reihenfolge: die RUN-Aktion aus Option 2, sonst die Freigabe (Wechsel aus → an), sonst
+Option 3 mit `Start = true`. Ohne eine dieser Bindungen sperrt die Instanz die Steuerung („keine Bindung, die das
+Gerät starten kann“). Manuell „Läuft“ startet genau einmal auf der Flanke und umgeht die Sperre bewusst.
 
 ## Heartbeat und Geräte-Watchdogs
 
 Viele Wechselrichter (Victron ESS, SMA, Fronius, E3DC, Sungrow) verwerfen Sollwerte, wenn sie nicht regelmäßig
 erneuert werden, und fallen dann in ihren Standardbetrieb. Genau dafür gibt es **„Sollwerte erneut senden alle
-n s“**: den Wert etwas unter der Timeout-Zeit des Geräts wählen (typisch 30–120 s). Ohne Heartbeat schreibt die
-Steuerung nur bei Änderung. Fällt Symcon aus, greift so der geräteseitige Watchdog.
+n s“**: den Wert etwas unter der Timeout-Zeit des Geräts wählen (typisch 30–120 s, mindestens 5 s). Ohne Heartbeat
+schreibt die Steuerung nur bei Änderung. Ein eigener Zeitgeber weckt die Instanz genau zum nächsten Heartbeat oder
+zur nächsten Wiederholung, unabhängig vom 60-s-Wächter. Fällt Symcon aus, greift so der geräteseitige Watchdog.
 
 ## Was die Steuerung nie tut
 
-- Nichts schreiben im Modus „Nur anzeigen“ oder ohne konfigurierte Bindung.
+- Nichts schreiben im Modus „Nur anzeigen“, ohne konfigurierte Bindung oder bei Gerätestatus 201/203/205
+  (Geräte-ID fehlt, doppelt oder EOS hat schon ein anderes Gerät dieser Art).
 - Keine SoC-Grenzen durchsetzen: das macht der Wechselrichter; die Instanz warnt nur bei Widersprüchen.
 - Keine Schreibversuche beim Löschen der Instanz: vorher den Steuerungsmodus auf „Nur anzeigen“ stellen
-  (schreibt den Fallback einmal).
+  (schreibt den Fallback einmal, sofern der Hauptschalter „Steuerung aktiv“ an ist; war er aus, ist das Gerät
+  schon freigegeben).

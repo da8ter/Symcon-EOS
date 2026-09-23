@@ -22,7 +22,10 @@ der Mac eignet sich zum Ausprobieren.
 Das Skript versucht zuerst, das veröffentlichte Image `akkudoktor/eos:<EOS_VERSION>` von Docker Hub zu
 holen. Gibt es das nicht (für den Release-Kandidaten 0.4.0rc1 veröffentlicht das EOS-Projekt keines), baut
 Compose das Image direkt aus dem GitHub-Tag (`EOS_GIT_REF=v0.4.0rc1`) mit dem Dockerfile des EOS-Projekts;
-das gewählte Image steht danach als `EOS_IMAGE` in `.env`. Ein Checkout des EOS-Repos ist nicht nötig. **Am EOS-Code wird nichts geändert**: kein Patch, kein Bind-Mount über `/opt/eos`, nur
+das gewählte Image steht danach als `EOS_IMAGE` in `.env`. Das fertige Image gilt nur, wenn `EOS_GIT_REF` leer ist
+oder `v<EOS_VERSION>` lautet: ein anderer Branch oder Commit wird immer gebaut, sonst liefe unbemerkt das
+veröffentlichte Release statt des gewünschten Stands. Ein selbst gebautes oder anderes Image erzwingt
+`EOS_IMAGE_OVERRIDE=<image>` in `.env`; `EOS_IMAGE` selbst überschreibt das Skript bei jedem Lauf. Ein Checkout des EOS-Repos ist nicht nötig. **Am EOS-Code wird nichts geändert**: kein Patch, kein Bind-Mount über `/opt/eos`, nur
 Umgebungsvariablen (Host/Port, Thread-Limits, Zeitzone). Alle Umgehungen für Eigenheiten des
 Release-Kandidaten stecken im Symcon-Modul. Sobald 0.4.0 final erscheint, genügt es, `EOS_VERSION` (und `EOS_GIT_REF`) in `.docker/.env` zu ändern
 und `./setup.sh update` auszuführen; dann wird das fertige Image gezogen und nichts mehr gebaut.
@@ -37,7 +40,9 @@ cd Symcon-EOS/.docker
 Das Skript
 
 1. prüft Docker und Compose,
-2. legt `.env` aus `.env.example` an und erzeugt einen zufälligen EOSdash-Sitzungsschlüssel,
+2. legt `.env` aus `.env.example` an und erzeugt einen zufälligen EOSdash-Sitzungsschlüssel; liegt aus der Zeit
+   vor dem Umzug nach `.docker/` (22.09.2026) noch eine `../docker/.env` bzw. `../docker/eos-config-local.json`,
+   übernimmt es diese einmalig mit Hinweis (danach den alten Ordner `docker/` löschen),
 3. holt das fertige Image von Docker Hub oder baut es aus dem Git-Tag (erster Build 5 bis 15 Minuten, danach aus dem Cache),
 4. startet den Container und wartet, bis `GET /v1/health` antwortet,
 5. gibt die URLs und den Hinweis für die Symcon-Seite aus.
@@ -157,7 +162,9 @@ ansprechen.
 | `/v1/energy-management/plan` liefert 404 | Noch kein erfolgreicher Lauf. `./setup.sh logs` prüfen, SoC-Messwert setzen. |
 | Lauf bricht mit „stale“ / „missing measurement“ ab | Batterie-SoC älter als 300 s. Symcon (oder Test-curl) muss ihn zyklisch liefern. |
 | `POST /v1/optimize` liefert 503 „No new solution was produced“ | Meist fehlt eine Prognose oder ein Messwert. Log prüfen: `docker compose logs eos \| grep -iE "fails on update\|canceling"`. |
-| Jeder Lauf endet mit „devices.home_appliances exceeds configured maximum 0“ | `devices/max_home_appliances` ist kleiner als die Anzahl konfigurierter Geräte. Wert anheben: `curl -X PUT .../v1/config/devices/max_home_appliances -d '1'` und `PUT /v1/config/file`. Die Haushaltsgerät-Instanz in Symcon hebt ihn beim Übernehmen automatisch an. |
+| Jeder Lauf endet mit „devices.home_appliances exceeds configured maximum 0“ | `devices/max_home_appliances` ist kleiner als die Anzahl konfigurierter Geräte. Wert anheben: `curl -X PUT .../v1/config/devices/max_home_appliances -d '1'` und `PUT /v1/config/file`. Die Haushaltsgerät-Instanz in Symcon hebt ihn beim Übernehmen automatisch an; die Konfigurationsprüfung im EOS Server zeigt die Abweichung. |
+| Lauf scheitert trotz frischer Werte, EOS hat zwei Batterien oder E-Autos | GENETIC rechnet mit genau einer Batterie, höchstens einem E-Auto und genau einem Wechselrichter. Den überzähligen Eintrag in der Symcon-Instanz mit „Alten EOS-Eintrag entfernen“ löschen; ein `PUT` der Geräte-Map allein reicht nicht, der Eintrag kommt beim nächsten Merge zurück. |
+| Frist lässt sich per `PUT /v1/config` mit `null` nicht löschen | Ein Merge ignoriert `null`. Über den Pfad löschen: `curl -X PUT .../v1/config/devices/electric_vehicles/<id>/min_soc_deadline_datetime -H 'Content-Type: application/json' -d 'null'`, danach `PUT /v1/config/file`. |
 | `EOS.config.json` enthält einen gesetzten Wert nicht | Die Datei speichert nur Abweichungen vom Standard (z. B. fehlt `energycharts.bidding_zone: DE-LU`, weil es der Standard ist). Maßgeblich ist `GET /v1/config`. |
 | `PVForecastAkkudoktor fails on update ... 500 Server Error` | Die Akkudoktor-Cloud-API ist nicht erreichbar. Auf das lokale Backend umschalten (siehe unten). |
 | Lauf bricht mit „Fresh SoC missing“ ab, obwohl der SoC frisch ist | Bug in 0.4.0rc1: Die SoC-Suche (`configrequest.py`, `key_to_lists(..., dropna=False)`) nimmt den jüngsten Messwert-Datensatz, auch wenn er nur einen anderen Key (EV-SoC, Zählerstand) enthält und der Batterie-SoC darin NaN ist. Gleiches gilt für `<gerät>.cycles_completed` bei Haushaltsgeräten („Invalid completed cycle count“). Das Symcon-Modul umgeht das, indem der EOS Server bei jedem anderen Messwert alle bekannten SoC- und Zyklus-Werte mit demselben Zeitstempel erneut sendet. Upstream-Fix: `dropna=True` in `configrequest.py`. |
