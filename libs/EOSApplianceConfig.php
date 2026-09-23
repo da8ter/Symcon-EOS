@@ -39,10 +39,7 @@ if (!trait_exists('EOSApplianceConfig')) {
                 }
             }
             $appliance['time_windows'] = $windows !== [] ? ['windows' => $windows] : null;
-            $deadline = (int) $this->GetValue('Deadline');
-            $appliance['deadline_datetime'] = $deadline > $this->eosNow() ? $this->eosIsoNow($deadline) : null;
-            $earliest = $this->earliestStart();
-            $appliance['earliest_start_datetime'] = $earliest > $this->eosNow() ? $this->eosIsoNow($earliest) : null;
+            // Deadline and earliest start are not part of the entry: reconcileTimes() owns them.
 
             return [self::DEVICE_COLLECTION . '/' . $id, $appliance, ['devices' => ['home_appliances' => [$id => $appliance]]]];
         }
@@ -83,37 +80,59 @@ if (!trait_exists('EOSApplianceConfig')) {
             return ($var > 0 && IPS_VariableExists($var)) ? (int) GetValue($var) : 0;
         }
 
+        /**
+         * Deadline and earliest start belong to Symcon only when syncing is on AND a source
+         * exists (a source variable, or SetDeadline was used); otherwise they belong to EOSdash.
+         */
+        private function timesOwned(): bool
+        {
+            return $this->ReadPropertyBoolean('SyncTimesToEOS')
+                && ($this->ReadPropertyInteger('DeadlineSourceVariable') > 0 || $this->ReadPropertyInteger('EarliestStartSourceVariable') > 0 || $this->ReadAttributeBoolean('TimesByScript'));
+        }
+
+        /** Source variables -> Deadline variable -> times in EOS. */
         private function syncTimes(): void
         {
             $var = $this->ReadPropertyInteger('DeadlineSourceVariable');
-            $deadline = ($var > 0 && IPS_VariableExists($var)) ? (int) GetValue($var) : (int) $this->GetValue('Deadline');
-            $this->SetValue('Deadline', max(0, $deadline));
-            if ($this->ReadPropertyBoolean('SyncTimesToEOS')) {
-                $this->writeTimes($deadline, $this->earliestStart());
+            if ($var > 0 && IPS_VariableExists($var)) {
+                $this->SetValue('Deadline', max(0, (int) GetValue($var)));
             }
+            $this->reconcileTimes();
         }
 
-        private function writeTimes(int $deadline, int $earliest): bool
+        /**
+         * Bring deadline and earliest start in EOS to the Symcon values; a passed time is
+         * cleared (a past STRICT deadline makes the optimization fail). Runs on ApplyChanges,
+         * on source changes, with every cycles push and from the expiry timer.
+         */
+        private function reconcileTimes(): bool
         {
             if (!$this->parentUsable()) {
                 return false;
             }
-            $payload = [
-                'deadline_datetime'       => $deadline > $this->eosNow() ? $this->eosIsoNow($deadline) : null,
-                'earliest_start_datetime' => $earliest > $this->eosNow() ? $this->eosIsoNow($earliest) : null,
-            ];
-            $signature = json_encode($payload);
-            if ($signature === $this->ReadAttributeString('LastTimesSent')) {
+            $now = $this->eosNow();
+            if (!$this->timesOwned()) {
+                $this->SetTimerInterval('TimesExpiry', 0);
+                $eos = $this->eosTimeField('deadline_datetime');
+                $past = $eos > 0 && $eos <= $now && $this->ReadPropertyString('DeadlinePolicy') === 'STRICT';
+                $this->warnOnce('PastDeadlineWarned', $past ? (string) $eos : '', sprintf($this->Translate('EOS holds a deadline in the past (%s) with policy STRICT; the optimization fails. Clear it in EOSdash or give this instance a deadline source.'), $this->eosIsoNow(max(0, $eos))));
                 return true;
             }
-            $id = $this->ReadPropertyString('DeviceID');
-            $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['devices' => ['home_appliances' => [$id => ['device_id' => $id] + $payload]]]]);
-            if (($res['ok'] ?? false) !== true) {
-                $this->LogMessage('EOS appliance time update failed: ' . (string) ($res['error'] ?? '?'), KL_WARNING);
-                return false;
+            $deadline = (int) $this->GetValue('Deadline');
+            $earliest = $this->earliestStart();
+            $want = ['earliest_start_datetime' => $earliest > $now ? $earliest : 0, 'deadline_datetime' => $deadline > $now ? $deadline : 0];
+            $this->armExpiryTimer('TimesExpiry', array_values($want));
+            $written = false;
+            $ok = true;
+            foreach ($want as $field => $ts) {
+                $result = $this->reconcileTimeField($field, $ts);
+                $written = $written || $result === 'written';
+                $ok = $ok && $result !== 'failed';
             }
-            $this->WriteAttributeString('LastTimesSent', $signature);
-            return true;
+            if ($written) {
+                $this->forward(['Command' => 'SaveConfig']);
+            }
+            return $ok;
         }
 
         /** Without a source variable 0 is reported; EOS rejects runs without a value for the current day. */
@@ -136,6 +155,7 @@ if (!trait_exists('EOSApplianceConfig')) {
                 $this->LogMessage('cycles push failed: ' . (string) ($res['error'] ?? '?'), KL_WARNING);
                 return false;
             }
+            $this->syncTimes();
             return true;
         }
     }

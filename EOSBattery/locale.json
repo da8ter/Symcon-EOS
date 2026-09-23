@@ -117,7 +117,8 @@
             "Raised %s to %d in EOS": "Raised %s to %d in EOS",
             "- EOS configuration not readable -": "- EOS configuration not readable -",
             "EOS already has another device of this kind": "EOS already has another device of this kind",
-            "Min. SoC must be below max. SoC (configuration not written to EOS)": "Min. SoC must be below max. SoC (configuration not written to EOS)"
+            "Min. SoC must be below max. SoC (configuration not written to EOS)": "Min. SoC must be below max. SoC (configuration not written to EOS)",
+            "EOS %s update failed: %s": "EOS %s update failed: %s"
         },
         "de": {
             "EOS Battery": "EOS Batterie",
@@ -264,7 +265,8 @@
             "Raised %s to %d in EOS": "%s in EOS auf %d angehoben",
             "- EOS configuration not readable -": "- EOS-Konfiguration nicht lesbar -",
             "EOS already has another device of this kind": "EOS hat bereits ein anderes Gerät dieser Art",
-            "Min. SoC must be below max. SoC (configuration not written to EOS)": "Min. SoC muss unter dem Max. SoC liegen (Konfiguration nicht nach EOS geschrieben)"
+            "Min. SoC must be below max. SoC (configuration not written to EOS)": "Min. SoC muss unter dem Max. SoC liegen (Konfiguration nicht nach EOS geschrieben)",
+            "EOS %s update failed: %s": "EOS-Aktualisierung von %s fehlgeschlagen: %s"
         }
     }
 }

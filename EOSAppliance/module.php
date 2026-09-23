@@ -68,7 +68,8 @@ class EOSAppliance extends IPSModuleStrict
         $this->RegisterAttributeInteger('RegisteredDeadlineVar', 0);
         $this->RegisterAttributeInteger('RegisteredEarliestVar', 0);
         $this->RegisterAttributeInteger('RegisteredCyclesVar', 0);
-        $this->RegisterAttributeString('LastTimesSent', '');
+        $this->RegisterAttributeBoolean('TimesByScript', false);
+        $this->RegisterAttributeString('PastDeadlineWarned', '');
         $this->RegisterAttributeString('StartedInstructionIds', '[]');
         $this->RegisterAttributeString('MissedStartWarned', '');
 
@@ -92,6 +93,8 @@ class EOSAppliance extends IPSModuleStrict
         $this->RegisterTimer('SlotTimer', 0, 'EOSHA_ProcessPlan($_IPS[\'TARGET\']);');
         // EOS needs a completed-cycles value from the current day; keep it fresh.
         $this->RegisterTimer('CyclesPush', 0, 'EOSHA_PushCyclesCompleted($_IPS[\'TARGET\']);');
+        // A passed deadline must leave EOS at once (a past STRICT deadline fails the optimization).
+        $this->RegisterTimer('TimesExpiry', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], \'ReconcileTimes\', \'\');');
         $this->registerControlTimers();
         $this->registerFormFillTimer();
     }
@@ -126,9 +129,9 @@ class EOSAppliance extends IPSModuleStrict
 
         $this->SetStatus(IS_ACTIVE);
         $this->SetTimerInterval('CyclesPush', 900 * 1000);
-        $this->syncTimes();
         [$path, $device, $merge] = $this->deviceConfig();
         $this->syncDeviceConfig($path, $device, $merge, false);
+        $this->syncTimes();
         $this->sendCyclesCompleted();
         $this->RefreshPlan();
     }
@@ -151,6 +154,10 @@ class EOSAppliance extends IPSModuleStrict
 
     public function RequestAction(string $Ident, mixed $Value): void
     {
+        if ($Ident === 'ReconcileTimes') {
+            $this->reconcileTimes();
+            return;
+        }
         if (!$this->handleControlAction($Ident, $Value)) {
             throw new Exception('Invalid ident: ' . $Ident);
         }
@@ -173,7 +180,8 @@ class EOSAppliance extends IPSModuleStrict
     public function SetDeadline(int $Timestamp): bool
     {
         $this->SetValue('Deadline', max(0, $Timestamp));
-        return $this->writeTimes($Timestamp, $this->earliestStart());
+        $this->WriteAttributeBoolean('TimesByScript', true);
+        return $this->reconcileTimes();
     }
 
     public function PushCyclesCompleted(): bool

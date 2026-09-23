@@ -46,7 +46,7 @@
                 {
                     "type": "CheckBox",
                     "name": "SyncTimesToEOS",
-                    "caption": "Write deadline and earliest start to EOS automatically"
+                    "caption": "Write deadline and earliest start to EOS (needs a source or EOSHA_SetDeadline; passed times are cleared)"
                 },
                 {
                     "type": "SelectVariable",

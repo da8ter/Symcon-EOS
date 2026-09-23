@@ -91,7 +91,7 @@
                 {
                     "type": "CheckBox",
                     "name": "SyncDepartureToEOS",
-                    "caption": "Write departure time to EOS automatically"
+                    "caption": "Write the departure to EOS (needs a departure source or EOSEV_SetDeparture; a passed departure is cleared)"
                 },
                 {
                     "type": "NumberSpinner",

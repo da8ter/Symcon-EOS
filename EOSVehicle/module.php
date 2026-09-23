@@ -68,7 +68,8 @@ class EOSVehicle extends IPSModuleStrict
         $this->RegisterAttributeInteger('RegisteredDepartureVar', 0);
         $this->RegisterAttributeString('LastPluggedSoC', '');
         $this->RegisterAttributeString('TargetSoCNote', '');
-        $this->RegisterAttributeString('LastDeadlineSent', '');
+        $this->RegisterAttributeBoolean('DepartureByScript', false);
+        $this->RegisterAttributeString('PastDeadlineWarned', '');
         $this->RegisterAttributeInteger('LastChargeState', -1);
         $this->RegisterAttributeInteger('LastChargeSwitchTs', 0);
 
@@ -88,6 +89,8 @@ class EOSVehicle extends IPSModuleStrict
 
         $this->RegisterTimer('SoCPush', 0, 'EOSEV_PushSoC($_IPS[\'TARGET\']);');
         $this->RegisterTimer('SlotTimer', 0, 'EOSEV_ProcessPlan($_IPS[\'TARGET\']);');
+        // A passed departure must leave EOS at once (EOS charges immediately for a past deadline).
+        $this->RegisterTimer('DeadlineExpiry', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], \'ReconcileDeparture\', \'\');');
         $this->registerControlTimers();
         $this->registerFormFillTimer();
     }
@@ -165,6 +168,10 @@ class EOSVehicle extends IPSModuleStrict
 
     public function RequestAction(string $Ident, mixed $Value): void
     {
+        if ($Ident === 'ReconcileDeparture') {
+            $this->reconcileDeparture();
+            return;
+        }
         if (!$this->handleControlAction($Ident, $Value)) {
             throw new Exception('Invalid ident: ' . $Ident);
         }
@@ -187,7 +194,8 @@ class EOSVehicle extends IPSModuleStrict
     public function SetDeparture(int $Timestamp): bool
     {
         $this->SetValue('Departure', max(0, $Timestamp));
-        return $this->writeDeadline($Timestamp);
+        $this->WriteAttributeBoolean('DepartureByScript', true);
+        return $this->reconcileDeparture();
     }
 
     public function Dispatch(): void
@@ -253,6 +261,12 @@ class EOSVehicle extends IPSModuleStrict
      * but EOS still needs a fresh vehicle SoC in every record (else every run aborts),
      * so an unplugged car keeps reporting its last plugged value.
      */
+    /** Every SoC push also keeps the departure in EOS current (source changes, EOS restarts, passed times). */
+    protected function afterSoCPush(): void
+    {
+        $this->updateDeparture();
+    }
+
     protected function socValueForPush(float $factor): float
     {
         if (!$this->ReadPropertyBoolean('PushOnlyWhenPlugged')) {

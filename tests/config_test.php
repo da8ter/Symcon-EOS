@@ -159,4 +159,35 @@ eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV]);
 $server->properties['PvPlanes'] = json_encode([['peakpower' => 5.0, 'surface_azimuth' => 180, 'surface_tilt' => 30, 'userhorizon' => '10;20']]);
 check($server->WriteConfigToEOS() === false && eosMerges() === [], 'K54: a horizon with a non-number is refused before anything is sent');
 
+// ---------------------------------------------------------------- N1, K10, K52a: departure and deadlines
+echo "== Fristen (N1, K10, K52a)\n";
+worldVar(32, 1, $now + 3600, false);
+eosLoad(['max_electric_vehicles' => 1, 'electric_vehicles' => ['ev1' => EV], 'batteries' => ['battery1' => BAT], 'inverters' => INV]);
+$v = vehicle(); $v->properties['DepartureSourceVariable'] = 32; $v->ApplyChanges();
+$deadline = fn (): ?string => $be->live['devices']['electric_vehicles']['ev1']['min_soc_deadline_datetime'] ?? null;
+check($deadline() !== null && (new DateTimeImmutable($deadline()))->getTimestamp() === $now + 3600, 'N1: the departure from the source variable reaches EOS');
+check(in_array(['PUT', '/v1/config/file'], $be->calls, true), 'K52a: writing the departure saves the EOS configuration');
+check($v->timers['DeadlineExpiry']['ms'] === 3601000, 'N1: expiry timer armed one second after the departure');
+setClock($now + 3601); $v->fireTimer('DeadlineExpiry');
+check($deadline() === null, 'N1: the passed departure is cleared in EOS (EOS would charge at once for a past deadline)');
+setClock($now + 7200); $GLOBALS['world'][32]['value'] = $now + 10800; $v->PushSoC();
+check((new DateTimeImmutable((string) $deadline()))->getTimestamp() === $now + 10800, 'N1: a SoC push brings a new departure to EOS');
+setClock($now);
+eosLoad(['max_electric_vehicles' => 1, 'electric_vehicles' => ['ev1' => ['min_soc_deadline_datetime' => date(DATE_ATOM, $now + 5000)] + EV], 'batteries' => ['battery1' => BAT], 'inverters' => INV]);
+$v = vehicle(); $v->properties['DepartureSourceVariable'] = 32; $v->properties['SyncDepartureToEOS'] = false; $GLOBALS['world'][32]['value'] = $now + 3600; $v->ApplyChanges();
+check((new DateTimeImmutable((string) $deadline()))->getTimestamp() === $now + 5000, 'K10: with syncing switched off the EOSdash deadline stays (no ApplyChanges write)');
+eosLoad(['max_electric_vehicles' => 1, 'electric_vehicles' => ['ev1' => ['min_soc_deadline_datetime' => date(DATE_ATOM, $now - 60)] + EV], 'batteries' => ['battery1' => BAT], 'inverters' => INV]);
+$v = vehicle(); $v->ApplyChanges();
+check($deadline() !== null && count(array_filter($v->logs, static fn (array $l): bool => str_contains($l[1], 'departure time in the past'))) === 1, 'N1: a past EOSdash deadline without a Symcon source is not touched, but warned about once');
+$v->ApplyChanges();
+check(count(array_filter($v->logs, static fn (array $l): bool => str_contains($l[1], 'departure time in the past'))) === 1, 'N1: the warning is not repeated');
+worldVar(33, 1, $now + 7200, false);
+eosLoad(['max_home_appliances' => 1, 'home_appliances' => ['dishwasher1' => HA], 'batteries' => ['battery1' => BAT], 'inverters' => INV]);
+$a = new EOSAppliance(1002); $a->Create(); connectToRealServer($a); $a->properties['DeadlineSourceVariable'] = 33; $a->ApplyChanges();
+$haDeadline = fn (): ?string => $be->live['devices']['home_appliances']['dishwasher1']['deadline_datetime'] ?? null;
+check($haDeadline() !== null && (new DateTimeImmutable($haDeadline()))->getTimestamp() === $now + 7200, 'N1: the appliance deadline from the source reaches EOS');
+setClock($now + 7201); $a->fireTimer('TimesExpiry');
+check($haDeadline() === null, 'N1: the passed appliance deadline is cleared in EOS');
+setClock($now);
+
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

@@ -37,8 +37,6 @@ if (!trait_exists('EOSVehicleConfig')) {
                 sort($rates);
                 $ev['charge_rates'] = $rates;
             }
-            $departure = (int) $this->GetValue('Departure');
-            $ev['min_soc_deadline_datetime'] = $departure > $this->eosNow() ? $this->eosIsoNow($departure) : null;
             return [self::DEVICE_COLLECTION . '/' . $id, $ev, ['devices' => ['electric_vehicles' => [$id => $ev]]]];
         }
 
@@ -87,41 +85,52 @@ if (!trait_exists('EOSVehicleConfig')) {
             return true;
         }
 
-        /** Read the departure source variable (unix timestamp) and sync it to EOS if changed. */
+        /**
+         * The departure belongs to Symcon only when syncing is on AND a source exists (a
+         * source variable, or SetDeparture was used). Otherwise the deadline in EOS belongs
+         * to EOSdash and is never written.
+         */
+        private function departureOwned(): bool
+        {
+            return $this->ReadPropertyBoolean('SyncDepartureToEOS')
+                && ($this->ReadPropertyInteger('DepartureSourceVariable') > 0 || $this->ReadAttributeBoolean('DepartureByScript'));
+        }
+
+        /** Departure source variable -> Departure variable -> deadline in EOS. */
         private function updateDeparture(): void
         {
             $var = $this->ReadPropertyInteger('DepartureSourceVariable');
-            if ($var <= 0 || !IPS_VariableExists($var)) {
-                return;
+            if ($var > 0 && IPS_VariableExists($var)) {
+                $this->SetValue('Departure', max(0, (int) GetValue($var)));
             }
-            $ts = (int) GetValue($var);
-            $this->SetValue('Departure', max(0, $ts));
-            if ($this->ReadPropertyBoolean('SyncDepartureToEOS')) {
-                $this->writeDeadline($ts);
-            }
+            $this->reconcileDeparture();
         }
 
-        private function writeDeadline(int $ts): bool
+        /**
+         * EOS treats a deadline in the past as "due right now" and charges at once, so a
+         * passed departure is cleared (expiry timer, every SoC push, ApplyChanges).
+         */
+        private function reconcileDeparture(): bool
         {
             if (!$this->parentUsable()) {
                 return false;
             }
-            $deadline = $ts > $this->eosNow() ? $this->eosIsoNow($ts) : '';
-            if ($deadline === $this->ReadAttributeString('LastDeadlineSent')) {
+            $now = $this->eosNow();
+            if (!$this->departureOwned()) {
+                $this->SetTimerInterval('DeadlineExpiry', 0);
+                $eos = $this->eosTimeField('min_soc_deadline_datetime');
+                $this->warnOnce('PastDeadlineWarned', ($eos > 0 && $eos <= $now) ? (string) $eos : '', sprintf($this->Translate('EOS holds a departure time in the past (%s); EOS then charges to the target SoC right away. Clear it in EOSdash or give this instance a departure source.'), $this->eosIsoNow(max(0, $eos))));
                 return true;
             }
-            $id = $this->ReadPropertyString('DeviceID');
-            $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['devices' => ['electric_vehicles' => [$id => [
-                'device_id'                 => $id,
-                'min_soc_deadline_datetime' => $deadline !== '' ? $deadline : null,
-            ]]]]]);
-            if (($res['ok'] ?? false) !== true) {
-                $this->LogMessage('EOS departure update failed: ' . (string) ($res['error'] ?? '?'), KL_WARNING);
-                return false;
+            $departure = (int) $this->GetValue('Departure');
+            $want = $departure > $now ? $departure : 0;
+            $this->armExpiryTimer('DeadlineExpiry', [$want]);
+            $result = $this->reconcileTimeField('min_soc_deadline_datetime', $want);
+            if ($result === 'written') {
+                $this->forward(['Command' => 'SaveConfig']);
+                $this->SendDebug('Departure', $want > 0 ? $this->eosIsoNow($want) : 'cleared', 0);
             }
-            $this->WriteAttributeString('LastDeadlineSent', $deadline);
-            $this->SendDebug('Departure', $deadline !== '' ? $deadline : 'none', 0);
-            return true;
+            return $result !== 'failed';
         }
     }
 }

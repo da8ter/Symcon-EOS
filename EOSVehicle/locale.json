@@ -121,7 +121,10 @@
             "EOS already has another device of this kind": "EOS already has another device of this kind",
             "Max. SoC must be greater than 0 (configuration not written to EOS)": "Max. SoC must be greater than 0 (configuration not written to EOS)",
             "Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC": "Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC",
-            "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)": "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)"
+            "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)": "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)",
+            "EOS %s update failed: %s": "EOS %s update failed: %s",
+            "EOS holds a departure time in the past (%s); EOS then charges to the target SoC right away. Clear it in EOSdash or give this instance a departure source.": "EOS holds a departure time in the past (%s); EOS then charges to the target SoC right away. Clear it in EOSdash or give this instance a departure source.",
+            "Write the departure to EOS (needs a departure source or EOSEV_SetDeparture; a passed departure is cleared)": "Write the departure to EOS (needs a departure source or EOSEV_SetDeparture; a passed departure is cleared)"
         },
         "de": {
             "EOS Vehicle": "EOS E-Auto",
@@ -167,7 +170,6 @@
             "Minimum gap between change-triggered pushes (s)": "Mindestabstand bei Push durch Wertänderung (s)",
             "Plugged-in source variable (optional)": "Quellvariable „angesteckt“ (optional)",
             "Departure time source variable (unix timestamp, optional)": "Quellvariable Abfahrtszeit (Unix-Zeitstempel, optional)",
-            "Write departure time to EOS automatically": "Abfahrtszeit automatisch nach EOS schreiben",
             "Target SoC at departure (%)": "Ziel-SoC bei Abfahrt (%)",
             "Mark plan stale after (min)": "Plan als veraltet markieren nach (min)",
             "Control mode": "Steuerungsmodus",
@@ -274,7 +276,10 @@
             "EOS already has another device of this kind": "EOS hat bereits ein anderes Gerät dieser Art",
             "Max. SoC must be greater than 0 (configuration not written to EOS)": "Max. SoC muss größer als 0 sein (Konfiguration nicht nach EOS geschrieben)",
             "Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC": "Ziel-SoC %d %% wird als %d %% gesendet: EOS verlangt ihn unter dem Max. SoC",
-            "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)": "SoC-Quelle nur angesteckt verwenden (abgesteckt wird der letzte Wert gesendet)"
+            "Use the SoC source only while plugged in (unplugged: the last plugged value is sent)": "SoC-Quelle nur angesteckt verwenden (abgesteckt wird der letzte Wert gesendet)",
+            "EOS %s update failed: %s": "EOS-Aktualisierung von %s fehlgeschlagen: %s",
+            "EOS holds a departure time in the past (%s); EOS then charges to the target SoC right away. Clear it in EOSdash or give this instance a departure source.": "EOS hat eine vergangene Abfahrtszeit (%s); EOS lädt dann sofort auf den Ziel-SoC. In EOSdash löschen oder dieser Instanz eine Abfahrtsquelle geben.",
+            "Write the departure to EOS (needs a departure source or EOSEV_SetDeparture; a passed departure is cleared)": "Abfahrtszeit nach EOS schreiben (braucht eine Abfahrtsquelle oder EOSEV_SetDeparture; eine vergangene wird gelöscht)"
         }
     }
 }

@@ -106,7 +106,10 @@
             "EOS configuration could not be read (%s); nothing compared, nothing written.": "EOS configuration could not be read (%s); nothing compared, nothing written.",
             "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.": "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.",
             "Raised %s to %d in EOS": "Raised %s to %d in EOS",
-            "- EOS configuration not readable -": "- EOS configuration not readable -"
+            "- EOS configuration not readable -": "- EOS configuration not readable -",
+            "EOS %s update failed: %s": "EOS %s update failed: %s",
+            "EOS holds a deadline in the past (%s) with policy STRICT; the optimization fails. Clear it in EOSdash or give this instance a deadline source.": "EOS holds a deadline in the past (%s) with policy STRICT; the optimization fails. Clear it in EOSdash or give this instance a deadline source.",
+            "Write deadline and earliest start to EOS (needs a source or EOSHA_SetDeadline; passed times are cleared)": "Write deadline and earliest start to EOS (needs a source or EOSHA_SetDeadline; passed times are cleared)"
         },
         "de": {
             "EOS Appliance": "EOS Haushaltsgerät",
@@ -137,7 +140,6 @@
             "EOS device ID": "EOS Geräte-ID",
             "Deadline source variable (unix timestamp, optional)": "Quellvariable „fertig bis“ (Unix-Zeitstempel, optional)",
             "Earliest start source variable (unix timestamp, optional)": "Quellvariable frühester Start (Unix-Zeitstempel, optional)",
-            "Write deadline and earliest start to EOS automatically": "Fertig-bis und frühesten Start automatisch nach EOS schreiben",
             "Cycles completed today source variable (optional)": "Quellvariable heute erledigte Läufe (optional)",
             "Mark plan stale after (min)": "Plan als veraltet markieren nach (min)",
             "Control mode": "Steuerungsmodus",
@@ -241,7 +243,10 @@
             "EOS configuration could not be read (%s); nothing compared, nothing written.": "EOS-Konfiguration nicht lesbar (%s); nichts verglichen, nichts geschrieben.",
             "EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.": "EOS hat bereits %s; als Gerät auswählen oder in EOSdash entfernen. Nichts angelegt.",
             "Raised %s to %d in EOS": "%s in EOS auf %d angehoben",
-            "- EOS configuration not readable -": "- EOS-Konfiguration nicht lesbar -"
+            "- EOS configuration not readable -": "- EOS-Konfiguration nicht lesbar -",
+            "EOS %s update failed: %s": "EOS-Aktualisierung von %s fehlgeschlagen: %s",
+            "EOS holds a deadline in the past (%s) with policy STRICT; the optimization fails. Clear it in EOSdash or give this instance a deadline source.": "EOS hat eine vergangene Frist (%s) mit Strategie STRICT; die Optimierung scheitert. In EOSdash löschen oder dieser Instanz eine Fristquelle geben.",
+            "Write deadline and earliest start to EOS (needs a source or EOSHA_SetDeadline; passed times are cleared)": "Fertig-bis und frühesten Start nach EOS schreiben (braucht eine Quelle oder EOSHA_SetDeadline; vergangene Zeiten werden gelöscht)"
         }
     }
 }

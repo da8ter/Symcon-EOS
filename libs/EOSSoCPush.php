@@ -57,6 +57,11 @@ if (!trait_exists('EOSSoCPush')) {
             }
         }
 
+        /** Hook after a successful push (the vehicle reconciles its departure there). */
+        protected function afterSoCPush(): void
+        {
+        }
+
         /** Override to replace the value that is sent (e.g. an unplugged vehicle keeps its last value). */
         protected function socValueForPush(float $factor): float
         {
@@ -88,6 +93,7 @@ if (!trait_exists('EOSSoCPush')) {
                 $this->SetValue('LastPush', $this->eosNow());
                 $this->WriteAttributeInteger('LastPushTs', $this->eosNow());
                 $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('SoC %.3f sent'), $factor));
+                $this->afterSoCPush();
                 return true;
             }
             $error = (string) ($res['error'] ?? 'no response');
