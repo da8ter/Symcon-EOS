@@ -393,10 +393,15 @@ if (!trait_exists('EOSControl')) {
                 // before: text (until 23.09.2026) or the plain list of failures
                 $sig = ['failing' => is_array($sig) ? $sig : [], 'warned' => is_array($sig) ? $sig : [], 'warnedTs' => 0, 'ok' => false];
             }
+            $now = $this->eosNow();
             if ($failing === ($sig['failing'] ?? [])) {
+                // Hidden as flapping but still failing after the hour: warn again, the last line must not say "OK".
+                if ($failing !== [] && !empty($sig['ok']) && $now - (int) ($sig['warnedTs'] ?? 0) >= 3600) {
+                    $this->LogMessage($this->Translate('Control write failed') . ': ' . ($text !== '' ? $text : implode(', ', $failing)), KL_WARNING);
+                    $this->WriteAttributeString('ControlErrorSig', json_encode(['warned' => $failing, 'warnedTs' => $now, 'ok' => false, 'failing' => $failing]));
+                }
                 return;
             }
-            $now = $this->eosNow();
             if ($failing !== [] && array_diff($failing, (array) ($sig['failing'] ?? [])) !== []) {
                 if ($failing !== ($sig['warned'] ?? null) || $now - (int) ($sig['warnedTs'] ?? 0) >= 3600) {
                     $this->LogMessage($this->Translate('Control write failed') . ': ' . ($text !== '' ? $text : implode(', ', $failing)), KL_WARNING);

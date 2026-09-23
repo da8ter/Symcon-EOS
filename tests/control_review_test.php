@@ -402,5 +402,22 @@ $ub->properties['ControlMode'] = 0; $ub->properties['DeviceID'] = 'dishwasher1';
 check($ub->status === IS_ACTIVE && writesTo(40) === [], 'regression: an appliance that was blocked writes no fallback when it leaves "active" (display only): ' . json_encode(writesTo(40)));
 unset($GLOBALS['objects'][1084]);
 
+// ---------------------------------------------------------------- regression check: a failure hidden as flapping that persists is warned again
+echo "== Regression: anhaltende Störung nach Flattern\n";
+setClock($now);
+worldVar(21, 1, 0, true);
+$fp = bat(1085);
+planFor('battery1', 'FORCED_CHARGE', 1.0);
+$fp->ApplyChanges(); $fp->fireOnce();
+$GLOBALS['world'][21]['fail'] = true; setClock($now + 300); planFor('battery1', 'FORCED_CHARGE', 0.5); $fp->RefreshPlan(); $fp->fireOnce();  // warning
+$GLOBALS['world'][21]['fail'] = false; setClock($now + 600); planFor('battery1', 'FORCED_CHARGE', 1.0); $fp->RefreshPlan(); $fp->fireOnce(); // OK again
+$GLOBALS['world'][21]['fail'] = true; setClock($now + 900); planFor('battery1', 'FORCED_CHARGE', 0.5); $fp->RefreshPlan(); $fp->fireOnce();  // hidden as flapping
+for ($t = 1200; $t <= 6 * 3600; $t += 300) { setClock($now + $t); $fp->fireTimer('Retry'); }                                             // keeps failing
+$lines = array_values(array_filter(array_map(static fn (array $l): string => $l[1], $fp->logs), static fn (string $l): bool => str_contains($l, 'Control write')));
+check(count(array_filter($lines, static fn (string $l): bool => str_contains($l, 'failed'))) === 2 && str_contains((string) end($lines), 'failed'),
+    'regression: a failure hidden as flapping that lasts beyond the hour is warned again; the last line does not say "OK": ' . json_encode(array_map(static fn (string $l): string => substr($l, 0, 25), $lines)));
+$GLOBALS['world'][21]['fail'] = false;
+unset($GLOBALS['objects'][1085]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
