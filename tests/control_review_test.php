@@ -364,6 +364,11 @@ $eos->claimFails = true; $ow->ApplyChanges(); $eos->claimFails = false;
 check(($ow->timers['ClaimRetry']['ms'] ?? 0) === 30000, 'regression: a server that cannot answer (e.g. mid-reload) is asked again in 30 s: ' . json_encode($ow->timers['ClaimRetry'] ?? null));
 $ow->fireTimer('ClaimRetry');
 check($ow->status === IS_ACTIVE && $ow->timers['ClaimRetry']['ms'] === 0, 'regression: ... the retry settles it and stops');
+$GLOBALS['instances'][2000]['InstanceStatus'] = IS_INACTIVE; $calls = count($eos->calls);
+$ow->ApplyChanges();
+check(array_filter(array_slice($eos->calls, $calls), static fn (array $c): bool => ($c['Command'] ?? '') === 'ClaimDevice') === [] && $ow->timers['ClaimRetry']['ms'] === 0 && $ow->status === IS_INACTIVE,
+    'regression: a deactivated EOS Server is not asked and no retry loop starts (the device waits in 104)');
+$GLOBALS['instances'][2000]['InstanceStatus'] = IS_ACTIVE;
 unset($GLOBALS['objects'][1089], $GLOBALS['objects'][1091]);
 $GLOBALS['registry'] = false;
 

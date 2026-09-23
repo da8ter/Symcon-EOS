@@ -96,20 +96,24 @@ if (!trait_exists('EOSPlanDevice')) {
         protected function deviceIdTaken(string $deviceId): bool
         {
             // The owners live in the EOS Server instance, not in EOS: asked also while EOS is unreachable.
+            // Without a server to ask (none, or deactivated) nothing is decided: this device waits in 104
+            // and re-applies when the server is back; a block decided now would stick.
             $parent = (int) IPS_GetInstance($this->InstanceID)['ConnectionID'];
-            if ($parent > 0 && IPS_InstanceExists($parent)) {
-                $res = $this->forward(['Command' => 'ClaimDevice', 'DeviceID' => $deviceId, 'InstanceID' => $this->InstanceID], true);
-                if (($res['ok'] ?? false) === true && isset($res['owner'])) {
-                    $this->SetTimerInterval('ClaimRetry', 0);
-                    return (int) $res['owner'] !== $this->InstanceID;
-                }
-                // No answer (e.g. the server is being re-created by a module reload): decide locally for now, ask again.
-                $this->SetTimerInterval('ClaimRetry', 30000);
+            if ($parent <= 0 || !IPS_InstanceExists($parent) || (int) IPS_GetInstance($parent)['InstanceStatus'] === IS_INACTIVE) {
+                $this->SetTimerInterval('ClaimRetry', 0);
+                return false;
             }
+            $res = $this->forward(['Command' => 'ClaimDevice', 'DeviceID' => $deviceId, 'InstanceID' => $this->InstanceID], true);
+            if (($res['ok'] ?? false) === true && isset($res['owner'])) {
+                $this->SetTimerInterval('ClaimRetry', 0);
+                return (int) $res['owner'] !== $this->InstanceID;
+            }
+            // Active but no answer (e.g. being re-created by a module reload): the local rule for now, ask again.
+            $this->SetTimerInterval('ClaimRetry', 30000);
             return $this->isDuplicateDeviceId($deviceId);
         }
 
-        /** Local rule, only while the server cannot answer: the lowest InstanceID at the same server keeps the id. */
+        /** Local rule, only while an active server cannot answer: the lowest InstanceID at the same server keeps the id. */
         protected function isDuplicateDeviceId(string $deviceId): bool
         {
             $unreadable = false;
