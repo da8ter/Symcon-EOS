@@ -334,5 +334,21 @@ $cl->RequestAction('ControlActive', false); $cl->fireTimer('Retry');
 check($cl->timers['Retry']['ms'] === 0, 'regression: after the release the Retry timer is switched off instead of waking as a no-op: ' . $cl->timers['Retry']['ms']);
 unset($GLOBALS['objects'][1080]);
 
+// ---------------------------------------------------------------- regression check: a heartbeat never repeats a start
+echo "== Regression: Heartbeat wiederholt keinen Start\n";
+setClock($now);
+$hs = appliance(1081, ['TargetEnableVariable' => 0, 'ControlScript' => 900, 'HeartbeatSeconds' => 30]);
+planFor('dishwasher1', 'RUN', 1.0, 60);
+resetWorld(); $hs->ApplyChanges(); $hs->fireOnce();
+$pulse = $hs->attributes['StartPulseTs'];
+setClock($now + 31); $hs->fireTimer('Retry');
+$starts = array_map(static fn (array $r): bool => (bool) ($r[1]['Start'] ?? false), $GLOBALS['runScripts']);
+check($starts === [true, false] && $hs->attributes['StartPulseTs'] === $pulse, 'regression: a script-only appliance gets Start=true once; the heartbeat sends Start=false and keeps the pulse time: ' . json_encode($starts));
+$hs->RequestAction('ManualMode', 1); $hs->fireOnce();
+setClock($now + 62); $hs->fireTimer('Retry');
+$manual = array_map(static fn (array $r): bool => (bool) ($r[1]['Start'] ?? false), array_slice($GLOBALS['runScripts'], 2));
+check(count(array_filter($manual)) <= 1 && end($manual) === false, 'regression: ... also for manual "run": the heartbeat does not send the start again: ' . json_encode($manual));
+unset($GLOBALS['objects'][1081]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

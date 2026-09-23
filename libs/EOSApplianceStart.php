@@ -103,6 +103,13 @@ if (!trait_exists('EOSApplianceStart')) {
                     $this->WriteAttributeInteger('StartPulseTs', $now);
                     $this->WriteAttributeInteger('StartConfirmedTs', 0);
                     $this->WriteAttributeBoolean('ManualStartArmed', false);
+                    // The start is done: a heartbeat or retry of the stored state must not send it again.
+                    $stored = $this->eosJsonDecode($this->ReadAttributeString('Desired'), []);
+                    if (is_array($stored) && !empty($stored['start'])) {
+                        $stored['start'] = false;
+                        $stored['context']['Start'] = false;
+                        $this->WriteAttributeString('Desired', json_encode($stored, JSON_UNESCAPED_UNICODE));
+                    }
                 }
             }
             // Confirmed once the enable target (if bound) holds "run" after the pulse, also on a later retry.
