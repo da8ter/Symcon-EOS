@@ -41,6 +41,7 @@ class EOSMeter extends IPSModuleStrict
 
         $this->RegisterAttributeString('RegisteredVars', '[]');
         $this->RegisterAttributeInteger('KeysRepairTs', 0);
+        $this->RegisterAttributeInteger('LastPushAttemptTs', 0);
         $this->RegisterAttributeInteger('LastPushTs', 0);
 
         $this->RegisterVariableInteger('LastPush', $this->Translate('Last push'), $this->eosDateTimePresentation('Repeat'), 10);
@@ -92,7 +93,8 @@ class EOSMeter extends IPSModuleStrict
             $this->ApplyChanges();
             return;
         }
-        if ($Message === VM_UPDATE && $this->eosNow() - $this->ReadAttributeInteger('LastPushTs') >= 30) {
+        // Only changed readings, and at most every 30 s counted from the last attempt (also a failed one).
+        if ($Message === VM_UPDATE && (!array_key_exists(1, $Data) || $Data[1] === true) && $this->eosNow() - $this->ReadAttributeInteger('LastPushAttemptTs') >= 30) {
             $this->Push();
         }
     }
@@ -124,6 +126,7 @@ class EOSMeter extends IPSModuleStrict
         if ($samples === []) {
             return false;
         }
+        $this->WriteAttributeInteger('LastPushAttemptTs', $this->eosNow());
         $res = $this->forward(['Command' => 'PutSamples', 'Samples' => $samples]);
         if (($res['ok'] ?? false) !== true && str_contains((string) ($res['error'] ?? ''), 'No energy channel')
             && $this->eosNow() - $this->ReadAttributeInteger('KeysRepairTs') >= 600) {

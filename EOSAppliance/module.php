@@ -158,8 +158,8 @@ class EOSAppliance extends IPSModuleStrict
         }
         if ($SenderID === $this->ReadPropertyInteger('DeadlineSourceVariable') || $SenderID === $this->ReadPropertyInteger('EarliestStartSourceVariable')) {
             $this->syncTimes();
-        } elseif ($SenderID === $this->ReadPropertyInteger('CyclesCompletedSourceVariable')) {
-            $this->sendCyclesCompleted();
+        } elseif ($SenderID === $this->ReadPropertyInteger('CyclesCompletedSourceVariable') && ($Data === [] || !array_key_exists(1, $Data) || $Data[1] === true)) {
+            $this->sendCyclesCompleted(); // only when the count changed; the CyclesPush timer keeps it fresh
         }
     }
 

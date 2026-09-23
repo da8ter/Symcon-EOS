@@ -81,4 +81,46 @@ check(count($mt->onceTimers) === 1 && $mt->onceTimers[0]['name'] === 'ApplyLater
 $mt->fireOnce();
 check($mt->status === IS_ACTIVE && $mt->timers['MeterPush']['ms'] === 300000, 'deferred ApplyChanges restores status and push timer');
 
+// ---------------------------------------------------------------- SoC push (K2, K18, K19, K52c)
+echo "== SoC-Push\n";
+setClock($now);
+$pushes = static fn (): array => array_values(array_filter($GLOBALS['eos']->calls, static fn (array $c): bool => ($c['Command'] ?? '') === 'PutMeasurement'));
+$logged = static fn (IPSModuleStrict $m, string $text): int => count(array_filter($m->logs, static fn (array $l): bool => str_contains($l[1], $text)));
+worldVar(90, 2, 100.5, false);
+$eos->config['devices']['batteries']['battery1'] = ['device_id' => 'battery1'];
+$sb = new EOSBattery(1010); $sb->Create(); connectToServer($sb); $sb->properties['SoCSourceVariable'] = 90;
+$eos->calls = []; $sb->ApplyChanges();
+$sent = $pushes();
+check((float) (end($sent)['Value'] ?? -1) === 1.0, 'K2: 100.5 % is sent as 1.0, not divided twice');
+$GLOBALS['world'][90]['value'] = 150.0; $eos->calls = []; $sb->PushSoC(); $sb->PushSoC();
+check($pushes() === [] && $logged($sb, 'out of range') === 1, 'K2: 150 % is not sent and warned about once');
+$sb->properties['SoCUnit'] = 1; $GLOBALS['world'][90]['value'] = 1.005; $eos->calls = []; $sb->PushSoC();
+$GLOBALS['world'][90]['value'] = 55.0; $sb->PushSoC();
+check(array_map('floatval', array_column($pushes(), 'Value')) === [1.0, 0.55], 'K2: factor 1.005 becomes 1.0, 55 in factor mode is read as percent');
+$sb->properties['SoCUnit'] = 0; $GLOBALS['world'][90]['value'] = 40.0;
+$eos->putFails = true; $eos->calls = [];
+$sb->PushSoC();
+for ($i = 1; $i <= 5; $i++) {
+    setClock($now + $i * 2);
+    $sb->MessageSink(0, 90, VM_UPDATE, [40.0 + $i, true, 40.0]);
+}
+check(count($pushes()) === 1 && $logged($sb, 'SoC push failed') === 1, 'K18: after a rejected push, source updates in the backoff send nothing and warn nothing more');
+$eos->putFails = false; setClock($now + 200); $eos->calls = [];
+$sb->MessageSink(0, 90, VM_UPDATE, [45.0, false, 45.0]);
+check($pushes() === [], 'K18: an update without a change sends nothing (the push timer keeps EOS fresh)');
+$sb->MessageSink(0, 90, VM_UPDATE, [46.0, true, 45.0]);
+check(count($pushes()) === 1 && $logged($sb, 'SoC push works again') === 1, 'a changed value is sent; recovery is logged');
+$sb->properties['SoCMaxAgeMinutes'] = 10; $GLOBALS['world'][90]['VariableUpdated'] = $now + 200 - 3600; $eos->calls = [];
+$sb->PushSoC(); $sb->PushSoC();
+check($pushes() === [] && $logged($sb, 'not updated for more than 10 minutes') === 1, 'K52c: a frozen source (1 h) is not sent, warned about once');
+unset($GLOBALS['objects'][1010]);
+worldVar(91, 0, true, false);
+$sv = new EOSVehicle(1011); $sv->Create(); connectToServer($sv);
+$sv->properties['SoCSourceVariable'] = 30; $sv->properties['PluggedSourceVariable'] = 91; $sv->ApplyChanges();
+$sets = $sv->variables['NextChange']['setCount']; $eos->calls = [];
+$sv->MessageSink(0, 91, VM_UPDATE, [true, false, true]);
+check($sv->variables['NextChange']['setCount'] === $sets && $pushes() === [], 'K19: a plug update without a change neither re-evaluates the plan nor pushes');
+unset($GLOBALS['objects'][1011]);
+setClock(null);
+
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

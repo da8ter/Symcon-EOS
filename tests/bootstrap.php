@@ -40,6 +40,8 @@ final class FakeEOS
     public array $instructions = [];
     public array $calls = [];
     public bool $configReadFails = false;
+    /** true: PutMeasurement is rejected (as EOS does for an unknown key) */
+    public bool $putFails = false;
 
     public function handle(array $data): array
     {
@@ -80,8 +82,9 @@ final class FakeEOS
                 }
                 unset($node);
                 return ['ok' => true];
-            case 'SaveConfig':
             case 'PutMeasurement':
+                return $this->putFails ? ['ok' => false, 'error' => "HTTP 404: Key 'x' is not available."] : ['ok' => true, 'data' => null];
+            case 'SaveConfig':
             case 'PutSamples':
                 return ['ok' => true, 'data' => null];
             case 'GetSolution':

@@ -139,7 +139,7 @@ class EOSBattery extends IPSModuleStrict
             $this->ApplyChanges();
             return;
         }
-        $this->handleSoCMessage($SenderID, $Message);
+        $this->handleSoCMessage($SenderID, $Message, $Data);
     }
 
     public function RequestAction(string $Ident, mixed $Value): void

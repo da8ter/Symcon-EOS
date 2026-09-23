@@ -166,13 +166,16 @@ class EOSVehicle extends IPSModuleStrict
             return;
         }
         if ($SenderID === $this->ReadPropertyInteger('PluggedSourceVariable') && $SenderID > 0) {
+            if (!$this->eosValueChanged($Data)) {
+                return; // an update without a change of the plug state changes nothing
+            }
             $this->ProcessPlan();
             if ($this->isPlugged()) {
                 $this->PushSoC();
             }
             return;
         }
-        $this->handleSoCMessage($SenderID, $Message);
+        $this->handleSoCMessage($SenderID, $Message, $Data);
     }
 
     public function RequestAction(string $Ident, mixed $Value): void

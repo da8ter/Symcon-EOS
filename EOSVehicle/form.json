@@ -68,6 +68,14 @@
                     "suffix": " s"
                 },
                 {
+                    "type": "NumberSpinner",
+                    "name": "SoCMaxAgeMinutes",
+                    "caption": "Max. age of the SoC source (min), 0 = off",
+                    "minimum": 0,
+                    "maximum": 1440,
+                    "suffix": " min"
+                },
+                {
                     "type": "SelectVariable",
                     "name": "PluggedSourceVariable",
                     "caption": "Plugged-in source variable (optional)",

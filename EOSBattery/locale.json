@@ -133,7 +133,12 @@
             "Overwrite EOS with these values": "Overwrite EOS with these values",
             "Load values from EOS": "Load values from EOS",
             "Remove old EOS entry": "Remove old EOS entry",
-            "Inverter %s now points at battery %s": "Inverter %s now points at battery %s"
+            "Inverter %s now points at battery %s": "Inverter %s now points at battery %s",
+            "SoC source value %s looks like percent although \"factor\" is set; it is divided by 100": "SoC source value %s looks like percent although \"factor\" is set; it is divided by 100",
+            "SoC source value %s is out of range; not sent to EOS": "SoC source value %s is out of range; not sent to EOS",
+            "SoC source not updated for more than %d minutes; not sent to EOS": "SoC source not updated for more than %d minutes; not sent to EOS",
+            "SoC push works again": "SoC push works again",
+            "Max. age of the SoC source (min), 0 = off": "Max. age of the SoC source (min), 0 = off"
         },
         "de": {
             "EOS Battery": "EOS Batterie",
@@ -296,7 +301,12 @@
             "Overwrite EOS with these values": "EOS mit diesen Werten überschreiben",
             "Load values from EOS": "Werte aus EOS laden",
             "Remove old EOS entry": "Alten EOS-Eintrag entfernen",
-            "Inverter %s now points at battery %s": "Wechselrichter %s zeigt jetzt auf Batterie %s"
+            "Inverter %s now points at battery %s": "Wechselrichter %s zeigt jetzt auf Batterie %s",
+            "SoC source value %s looks like percent although \"factor\" is set; it is divided by 100": "SoC-Quellwert %s sieht nach Prozent aus, obwohl „Faktor“ eingestellt ist; er wird durch 100 geteilt",
+            "SoC source value %s is out of range; not sent to EOS": "SoC-Quellwert %s liegt außerhalb des gültigen Bereichs; nicht an EOS gesendet",
+            "SoC source not updated for more than %d minutes; not sent to EOS": "SoC-Quelle seit mehr als %d Minuten nicht aktualisiert; nicht an EOS gesendet",
+            "SoC push works again": "SoC-Push funktioniert wieder",
+            "Max. age of the SoC source (min), 0 = off": "Höchstalter der SoC-Quelle (min), 0 = aus"
         }
     }
 }

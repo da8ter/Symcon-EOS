@@ -73,6 +73,14 @@
                 },
                 {
                     "type": "NumberSpinner",
+                    "name": "SoCMaxAgeMinutes",
+                    "caption": "Max. age of the SoC source (min), 0 = off",
+                    "minimum": 0,
+                    "maximum": 1440,
+                    "suffix": " min"
+                },
+                {
+                    "type": "NumberSpinner",
                     "name": "StaleAfterMinutes",
                     "caption": "Mark plan stale after (min)",
                     "minimum": 5,

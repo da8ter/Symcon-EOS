@@ -21,7 +21,13 @@ if (!trait_exists('EOSSoCPush')) {
             $this->RegisterPropertyInteger('SoCUnit', 0); // 0 = percent, 1 = factor
             $this->RegisterPropertyInteger('PushInterval', 120);
             $this->RegisterPropertyInteger('PushDebounce', 10);
+            // 0 = off; otherwise a source not updated for this long is not sent (EOS then refuses
+            // to plan with a stale SoC and the devices fall back, instead of planning on old data).
+            $this->RegisterPropertyInteger('SoCMaxAgeMinutes', 0);
             $this->RegisterAttributeInteger('LastPushTs', 0);
+            $this->RegisterAttributeInteger('LastPushAttemptTs', 0);
+            $this->RegisterAttributeInteger('PushFailCount', 0);
+            $this->RegisterAttributeString('SoCWarned', '');
             $this->RegisterAttributeInteger('RegisteredSoCVar', 0);
         }
 
@@ -48,12 +54,58 @@ if (!trait_exists('EOSSoCPush')) {
             return false;
         }
 
-        protected function handleSoCMessage(int $SenderID, int $Message): void
+        /**
+         * Source updated: push when the value changed, not on every update (the push timer
+         * keeps EOS fresh). Debounced on the last ATTEMPT, with a backoff after failures, so a
+         * rejected push cannot turn every source update into a request plus a warning.
+         */
+        protected function handleSoCMessage(int $SenderID, int $Message, array $Data = []): void
         {
-            if ($Message === VM_UPDATE && $SenderID === $this->ReadPropertyInteger('SoCSourceVariable') && $SenderID > 0) {
-                if ($this->eosNow() - $this->ReadAttributeInteger('LastPushTs') >= $this->ReadPropertyInteger('PushDebounce')) {
-                    $this->PushSoC();
-                }
+            if ($Message !== VM_UPDATE || $SenderID !== $this->ReadPropertyInteger('SoCSourceVariable') || $SenderID <= 0 || !$this->eosValueChanged($Data)) {
+                return;
+            }
+            $wait = max($this->ReadPropertyInteger('PushDebounce'), $this->ReadAttributeInteger('PushFailCount') > 0 ? 60 * min(5, $this->ReadAttributeInteger('PushFailCount')) : 0);
+            if ($this->eosNow() - $this->ReadAttributeInteger('LastPushAttemptTs') >= $wait) {
+                $this->PushSoC();
+            }
+        }
+
+        /** VM_UPDATE data: [0] new value, [1] changed (bool), [2] old value; unknown layout = changed. */
+        protected function eosValueChanged(array $Data): bool
+        {
+            if (array_key_exists(1, $Data) && is_bool($Data[1])) {
+                return $Data[1];
+            }
+            if (array_key_exists(0, $Data) && array_key_exists(2, $Data)) {
+                return $Data[0] !== $Data[2];
+            }
+            return true;
+        }
+
+        /**
+         * Source value -> SoC factor 0..1. Percent: up to 105 % is clamped to 100 %. Factor:
+         * up to 1.05 is clamped to 1; 1.05..105 looks like percent and is divided once.
+         * Anything else is rejected (null) instead of being sent as a wrong SoC.
+         */
+        protected function socFactor(float $raw): ?float
+        {
+            if ($this->ReadPropertyInteger('SoCUnit') === 1 && $raw > 1.05 && $raw <= 105.0) {
+                $this->warnSoCOnce('percent', sprintf($this->Translate('SoC source value %s looks like percent although "factor" is set; it is divided by 100'), (string) $raw));
+                $raw /= 100.0;
+            } elseif ($this->ReadPropertyInteger('SoCUnit') === 0) {
+                $raw /= 100.0;
+            }
+            if ($raw < 0.0 || $raw > 1.05) {
+                return null;
+            }
+            return round(min(1.0, $raw), 4);
+        }
+
+        private function warnSoCOnce(string $kind, string $message): void
+        {
+            if ($this->ReadAttributeString('SoCWarned') !== $kind) {
+                $this->WriteAttributeString('SoCWarned', $kind);
+                $this->LogMessage($message, KL_WARNING);
             }
         }
 
@@ -74,13 +126,19 @@ if (!trait_exists('EOSSoCPush')) {
             if ($varId <= 0 || !IPS_VariableExists($varId) || !$this->parentUsable() || $this->deviceBlocked()) {
                 return false;
             }
-            $raw = (float) GetValue($varId);
-            $factor = $this->ReadPropertyInteger('SoCUnit') === 0 ? $raw / 100.0 : $raw;
-            if ($factor > 1.0 && $factor <= 100.0) {
-                $this->SendDebug('PushSoC', 'value ' . $raw . ' > 1 interpreted as percent', 0);
-                $factor /= 100.0;
+            $maxAge = $this->ReadPropertyInteger('SoCMaxAgeMinutes');
+            if ($maxAge > 0 && $this->eosNow() - (int) (IPS_GetVariable($varId)['VariableUpdated'] ?? 0) > $maxAge * 60) {
+                $this->warnSoCOnce('stale', sprintf($this->Translate('SoC source not updated for more than %d minutes; not sent to EOS'), $maxAge));
+                return false;
             }
-            $factor = $this->socValueForPush(max(0.0, min(1.0, round($factor, 4))));
+            $raw = (float) GetValue($varId);
+            $factor = $this->socFactor($raw);
+            if ($factor === null) {
+                $this->warnSoCOnce('range', sprintf($this->Translate('SoC source value %s is out of range; not sent to EOS'), (string) $raw));
+                return false;
+            }
+            $factor = $this->socValueForPush($factor);
+            $this->WriteAttributeInteger('LastPushAttemptTs', $this->eosNow());
 
             $res = $this->forward([
                 'Command'  => 'PutMeasurement',
@@ -89,6 +147,11 @@ if (!trait_exists('EOSSoCPush')) {
                 'DateTime' => $this->eosIsoNow(),
             ]);
             if (($res['ok'] ?? false) === true) {
+                if ($this->ReadAttributeInteger('PushFailCount') > 0) {
+                    $this->LogMessage($this->Translate('SoC push works again'), KL_NOTIFY);
+                }
+                $this->WriteAttributeInteger('PushFailCount', 0);
+                $this->WriteAttributeString('SoCWarned', '');
                 $this->SetValue('SoCSent', $factor);
                 $this->SetValue('LastPush', $this->eosNow());
                 $this->WriteAttributeInteger('LastPushTs', $this->eosNow());
@@ -97,7 +160,11 @@ if (!trait_exists('EOSSoCPush')) {
                 return true;
             }
             $error = (string) ($res['error'] ?? 'no response');
-            $this->LogMessage(sprintf($this->Translate('SoC push failed: %s'), $error), KL_WARNING);
+            $fails = $this->ReadAttributeInteger('PushFailCount') + 1;
+            $this->WriteAttributeInteger('PushFailCount', $fails);
+            if ($fails === 1) {
+                $this->LogMessage(sprintf($this->Translate('SoC push failed: %s'), $error), KL_WARNING); // once, until it works again
+            }
             $this->UpdateFormField('ActionResult', 'caption', sprintf($this->Translate('SoC push failed: %s'), $error));
             return false;
         }
