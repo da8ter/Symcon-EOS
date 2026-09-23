@@ -55,7 +55,8 @@
             "EOS not reachable: %s": "EOS not reachable: %s",
             "Measurement: %s": "Measurement: %s",
             "Resent values: %s": "Resent values: %s",
-            "Samples: %s": "Samples: %s"
+            "Samples: %s": "Samples: %s",
+            "The form shows another device id than the saved one: Apply it first, then overwrite.": "The form shows another device id than the saved one: Apply it first, then overwrite."
         },
         "de": {
             "EOS Server": "EOS Server",
@@ -222,7 +223,8 @@
             "EOS not reachable: %s": "EOS nicht erreichbar: %s",
             "Measurement: %s": "Messwert: %s",
             "Resent values: %s": "Erneut gesendete Werte: %s",
-            "Samples: %s": "Messreihe: %s"
+            "Samples: %s": "Messreihe: %s",
+            "The form shows another device id than the saved one: Apply it first, then overwrite.": "Das Formular zeigt eine andere Geräte-ID als die gespeicherte: erst übernehmen, dann überschreiben."
         }
     }
 }

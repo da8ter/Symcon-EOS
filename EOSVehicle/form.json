@@ -388,14 +388,14 @@
                         {
                             "type": "Button",
                             "name": "OverwriteEOS",
-                            "caption": "Overwrite EOS with these values",
-                            "onClick": "EOSEV_WriteConfigToEOS($id);"
+                            "caption": "Overwrite EOS with the saved Symcon values",
+                            "onClick": "IPS_RequestAction($id, 'OverwriteEOS', $DeviceID);"
                         },
                         {
                             "type": "Button",
                             "name": "LoadFromEOS",
                             "caption": "Load values from EOS",
-                            "onClick": "EOSEV_ReadConfigFromEOS($id);"
+                            "onClick": "IPS_RequestAction($id, 'LoadFromEOS', $DeviceID);"
                         },
                         {
                             "type": "Button",

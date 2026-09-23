@@ -117,14 +117,12 @@
             "EOS still holds the old device %s; remove it with \"Remove old EOS entry\", then Apply.": "EOS still holds the old device %s; remove it with \"Remove old EOS entry\", then Apply.",
             "changed in EOS": "changed in EOS",
             "conflict": "conflict",
-            "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with these values\" keeps Symcon:": "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with these values\" keeps Symcon:",
             "Values changed in EOS were loaded into the form: Apply stores them in Symcon, Cancel keeps the Symcon values.": "Values changed in EOS were loaded into the form: Apply stores them in Symcon, Cancel keeps the Symcon values.",
             "Device %s loaded from EOS. Apply adopts it; only fields changed afterwards are written.": "Device %s loaded from EOS. Apply adopts it; only fields changed afterwards are written.",
             "No old EOS entry to remove.": "No old EOS entry to remove.",
             "Old EOS entry %s removed": "Old EOS entry %s removed",
             "Old EOS entry %s removed. Press Apply to create the new one.": "Old EOS entry %s removed. Press Apply to create the new one.",
             "Apply writes to EOS: %s": "Apply writes to EOS: %s",
-            "Overwrite EOS with these values": "Overwrite EOS with these values",
             "Load values from EOS": "Load values from EOS",
             "Remove old EOS entry": "Remove old EOS entry",
             "The EOS plan contains no instructions for %s": "The EOS plan contains no instructions for %s",
@@ -134,7 +132,10 @@
             "%s did not report running after the retried start either; not starting again": "%s did not report running after the retried start either; not starting again",
             "The device id is invalid or not owned by this instance; nothing written to EOS.": "The device id is invalid or not owned by this instance; nothing written to EOS.",
             "The device id is invalid; nothing loaded.": "The device id is invalid; nothing loaded.",
-            "Device configuration written to EOS but not saved (%s); it is written again with the next Apply": "Device configuration written to EOS but not saved (%s); it is written again with the next Apply"
+            "Device configuration written to EOS but not saved (%s); it is written again with the next Apply": "Device configuration written to EOS but not saved (%s); it is written again with the next Apply",
+            "Overwrite EOS with the saved Symcon values": "Overwrite EOS with the saved Symcon values",
+            "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with the saved Symcon values\" keeps Symcon:": "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with the saved Symcon values\" keeps Symcon:",
+            "The form shows another device id than the saved one: Apply it first, then overwrite.": "The form shows another device id than the saved one: Apply it first, then overwrite."
         },
         "de": {
             "EOS Appliance": "EOS Haushaltsgerät",
@@ -279,14 +280,12 @@
             "EOS still holds the old device %s; remove it with \"Remove old EOS entry\", then Apply.": "EOS hat noch das alte Gerät %s; mit „Alten EOS-Eintrag entfernen“ löschen, dann übernehmen.",
             "changed in EOS": "in EOS geändert",
             "conflict": "Konflikt",
-            "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with these values\" keeps Symcon:": "EOS weicht ab; „Werte aus EOS laden“ übernimmt sie, „EOS mit diesen Werten überschreiben“ behält Symcon:",
             "Values changed in EOS were loaded into the form: Apply stores them in Symcon, Cancel keeps the Symcon values.": "In EOS geänderte Werte wurden ins Formular geladen: Übernehmen speichert sie in Symcon, Abbrechen behält die Symcon-Werte.",
             "Device %s loaded from EOS. Apply adopts it; only fields changed afterwards are written.": "Gerät %s aus EOS geladen. Übernehmen übernimmt es; geschrieben werden nur danach geänderte Felder.",
             "No old EOS entry to remove.": "Kein alter EOS-Eintrag zu entfernen.",
             "Old EOS entry %s removed": "Alter EOS-Eintrag %s entfernt",
             "Old EOS entry %s removed. Press Apply to create the new one.": "Alter EOS-Eintrag %s entfernt. Übernehmen legt den neuen an.",
             "Apply writes to EOS: %s": "Übernehmen schreibt nach EOS: %s",
-            "Overwrite EOS with these values": "EOS mit diesen Werten überschreiben",
             "Load values from EOS": "Werte aus EOS laden",
             "Remove old EOS entry": "Alten EOS-Eintrag entfernen",
             "The EOS plan contains no instructions for %s": "Der EOS-Plan enthält keine Anweisungen für %s",
@@ -296,7 +295,10 @@
             "%s did not report running after the retried start either; not starting again": "%s meldet auch nach dem wiederholten Start keinen Lauf; es wird nicht erneut gestartet",
             "The device id is invalid or not owned by this instance; nothing written to EOS.": "Die Geräte-ID ist ungültig oder gehört nicht dieser Instanz; nichts nach EOS geschrieben.",
             "The device id is invalid; nothing loaded.": "Die Geräte-ID ist ungültig; nichts geladen.",
-            "Device configuration written to EOS but not saved (%s); it is written again with the next Apply": "Gerätekonfiguration in EOS geschrieben, aber nicht gespeichert (%s); sie wird beim nächsten Übernehmen erneut geschrieben"
+            "Device configuration written to EOS but not saved (%s); it is written again with the next Apply": "Gerätekonfiguration in EOS geschrieben, aber nicht gespeichert (%s); sie wird beim nächsten Übernehmen erneut geschrieben",
+            "Overwrite EOS with the saved Symcon values": "EOS mit den gespeicherten Symcon-Werten überschreiben",
+            "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with the saved Symcon values\" keeps Symcon:": "EOS weicht ab; „Werte aus EOS laden“ übernimmt sie, „EOS mit den gespeicherten Symcon-Werten überschreiben“ behält Symcon:",
+            "The form shows another device id than the saved one: Apply it first, then overwrite.": "Das Formular zeigt eine andere Geräte-ID als die gespeicherte: erst übernehmen, dann überschreiben."
         }
     }
 }

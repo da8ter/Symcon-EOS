@@ -11,16 +11,22 @@ declare(strict_types=1);
 if (!trait_exists('EOSDeviceConfigForm')) {
     trait EOSDeviceConfigForm
     {
-        /** Load every mapped field of the EOS entry into the open form ("Load values from EOS"). */
+        /** Load every mapped field of the EOS entry of the saved DeviceID into the open form (script API). */
         public function ReadConfigFromEOS(): bool
         {
-            if (!$this->validDeviceId($this->ReadPropertyString('DeviceID'))) {
+            return $this->loadFromEOS($this->ReadPropertyString('DeviceID'));
+        }
+
+        /** "Load values from EOS": every mapped field of the entry $id (the id the form shows) into the open form. */
+        protected function loadFromEOS(string $id): bool
+        {
+            if (!$this->validDeviceId($id)) {
                 $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('The device id is invalid; nothing loaded.'));
                 return false;
             }
-            $read = $this->readConfig(self::DEVICE_COLLECTION . '/' . $this->ReadPropertyString('DeviceID'));
+            $read = $this->readConfig(self::DEVICE_COLLECTION . '/' . $id);
             if ($read['state'] !== 'ok' || !is_array($read['value'])) {
-                $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('No device %s in EOS configuration.'), $this->ReadPropertyString('DeviceID')));
+                $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('No device %s in EOS configuration.'), $id));
                 return false;
             }
             $this->loadIntoForm($read['value'], null);

@@ -59,6 +59,10 @@ function formElement(array $nodes, string $name): ?array
     }
     return null;
 }
+function eosMerges(): array
+{
+    return array_values(array_filter($GLOBALS['eosBackend']->calls, static fn (array $c): bool => $c[0] === 'PUT' && str_starts_with($c[1], '/v1/config') && $c[1] !== '/v1/config/file'));
+}
 function eosField(string $path): mixed { return $GLOBALS['eosBackend']->getConfigPath($path)['data'] ?? null; }
 function batteryAt(int $iid, string $id = 'battery1'): EOSBattery
 {
@@ -232,6 +236,18 @@ $be->live = $be->file; $be->runtime = [];                                       
 $e3->ApplyChanges();
 check((int) eosField('devices/batteries/battery1/capacity_wh') === 12000, 'R8-10: a write whose save failed is written again after an EOS restart: ' . json_encode(eosField('devices/batteries/battery1/capacity_wh')));
 drop(1362);
+
+// ---------------------------------------------------------------- R8-11: the buttons act on what the form shows
+echo "== Knöpfe nach dem Formular\n";
+eosLoad(['home_appliances' => ['dishwasher1' => HA, 'dryer1' => ['device_id' => 'dryer1', 'consumption_wh' => 4000, 'duration_h' => 2, 'num_cycles' => 1, 'min_cycle_gap_h' => 0, 'schedule_mode' => 'DAILY', 'deadline_policy' => 'BEST_EFFORT']], 'max_home_appliances' => 2]);
+$bt = applianceAt(1370); $bt->ApplyChanges();
+$bt->formUpdates = [];
+$bt->RequestAction('LoadFromEOS', 'dryer1'); // the form shows dryer1 (picked or typed), not yet applied
+check(in_array(['ConsumptionWh', 'value', 4000], $bt->formUpdates, true), 'R8-11: "Load values from EOS" loads the device the form shows (dryer1), not the saved one: ' . json_encode(array_slice($bt->formUpdates, 0, 3)));
+$be->calls = [];
+$bt->RequestAction('OverwriteEOS', 'dryer1');
+check(eosMerges() === [] && str_contains((string) json_encode($bt->formUpdates), 'Apply'), 'R8-11: "Overwrite EOS" refuses while the form shows another device id than the saved one');
+drop(1370);
 
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

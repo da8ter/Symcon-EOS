@@ -73,7 +73,7 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             return ['state' => 'error', 'value' => null, 'error' => (string) ($res['error'] ?? 'no response from EOS Server')];
         }
 
-        /** Force-write every differing field ("Overwrite EOS with these values"). */
+        /** Force-write every differing field with the saved Symcon values ("Overwrite EOS with the saved Symcon values"). */
         public function WriteConfigToEOS(): bool
         {
             if ($this->deviceBlocked() || !$this->validDeviceId($this->ReadPropertyString('DeviceID'))) {
@@ -291,7 +291,7 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             if ($parts === []) {
                 return $class['push'] !== [] ? sprintf($this->Translate('Written to EOS: %s'), implode(', ', $class['push'])) : $this->Translate('EOS configuration matches this instance.');
             }
-            return $this->Translate('EOS differs; "Load values from EOS" takes them over, "Overwrite EOS with these values" keeps Symcon:') . ' ' . implode(' · ', $parts);
+            return $this->Translate('EOS differs; "Load values from EOS" takes them over, "Overwrite EOS with the saved Symcon values" keeps Symcon:') . ' ' . implode(' · ', $parts);
         }
 
         /** Hook: this instance now owns the EOS entry $id (created, adopted or renamed from $previousId). */

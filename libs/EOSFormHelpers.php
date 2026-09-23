@@ -118,6 +118,17 @@ if (!trait_exists('EOSFormHelpers')) {
                 case 'RemoveOldEOSEntry':
                     $this->removeOldEOSEntry();
                     return true;
+                case 'LoadFromEOS':
+                    // Button: the device id the form shows, picked or typed, applied or not.
+                    $this->loadFromEOS(trim((string) $value));
+                    return true;
+                case 'OverwriteEOS':
+                    if (trim((string) $value) !== '' && trim((string) $value) !== $this->ReadPropertyString('DeviceID')) {
+                        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('The form shows another device id than the saved one: Apply it first, then overwrite.'));
+                        return true;
+                    }
+                    $this->WriteConfigToEOS();
+                    return true;
                 case 'SetActionTarget':
                     // Form onChange: point the open action pickers at the newly chosen target.
                     $data = json_decode((string) $value, true);
