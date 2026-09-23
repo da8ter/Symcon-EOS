@@ -21,6 +21,7 @@ setClock($now);
 worldVar(10, 2, 55.0, false);
 const BAT = ['device_id' => 'battery1', 'capacity_wh' => 10000, 'max_charge_power_w' => 5000, 'min_soc_percentage' => 10, 'max_soc_percentage' => 95, 'charging_efficiency' => 0.95, 'discharging_efficiency' => 0.95, 'levelized_cost_of_storage_amt_kwh' => 0.0];
 const INV = ['inv1' => ['device_id' => 'inv1', 'max_power_w' => 10000, 'battery_id' => 'battery1']];
+const EV = ['device_id' => 'ev1', 'capacity_wh' => 60000, 'max_charge_power_w' => 11000, 'min_soc_percentage' => 80, 'max_soc_percentage' => 100, 'charging_efficiency' => 0.9, 'charge_rates' => [0.0, 0.25, 0.5, 0.75, 1.0]];
 const HA = ['device_id' => 'dishwasher1', 'consumption_wh' => 2000, 'duration_h' => 3, 'num_cycles' => 1, 'min_cycle_gap_h' => 0, 'schedule_mode' => 'ONCE', 'deadline_policy' => 'BEST_EFFORT'];
 
 function eosLoad(array $devices): void
@@ -127,6 +128,36 @@ $p->properties['MaxSoC'] = 90; $p->ApplyChanges();
 check((int) eosField('devices/batteries/battery1/min_soc_percentage') === 20 && (int) eosField('devices/batteries/battery1/max_soc_percentage') === 90,
     'R8-3: writing the max SoC sends the min SoC EOS holds (EOSdash 20), not the Symcon 10: min ' . json_encode(eosField('devices/batteries/battery1/min_soc_percentage')) . ' max ' . json_encode(eosField('devices/batteries/battery1/max_soc_percentage')));
 drop(1320);
+
+// ---------------------------------------------------------------- R8-4, R8-5: without a known base nothing is overwritten; conflicts stay open
+echo "== Basis ohne Abgleich, Auswahl nur im Formular\n";
+eosLoad(['electric_vehicles' => ['ev1' => EV], 'max_electric_vehicles' => 1]);
+worldVar(30, 1, 40, false);
+$ev = new EOSVehicle(1330); $ev->Create(); connectToRealServer($ev);
+$ev->properties = array_merge($ev->properties, ['SoCSourceVariable' => 30, 'DeviceID' => 'ev1', 'CapacityWh' => 60000, 'MaxChargePowerW' => 11000, 'TargetSoC' => 90, 'MaxSoC' => 100]);
+$ev->ApplyChanges(); // the automatic Apply after the update: no SyncedConfig yet
+check((int) eosField('devices/electric_vehicles/ev1/min_soc_percentage') === 80, 'R8-5: the first sync after the update does not overwrite the EOSdash target 80 with Symcon 90: ' . json_encode(eosField('devices/electric_vehicles/ev1/min_soc_percentage')));
+drop(1330);
+
+eosLoad(['home_appliances' => ['dishwasher1' => HA, 'dryer1' => ['device_id' => 'dryer1', 'consumption_wh' => 4000, 'duration_h' => 2, 'num_cycles' => 1, 'min_cycle_gap_h' => 0, 'schedule_mode' => 'DAILY', 'deadline_policy' => 'BEST_EFFORT']], 'max_home_appliances' => 2]);
+$pk = applianceAt(1331); $pk->ApplyChanges();
+$pk->RequestAction('PickDeviceId', 'dryer1');   // just looking
+$pk->GetConfigurationForm();                   // form closed without Apply, opened again later
+$pk->properties['DeviceID'] = 'dryer1'; $pk->ApplyChanges(); // id typed and applied, fields still those of dishwasher1
+check((int) eosField('devices/home_appliances/dryer1/consumption_wh') === 4000 && eosField('devices/home_appliances/dryer1/schedule_mode') === 'DAILY',
+    'R8-4: an old look at a device does not turn the instance values into "Symcon changes" later: ' . json_encode(eosField('devices/home_appliances/dryer1/consumption_wh')));
+drop(1331);
+
+eosLoad(['home_appliances' => ['dishwasher1' => HA], 'max_home_appliances' => 1]);
+$cf = applianceAt(1332); $cf->ApplyChanges();
+$be->putConfigPath('devices/home_appliances/dishwasher1/consumption_wh', 2500); // EOSdash
+$be->putConfigPath('devices/home_appliances/dishwasher1/duration_h', 4);          // EOSdash only
+$cf->properties['ConsumptionWh'] = 3000; $cf->ApplyChanges();                     // Symcon too: conflict
+$cf->formUpdates = [];
+$cf->RequestAction('FillFormFromEOS', '');
+$filled = array_column(array_filter($cf->formUpdates, static fn (array $u): bool => $u[1] === 'value'), 2, 0);
+check(!array_key_exists('ConsumptionWh', $filled) && ($filled['DurationH'] ?? null) === 4, 'R8 (README, conflict row): FormFill loads what only EOS changed, a conflict keeps the Symcon value in the field: ' . json_encode($filled));
+drop(1332);
 
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

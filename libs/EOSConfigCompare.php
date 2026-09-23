@@ -38,9 +38,8 @@ if (!trait_exists('EOSConfigCompare')) {
         /** Canonical equality: tolerant numbers (below 1 W for powers), null equals an empty value. */
         private function valuesEqual(string $key, mixed $eos, mixed $ours): bool
         {
-            $empty = static fn (mixed $v): bool => $v === null || $v === [] || $v === '' || (is_array($v) && array_key_exists('windows', $v) && $v['windows'] === []);
-            if ($empty($eos) || $empty($ours)) {
-                return $empty($eos) && $empty($ours);
+            if ($this->emptyValue($eos) || $this->emptyValue($ours)) {
+                return $this->emptyValue($eos) && $this->emptyValue($ours);
             }
             if (str_ends_with($key, '_w') && is_numeric($eos) && is_numeric($ours)) {
                 return abs((float) $eos - (float) $ours) < 1.0; // integer form fields vs. float in EOS (3680.5 W)
@@ -49,6 +48,27 @@ if (!trait_exists('EOSConfigCompare')) {
                 return $this->normalizedWindows($eos) === $this->normalizedWindows($ours);
             }
             return $this->configEquals($eos, $ours);
+        }
+
+        private function emptyValue(mixed $v): bool
+        {
+            return $v === null || $v === [] || $v === '' || (is_array($v) && array_key_exists('windows', $v) && $v['windows'] === []);
+        }
+
+        /**
+         * Without a known common state (first sync after an update, an id typed in for an
+         * existing entry): EOS keeps every value it has - a difference is offered, never
+         * written; only fields EOS leaves empty are filled from Symcon.
+         */
+        protected function adoptionBase(array $device, ?array $eos): array
+        {
+            $base = $device;
+            foreach (array_keys($device) as $key) {
+                if ($eos !== null && $this->emptyValue($eos[$key] ?? null)) {
+                    $base[$key] = $eos[$key] ?? null;
+                }
+            }
+            return $base;
         }
 
         /**

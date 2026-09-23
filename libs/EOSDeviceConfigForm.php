@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 /*
  * Form side of the device configuration sync (EOSDeviceConfigSync): comparison text,
- * FormFill (only fields EOS changed, never pending Symcon edits), the "Device in EOS"
- * picker, "Load values from EOS" and "Remove old EOS entry".
+ * FormFill (only fields EOS alone changed; conflicts keep the Symcon value until the user
+ * decides, pending Symcon edits are never touched), the "Device in EOS" picker, "Load
+ * values from EOS" and "Remove old EOS entry".
  */
 if (!trait_exists('EOSDeviceConfigForm')) {
     trait EOSDeviceConfigForm
@@ -48,18 +49,18 @@ if (!trait_exists('EOSDeviceConfigForm')) {
                 return null;
             }
             $id = $this->ReadPropertyString('DeviceID');
-            return [$this->classifyConfig($device, $read['value'], $this->syncedBase($id) ?? $this->defaultDeviceEntry()), $read['value']];
+            return [$this->classifyConfig($device, $read['value'], $this->syncedBase($id) ?? $this->adoptionBase($device, $read['value'])), $read['value']];
         }
 
         protected function armFormFillIfDiffers(string $path, array $device): void
         {
             $cmp = $this->formComparison($path, $device);
-            if ($cmp !== null && ($cmp[0]['eos'] !== [] || $cmp[0]['conflict'] !== [])) {
+            if ($cmp !== null && $cmp[0]['eos'] !== []) {
                 $this->SetTimerInterval('FormFill', 1500);
             }
         }
 
-        /** FormFill timer: load the fields EOS changed (and conflicts) into the open form. */
+        /** FormFill timer: load the fields only EOS changed into the open form (a conflict is the user's call). */
         protected function fillFormFromEOS(): void
         {
             [$path, $device] = $this->deviceConfig();
@@ -67,7 +68,7 @@ if (!trait_exists('EOSDeviceConfigForm')) {
             if ($cmp === null) {
                 return;
             }
-            $keys = array_merge($cmp[0]['eos'], $cmp[0]['conflict']);
+            $keys = $cmp[0]['eos'];
             if ($keys !== [] && $this->loadIntoForm($cmp[1], $keys) > 0) {
                 $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Values changed in EOS were loaded into the form: Apply stores them in Symcon, Cancel keeps the Symcon values.') . ' (' . implode(', ', $keys) . ')');
             }
@@ -158,7 +159,7 @@ if (!trait_exists('EOSDeviceConfigForm')) {
                     ? sprintf($this->Translate('EOS already has %s; pick it as device or remove it in EOSdash. Nothing was created.'), $other)
                     : $this->Translate('Device not in EOS yet; it is created on Apply.');
             }
-            $class = $this->classifyConfig($device, $read['value'], $this->syncedBase($this->ReadPropertyString('DeviceID')) ?? $this->defaultDeviceEntry());
+            $class = $this->classifyConfig($device, $read['value'], $this->syncedBase($this->ReadPropertyString('DeviceID')) ?? $this->adoptionBase($device, $read['value']));
             if ($class['eos'] === [] && $class['conflict'] === []) {
                 return $class['push'] !== [] ? sprintf($this->Translate('Apply writes to EOS: %s'), implode(', ', $class['push'])) : $this->Translate('EOS configuration matches this instance.');
             }
@@ -170,6 +171,8 @@ if (!trait_exists('EOSDeviceConfigForm')) {
         /** Fill the select named EOSDevicePick with the device ids EOS knows in DEVICE_COLLECTION. */
         protected function fillDevicePicker(array &$form): void
         {
+            // A new form: a device picked in an earlier one without Apply is void (its values are gone from the form).
+            $this->WriteAttributeString('PickSnapshot', '{}');
             $current = $this->ReadPropertyString('DeviceID');
             $options = [['caption' => sprintf($this->Translate('- select from EOS (current: %s) -'), $current), 'value' => '']];
             if (!$this->parentUsable()) {

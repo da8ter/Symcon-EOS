@@ -57,7 +57,7 @@ if (!trait_exists('EOSVehicleConfig')) {
             }
             $sent = max(0, $max - 1);
             $note = $target . '>' . $sent;
-            if (!$this->configFromDefaults && $this->ReadAttributeString('TargetSoCNote') !== $note) {
+            if ($this->ReadAttributeString('TargetSoCNote') !== $note) {
                 $this->WriteAttributeString('TargetSoCNote', $note);
                 $this->LogMessage(sprintf($this->Translate('Target SoC %d %% is sent as %d %%: EOS requires it below the max. SoC'), $target, $sent), KL_NOTIFY);
             }

@@ -10,7 +10,9 @@ declare(strict_types=1);
  *   both changed to different values   -> conflict: nothing written, both values shown
  * Properties change only through the user, so kernel start, module reload and the
  * deferred ApplyChanges never overwrite what was edited in EOSdash. Without a snapshot
- * the base is the device picked in the form (PickSnapshot) or the property defaults.
+ * the base is the device picked in the open form (PickSnapshot), else adoptionBase():
+ * without evidence of a Symcon edit EOS keeps what it has (the first sync after an update,
+ * an id typed in for an existing entry) and only its empty fields are filled.
  *
  * The using class must use EOSCommon, EOSPlanDevice and EOSFormHelpers, define
  * DEVICE_COLLECTION (e.g. 'devices/batteries'), SINGLE_DEVICE (GENETIC supports only
@@ -23,9 +25,6 @@ declare(strict_types=1);
 if (!trait_exists('EOSDeviceConfigSync')) {
     trait EOSDeviceConfigSync
     {
-        /** true while deviceConfig() is evaluated with the property defaults (the base of a first sync). */
-        private bool $configFromDefaults = false;
-
         /** Register the configuration properties (single source: CONFIG_DEFAULTS) and the sync state. */
         protected function registerConfigProperties(): void
         {
@@ -43,29 +42,16 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             $this->RegisterAttributeString('EOSValues', '{}');
         }
 
-        /** A configuration property (or its default while the base of a first sync is built). */
+        /** A configuration property, typed after its default in CONFIG_DEFAULTS. */
         protected function configValue(string $name): mixed
         {
             $default = self::CONFIG_DEFAULTS[$name];
-            if ($this->configFromDefaults) {
-                return $default;
-            }
             return match (true) {
                 is_bool($default)  => $this->ReadPropertyBoolean($name),
                 is_int($default)   => $this->ReadPropertyInteger($name),
                 is_float($default) => $this->ReadPropertyFloat($name),
                 default            => $this->ReadPropertyString($name),
             };
-        }
-
-        protected function defaultDeviceEntry(): array
-        {
-            $this->configFromDefaults = true;
-            try {
-                return $this->deviceConfig()[1];
-            } finally {
-                $this->configFromDefaults = false;
-            }
         }
 
         /**
@@ -120,7 +106,7 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 return $this->createDeviceEntry($id, $device, $merge, $previousId);
             }
             $this->WriteAttributeString('EOSValues', json_encode(['id' => $id, 'max_charge_power_w' => $eos['max_charge_power_w'] ?? null]));
-            $base = $this->syncedBase($id) ?? $this->defaultDeviceEntry();
+            $base = $this->syncedBase($id) ?? $this->adoptionBase($device, $eos);
             $class = $this->classifyConfig($device, $eos, $base);
             if ($force) {
                 $class['push'] = array_merge($class['push'], $class['eos'], $class['conflict']);
@@ -220,7 +206,10 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             return is_array($synced) ? $synced : [];
         }
 
-        /** Last common state for $id: the snapshot, else a device picked within the last 24 h. */
+        /**
+         * Last common state for $id: the snapshot, else a device picked in the form that is
+         * still open (cleared when a form is built, at most an hour old); null = unknown.
+         */
         private function syncedBase(string $id): ?array
         {
             $synced = $this->syncedState();
@@ -228,7 +217,7 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 return $synced['base'];
             }
             $pick = $this->eosJsonDecode($this->ReadAttributeString('PickSnapshot'), []);
-            if (is_array($pick) && ($pick['id'] ?? '') === $id && is_array($pick['eos'] ?? null) && $this->eosNow() - (int) ($pick['ts'] ?? 0) < 86400) {
+            if (is_array($pick) && ($pick['id'] ?? '') === $id && is_array($pick['eos'] ?? null) && $this->eosNow() - (int) ($pick['ts'] ?? 0) < 3600) {
                 return $pick['eos'];
             }
             return null;
