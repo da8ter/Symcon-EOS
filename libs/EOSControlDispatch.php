@@ -277,11 +277,6 @@ if (!trait_exists('EOSControlDispatch')) {
             return $deviceBound || $outcome['chg'] !== 'fail';
         }
 
-        /**
-         * One timer for everything time-driven after a dispatch: retries after the backoff,
-         * per-target heartbeats, the mode-row and change-action retries. Armed on absolute due
-         * times, so re-arming from every dispatch cannot starve it.
-         */
         /** Everything failing after a dispatch, attempted now or waiting in its backoff, as sorted "key:error". */
         protected function failureSignature(array $last): array
         {
@@ -301,6 +296,11 @@ if (!trait_exists('EOSControlDispatch')) {
             return $failing;
         }
 
+        /**
+         * One timer for everything time-driven after a dispatch: retries after the backoff,
+         * per-target heartbeats, the mode-row and change-action retries. Armed on absolute due
+         * times, so re-arming from every dispatch cannot starve it.
+         */
         protected function armRetryTimer(array $last, array $resolved): void
         {
             $due = [];
