@@ -9,9 +9,10 @@
 #   ./setup.sh stop       Container stoppen (Daten bleiben im Volume)
 #   ./setup.sh reset      Container und Datenvolume löschen (fragt nach)
 #
-# Bevorzugt wird das veröffentlichte Image akkudoktor/eos:<EOS_VERSION> von Docker Hub. Gibt es das nicht
-# (Release-Kandidaten), baut Compose das Image aus https://github.com/Akkudoktor-EOS/EOS.git#<EOS_GIT_REF>
-# mit dem Dockerfile des EOS-Projekts. Am EOS-Code wird nichts verändert.
+# Bevorzugt wird das veröffentlichte Image akkudoktor/eos:<EOS_VERSION> von Docker Hub, sofern EOS_GIT_REF leer ist
+# oder v<EOS_VERSION> lautet. Gibt es das nicht (Release-Kandidaten) oder zeigt EOS_GIT_REF auf einen anderen
+# Branch/Commit, baut Compose das Image aus https://github.com/Akkudoktor-EOS/EOS.git#<EOS_GIT_REF> mit dem
+# Dockerfile des EOS-Projekts. EOS_IMAGE_OVERRIDE in .env erzwingt ein eigenes Image. Am EOS-Code wird nichts verändert.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -31,6 +32,15 @@ need_docker() {
 }
 
 ensure_env() {
+  # Bis 22.09.2026 lagen die Dateien in docker/ (ohne Punkt): einmalig übernehmen.
+  if [ ! -f .env ] && [ -f ../docker/.env ]; then
+    cp ../docker/.env .env
+    say "Bisherige Einstellungen aus ../docker/.env übernommen (Ports, Version, Schlüssel). Den alten Ordner docker/ danach löschen."
+  fi
+  if [ ! -f eos-config-local.json ] && [ -f ../docker/eos-config-local.json ]; then
+    cp ../docker/eos-config-local.json eos-config-local.json
+    say "../docker/eos-config-local.json übernommen."
+  fi
   if [ ! -f .env ]; then
     cp .env.example .env
     if command -v openssl >/dev/null 2>&1; then
@@ -47,10 +57,18 @@ ensure_env() {
   DASH="http://localhost:${EOS_SERVER__EOSDASH_PORT:-8504}"
 }
 
-# Setzt EOS_IMAGE in .env: fertiges Image von Docker Hub, sonst lokaler Build.
+# Setzt EOS_IMAGE in .env: EOS_IMAGE_OVERRIDE, sonst das fertige Image von Docker Hub (nur wenn
+# EOS_GIT_REF zur Version passt), sonst den lokalen Build aus EOS_GIT_REF.
 choose_image() {
   local published="akkudoktor/eos:${EOS_VERSION}" local_tag="akkudoktor/eos:${EOS_VERSION}-local"
-  if [ "${1:-}" = "pull" ] || ! docker image inspect "$published" >/dev/null 2>&1; then
+  if [ -n "${EOS_IMAGE_OVERRIDE:-}" ]; then
+    published="$EOS_IMAGE_OVERRIDE"
+    say "Image aus EOS_IMAGE_OVERRIDE: ${published}"
+  elif [ -n "${EOS_GIT_REF:-}" ] && [ "$EOS_GIT_REF" != "v${EOS_VERSION}" ] && [ "$EOS_GIT_REF" != "$EOS_VERSION" ]; then
+    # Eigener Branch/Commit: das veröffentlichte Image enthielte ihn nicht.
+    say "EOS_GIT_REF '${EOS_GIT_REF}' weicht von der Version ab: es wird daraus gebaut."
+    published=""
+  elif [ "${1:-}" = "pull" ] || ! docker image inspect "$published" >/dev/null 2>&1; then
     say "Suche fertiges Image ${published} auf Docker Hub ..."
     if docker pull "$published" >/dev/null 2>&1; then
       say "Fertiges Image gefunden, kein Build nötig."
@@ -69,7 +87,7 @@ wait_health() {
   for _ in $(seq 1 90); do
     if out=$(curl -fsS "${API}/v1/health" 2>/dev/null); then
       if has_python; then
-        echo "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(f"EOS {d.get(\"version\")} ist erreichbar. Letzter EMS-Lauf: {d.get(\"energy-management\",{}).get(\"last_run_datetime\")}")' 2>/dev/null || echo "$out"
+        echo "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); em=d.get("energy-management") or {}; print("EOS %s ist erreichbar. Letzter EMS-Lauf: %s" % (d.get("version"), em.get("last_run_datetime")))' 2>/dev/null || echo "$out"
       else
         echo "$out"
       fi

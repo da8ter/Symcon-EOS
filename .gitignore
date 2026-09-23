@@ -1,5 +1,8 @@
 .docker/.env
 .docker/eos-config-local.json
+# alter Ort vor dem Umzug nach .docker/ (22.09.2026); ältere Checkouts haben die Dateien dort noch
+docker/.env
+docker/eos-config-local.json
 .DS_Store
 .mcp.json
 .claude/settings.local.json
