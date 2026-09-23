@@ -253,5 +253,22 @@ $bt->RequestAction('OverwriteEOS', 'dryer1');
 check(eosMerges() === [] && str_contains((string) json_encode($bt->formUpdates), 'Apply'), 'R8-11: "Overwrite EOS" refuses while the form shows another device id than the saved one');
 drop(1370);
 
+// ---------------------------------------------------------------- regression check: an unsaved write never becomes the base
+echo "== Regression: ungespeicherter Schreibvorgang\n";
+eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV, 'max_batteries' => 1]);
+$us = batteryAt(1380); $us->ApplyChanges();
+$us->properties['CapacityWh'] = 12000; $be->saveFails = true; $us->ApplyChanges(); // written, not saved
+$us->ApplyChanges();                                                               // e.g. a kernel start, save still failing
+$be->saveFails = false; $be->live = $be->file; $be->runtime = [];                   // EOS restart: 10000 again
+$us->ApplyChanges();
+check((int) eosField('devices/batteries/battery1/capacity_wh') === 12000, 'regression: an unsaved value stays pending through later Applies and is written again after an EOS restart: ' . json_encode(eosField('devices/batteries/battery1/capacity_wh')));
+drop(1380);
+eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV, 'max_batteries' => 1]);
+$us = batteryAt(1381); $us->ApplyChanges();
+$us->properties['CapacityWh'] = 12000; $be->saveFails = true; $us->ApplyChanges(); $be->saveFails = false;
+$us->ApplyChanges();                                                               // the save is retried and works
+check((int) ($be->file['devices']['batteries']['battery1']['capacity_wh'] ?? 0) === 12000, 'regression: ... and the next Apply retries the save: ' . json_encode($be->file['devices']['batteries']['battery1']['capacity_wh'] ?? null));
+drop(1381);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

@@ -118,10 +118,16 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 $class['push'] = array_merge($class['push'], $class['eos'], $class['conflict']);
                 $class['eos'] = $class['conflict'] = [];
             }
+            // Written earlier but not in EOS.config.json yet: equal in EOS now, still not a common state.
+            $synced = $this->syncedState();
+            $unsaved = (($synced['id'] ?? '') === $id && is_array($synced['unsaved'] ?? null)) ? $synced['unsaved'] : [];
             $newBase = $base;
             foreach ($class['same'] as $key) {
-                $newBase[$key] = $device[$key];
+                if (!in_array($key, $unsaved, true)) {
+                    $newBase[$key] = $device[$key];
+                }
             }
+            $pending = array_values(array_intersect($class['same'], $unsaved));
             if ($class['push'] !== []) {
                 if (!$this->writeConfigKeys($id, $device, $class['push'], $eos)) {
                     return false;
@@ -129,17 +135,26 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 foreach ($class['push'] as $key) {
                     $eos[$key] = $device[$key]; // what EOS holds now (EOSValues below)
                 }
+                $pending = array_values(array_unique(array_merge($pending, $class['push'])));
+            }
+            $unsavedNext = [];
+            if ($pending !== []) {
                 if (($this->forward(['Command' => 'SaveConfig'])['ok'] ?? false) === true) {
-                    foreach ($class['push'] as $key) {
+                    foreach ($pending as $key) {
                         $newBase[$key] = $device[$key];
                     }
-                    $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS (%s)'), implode(', ', $class['push'])), KL_NOTIFY);
+                    if ($class['push'] !== []) {
+                        $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS (%s)'), implode(', ', $class['push'])), KL_NOTIFY);
+                    }
                 } else {
-                    // Not in EOS.config.json: an EOS restart would drop it. The base stays, so the next Apply writes it again.
-                    $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS but not saved (%s); it is written again with the next Apply'), implode(', ', $class['push'])), KL_WARNING);
+                    // Not in EOS.config.json: an EOS restart would drop it. The base stays and the save is retried.
+                    $unsavedNext = $pending;
+                    if ($class['push'] !== []) {
+                        $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS but not saved (%s); it is written again with the next Apply'), implode(', ', $class['push'])), KL_WARNING);
+                    }
                 }
             }
-            $this->WriteAttributeString('SyncedConfig', json_encode(['v' => 1, 'id' => $id, 'base' => $newBase, 'ts' => $this->eosNow()]));
+            $this->WriteAttributeString('SyncedConfig', json_encode(['v' => 1, 'id' => $id, 'base' => $newBase, 'ts' => $this->eosNow(), 'unsaved' => $unsavedNext]));
             $this->rememberEOSValues($id, $eos);
             $this->UpdateFormField('ConfigInfo', 'caption', $this->syncText($class, $device, $eos));
             $this->ensureDeviceMaximum();
