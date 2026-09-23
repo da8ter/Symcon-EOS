@@ -148,5 +148,30 @@ $runs = count($GLOBALS['runScripts']);
 check($runs === 3 && count(writesTo(20)) === 3 && count(writesTo(21)) === 3, 'R6-2: after a partial change the heartbeats realign: 3 periods in 90 s, option 3 and every target once per period: script ' . $runs . ', mode ' . count(writesTo(20)) . ', power ' . count(writesTo(21)));
 unset($GLOBALS['objects'][1014]);
 
+// ---------------------------------------------------------------- R6-6: mode-row retries only while the row is pending
+echo "== Modus-Aktion: Wiederholung nur solange offen\n";
+$rowPlan = static function (IPSModuleStrict $m, string $mode): void { planFor('battery1', $mode); $m->RefreshPlan(); $m->fireOnce(); };
+setClock($now);
+$r = bat(1020, ['ModeAction_NON_EXPORT' => json_encode(['actionID' => '{OK}', 'parameters' => []]), 'ModeAction_SELF_CONSUMPTION' => json_encode(['actionID' => '{FAIL}', 'parameters' => []])]);
+planFor('battery1', 'NON_EXPORT');
+$r->ApplyChanges(); $r->fireOnce();
+setClock($now + 10); $rowPlan($r, 'SELF_CONSUMPTION'); // its row action fails
+setClock($now + 20); $rowPlan($r, 'NON_EXPORT');       // back to the mode that fired last
+check($r->timers['Retry']['ms'] === 0, 'R6-6: a failed row action of a mode that is no longer pending arms no retry (live: 500 ms loop): ' . $r->timers['Retry']['ms']);
+unset($GLOBALS['objects'][1020]);
+
+setClock($now);
+$r2 = bat(1021, ['ModeAction_NON_EXPORT' => json_encode(['actionID' => '{OK}', 'parameters' => []])]);
+planFor('battery1', 'NON_EXPORT');
+$r2->ApplyChanges(); $r2->fireOnce();
+$r2->properties['ModeAction_NON_EXPORT'] = json_encode(['actionID' => '{FAIL}', 'parameters' => []]);
+$r2->ApplyControl(true);
+$failedRow = ls($r2)['row'];
+check($failedRow['modeRaw'] === null && $failedRow['fail'] === 1 && $r2->timers['Retry']['ms'] === 60500, 'R6-6: a forced row action that fails stays open and is retried after the backoff: ' . json_encode($failedRow) . ' retry ' . $r2->timers['Retry']['ms']);
+$r2->properties['ModeAction_NON_EXPORT'] = json_encode(['actionID' => '{OK}', 'parameters' => []]); resetWorld();
+setClock($now + 61); $r2->fireTimer('Retry');
+check(count($GLOBALS['runActions']) === 1 && ls($r2)['row']['modeRaw'] === 'NON_EXPORT' && ls($r2)['row']['fail'] === 0, 'R6-6: ... and the retry that succeeds marks the row done');
+unset($GLOBALS['objects'][1021]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

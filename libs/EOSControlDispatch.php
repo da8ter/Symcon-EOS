@@ -151,7 +151,7 @@ if (!trait_exists('EOSControlDispatch')) {
                     $this->WriteAttributeString('LastSent', json_encode($last));
                     $this->recordResult('[' . (string) ($desired['source'] ?? 'plan') . '] ' . $this->Translate('nothing to write') . ($degraded !== '' ? ' · ' . $degraded : ''), false);
                 }
-                $this->armRetryTimer($last, $plan['resolved']);
+                $this->armRetryTimer($last, $plan);
                 return;
             }
             $source = (string) ($desired['source'] ?? 'plan');
@@ -217,7 +217,9 @@ if (!trait_exists('EOSControlDispatch')) {
                         $rowDone = false;
                         $failed[] = $result['text'];
                         $sameKey = ($row['failMode'] ?? null) === $plan['rowKey'];
-                        $row = ['modeRaw' => $row['modeRaw'] ?? null, 'fail' => $sameKey ? (int) ($row['fail'] ?? 0) + 1 : 1, 'failTs' => $now, 'failMode' => $plan['rowKey']];
+                        // A failed key is not done: after a forced re-fire it becomes pending again and is retried.
+                        $doneKey = ($row['modeRaw'] ?? null) === $plan['rowKey'] ? null : ($row['modeRaw'] ?? null);
+                        $row = ['modeRaw' => $doneKey, 'fail' => $sameKey ? (int) ($row['fail'] ?? 0) + 1 : 1, 'failTs' => $now, 'failMode' => $plan['rowKey']];
                         $outcome['row'] = 'failed';
                     } elseif (empty($result['skipped'])) {
                         $rowFired = true;
@@ -280,7 +282,7 @@ if (!trait_exists('EOSControlDispatch')) {
             if ($durationMs > self::SLOW_WRITE_MS) {
                 $this->LogMessage(sprintf($this->Translate('Control writes took %d ms - consider a script binding for slow devices'), $durationMs), KL_WARNING);
             }
-            $this->armRetryTimer($lastNew, $plan['resolved']);
+            $this->armRetryTimer($lastNew, $plan);
             if (!$sim) {
                 $outcome['success'] = $this->deviceSideOk($outcome);
                 $this->onDispatched($desired, $outcome);
@@ -344,11 +346,11 @@ if (!trait_exists('EOSControlDispatch')) {
          * per-target heartbeats, the mode-row and change-action retries. Armed on absolute due
          * times, so re-arming from every dispatch cannot starve it.
          */
-        protected function armRetryTimer(array $last, array $resolved): void
+        protected function armRetryTimer(array $last, array $plan): void
         {
             $due = [];
             $heartbeatSeconds = $this->heartbeatSeconds();
-            foreach (array_keys($resolved) as $key) {
+            foreach (array_keys($plan['resolved']) as $key) {
                 $entry = $last['targets'][$key] ?? null;
                 if (!is_array($entry)) {
                     continue;
@@ -359,8 +361,10 @@ if (!trait_exists('EOSControlDispatch')) {
                     $due[] = (int) ($entry['ts'] ?? 0) + $heartbeatSeconds;
                 }
             }
-            if ((int) ($last['row']['fail'] ?? 0) > 0) {
-                $due[] = (int) $last['row']['failTs'] + $this->backoffSeconds((int) $last['row']['fail']);
+            // A failed mode-row action is retried only while its key is still the pending one.
+            $row = is_array($last['row'] ?? null) ? $last['row'] : [];
+            if ((int) ($row['fail'] ?? 0) > 0 && $plan['rowKey'] !== '' && ($row['failMode'] ?? null) === $plan['rowKey'] && $plan['rowKey'] !== (string) ($row['modeRaw'] ?? '')) {
+                $due[] = (int) $row['failTs'] + $this->backoffSeconds((int) $row['fail']);
             }
             if ((int) ($last['chg']['fail'] ?? 0) > 0) {
                 $due[] = (int) $last['chg']['failTs'] + $this->backoffSeconds((int) $last['chg']['fail']);
