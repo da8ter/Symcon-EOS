@@ -134,8 +134,9 @@ class EOSAppliance extends IPSModuleStrict
             $this->blockDevice(self::STATUS_DUPLICATE_ID);
             return;
         }
+        $wasBlocked = $this->deviceBlocked(); // e.g. 201/203 from the last Apply: no release under that status
         $this->SetStatus(IS_ACTIVE);
-        $this->setupControl();
+        $this->setupControl(!$wasBlocked);
         $this->registerOptionalSource('DeadlineSourceVariable', 'RegisteredDeadlineVar');
         $this->registerOptionalSource('EarliestStartSourceVariable', 'RegisteredEarliestVar');
         $this->registerOptionalSource('CyclesCompletedSourceVariable', 'RegisteredCyclesVar');

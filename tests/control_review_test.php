@@ -390,5 +390,17 @@ $gaveUp = count(array_filter($rs->logs, static fn (array $l): bool => str_contai
 check($starts === 2 && $gaveUp === 1, 'regression: with option 3 as the pulse the retry runs the script again with Start=true, then gives up: starts ' . $starts . ', given up ' . $gaveUp);
 unset($GLOBALS['objects'][1083]);
 
+// ---------------------------------------------------------------- regression check: an appliance leaving a block writes no fallback
+echo "== Regression: Haushaltsgerät nach Sperre\n";
+setClock($now);
+worldVar(40, 0, true, true);
+$ub = appliance(1084, ['AllowStop' => true, 'FallbackMode' => 0]);
+planFor('dishwasher1', 'OFF', 1.0, 60);
+$ub->ApplyChanges(); $ub->fireOnce();
+$ub->properties['DeviceID'] = '1dishwasher'; $ub->ApplyChanges();   // typo: blocked 201
+$ub->properties['ControlMode'] = 0; $ub->properties['DeviceID'] = 'dishwasher1'; resetWorld(); $ub->ApplyChanges(); // fixed, now "display only"
+check($ub->status === IS_ACTIVE && writesTo(40) === [], 'regression: an appliance that was blocked writes no fallback when it leaves "active" (display only): ' . json_encode(writesTo(40)));
+unset($GLOBALS['objects'][1084]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
