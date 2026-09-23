@@ -6,6 +6,8 @@ require_once __DIR__ . '/../libs/EOSClient.php';
 require_once __DIR__ . '/../libs/EOSCommon.php';
 require_once __DIR__ . '/../libs/EOSConfigMapper.php';
 require_once __DIR__ . '/../libs/EOSFormHelpers.php';
+require_once __DIR__ . '/../libs/EOSMeasurementBundle.php';
+require_once __DIR__ . '/../libs/EOSServerConfig.php';
 
 /**
  * EOS Server: splitter that talks to an Akkudoktor-EOS instance.
@@ -19,6 +21,8 @@ class EOSServer extends IPSModuleStrict
     use EOSCommon;
     use EOSConfigMapper;
     use EOSFormHelpers;
+    use EOSMeasurementBundle;
+    use EOSServerConfig;
 
     private const STATUS_INACTIVE = 104;
     private const STATUS_UNREACHABLE = 201;
@@ -220,123 +224,15 @@ class EOSServer extends IPSModuleStrict
         }
     }
 
-    public function PutMeasurement(string $Key, float $Value, string $DateTime): bool
-    {
-        if ($DateTime === '') {
-            $DateTime = $this->eosIsoNow();
-        }
-        $res = $this->client()->putMeasurementValue($Key, $Value, $DateTime);
-        if (!$res['ok']) {
-            $this->SetValue('LastError', 'measurement ' . $Key . ': ' . (string) $res['error']);
-        }
-        return $res['ok'];
-    }
 
-    public function GetConfig(string $Path): string
-    {
-        $res = $Path === '' ? $this->client()->getConfig() : $this->client()->getConfigPath($Path);
-        if (!$res['ok']) {
-            $this->SetValue('LastError', 'config ' . $Path . ': ' . (string) $res['error']);
-            return '';
-        }
-        return json_encode($res['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
 
-    public function SetConfig(string $Path, string $ValueJSON): bool
-    {
-        $value = json_decode($ValueJSON, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            $value = $ValueJSON;
-        }
-        $res = $this->client()->putConfigPath($Path, $value);
-        if (!$res['ok']) {
-            $this->SetValue('LastError', 'config ' . $Path . ': ' . (string) $res['error']);
-        }
-        return $res['ok'];
-    }
 
-    public function SaveConfig(): bool
-    {
-        $res = $this->client()->saveConfigFile();
-        $this->UpdateFormField('ConfigInfo', 'caption', $res['ok'] ? $this->Translate('Configuration saved to EOS.config.json.') : (string) $res['error']);
-        if (!$res['ok']) {
-            $this->SetValue('LastError', 'save config: ' . (string) $res['error']);
-        }
-        return $res['ok'];
-    }
 
-    public function LoadConfigFromEOS(): bool
-    {
-        $res = $this->client()->getConfig();
-        if (!$res['ok'] || !is_array($res['data'])) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) $res['error']);
-            return false;
-        }
-        $this->WriteAttributeString('EOSConfigCache', json_encode($res['data']));
-        $values = $this->ConfigToFormValues($res['data']);
-        foreach ($values['scalar'] as $name => $value) {
-            $this->UpdateFormField($name, 'value', $value);
-        }
-        foreach ($values['list'] as $name => $rows) {
-            $this->UpdateFormField($name, 'values', json_encode($rows));
-        }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Configuration loaded from EOS. Review the fields and press Apply to store them in Symcon.'));
-        return true;
-    }
 
-    public function WriteConfigToEOS(): bool
-    {
-        $merge = $this->PropertiesToConfig();
-        $this->SendDebug('WriteConfig', json_encode($merge, JSON_UNESCAPED_UNICODE), 0);
-        $res = $this->client()->putConfig($merge);
-        if (!$res['ok']) {
-            $this->UpdateFormField('ConfigInfo', 'caption', (string) $res['error']);
-            $this->SetValue('LastError', 'write config: ' . (string) $res['error']);
-            return false;
-        }
-        if (is_array($res['data'])) {
-            $this->WriteAttributeString('EOSConfigCache', json_encode($res['data']));
-        }
-        $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Configuration written to EOS.'));
-        return true;
-    }
 
-    public function UseSymconLocation(): void
-    {
-        $loc = json_decode(IPS_GetLocation(), true);
-        $lat = (float) ($loc['Latitude'] ?? 0);
-        $lon = (float) ($loc['Longitude'] ?? 0);
-        $this->UpdateFormField('GeneralLatitude', 'value', $lat);
-        $this->UpdateFormField('GeneralLongitude', 'value', $lon);
-        $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('Location taken from Symcon: %s / %s. Press Apply to store.'), (string) $lat, (string) $lon));
-    }
 
-    public function ReadRawConfig(string $Path): string
-    {
-        $json = $this->GetConfig($Path);
-        $this->UpdateFormField('RawResult', 'caption', $json !== '' ? $this->eosShorten($json, 400) : (string) $this->GetValue('LastError'));
-        $this->UpdateFormField('RawConfigValue', 'value', $json);
-        return $json;
-    }
 
-    public function WriteRawConfig(string $Path, string $ValueJSON): bool
-    {
-        $ok = $this->SetConfig($Path, $ValueJSON);
-        $this->UpdateFormField('RawResult', 'caption', $ok ? 'OK: ' . $Path : (string) $this->GetValue('LastError'));
-        return $ok;
-    }
 
-    public function WriteRawMerge(string $JSON): bool
-    {
-        $merge = json_decode($JSON, true);
-        if (!is_array($merge)) {
-            $this->UpdateFormField('RawResult', 'caption', 'invalid JSON');
-            return false;
-        }
-        $res = $this->client()->putConfig($merge);
-        $this->UpdateFormField('RawResult', 'caption', $res['ok'] ? 'OK' : (string) $res['error']);
-        return $res['ok'];
-    }
 
     public function GetDashboardURL(): string
     {
@@ -369,38 +265,10 @@ class EOSServer extends IPSModuleStrict
         $command = (string) ($data['Command'] ?? '');
         switch ($command) {
             case 'PutMeasurement':
-                $key = (string) ($data['Key'] ?? '');
-                $value = (float) ($data['Value'] ?? 0);
-                $dateTime = (string) ($data['DateTime'] ?? $this->eosIsoNow());
-                $this->rememberSticky($key, $value);
-                // One request for the value plus all cached sticky values (PUT /v1/measurement/data
-                // accepts any key): EOS then sees a complete record at this timestamp, never a
-                // half-written one that a run in between would reject as "stale SoC".
-                $bundle = $this->stickyBundle($key);
-                if ($bundle === []) {
-                    $res = $this->client()->putMeasurementValue($key, $value, $dateTime);
-                } else {
-                    $res = $this->client()->putMeasurementData(['start_datetime' => $dateTime, 'interval' => '1 minute', $key => [$value]] + array_map(static fn (float $v): array => [$v], $bundle));
-                }
-                if (!$res['ok']) {
-                    $this->SetValue('LastError', 'measurement: ' . (string) $res['error']);
-                }
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
+                return json_encode($this->forwardPutMeasurement($data));
 
             case 'PutSamples':
-                $samples = is_array($data['Samples'] ?? null) ? $data['Samples'] : [];
-                // Meter readings carry no SoC/cycle keys. Write the cached sticky values for the
-                // same timestamp FIRST, so the newest record is never a meter-only record.
-                $bundle = $this->stickyBundle('');
-                if ($bundle !== [] && $samples !== []) {
-                    $stamp = (string) (end($samples)['date_time'] ?? $this->eosIsoNow());
-                    $this->client()->putMeasurementData(['start_datetime' => $stamp, 'interval' => '1 minute'] + array_map(static fn (float $v): array => [$v], $bundle));
-                }
-                $res = $this->client()->putMeasurementSamples($samples);
-                if (!$res['ok']) {
-                    $this->SetValue('LastError', 'samples: ' . (string) $res['error']);
-                }
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error'], 'data' => $res['data']]);
+                return json_encode($this->forwardPutSamples($data));
 
             case 'GetPlanForResource':
                 return json_encode($this->planForResource((string) ($data['ResourceID'] ?? '')));
@@ -417,20 +285,10 @@ class EOSServer extends IPSModuleStrict
                 ]);
 
             case 'GetConfig':
-                $res = $this->client()->getConfigPath((string) ($data['Path'] ?? ''));
-                return json_encode(['ok' => $res['ok'], 'data' => $res['data'], 'error' => $res['error']]);
-
             case 'SetConfig':
-                $res = $this->client()->putConfigPath((string) ($data['Path'] ?? ''), $data['Value'] ?? null);
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
-
             case 'MergeConfig':
-                $res = $this->client()->putConfig(is_array($data['Value'] ?? null) ? $data['Value'] : []);
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
-
             case 'SaveConfig':
-                $res = $this->client()->saveConfigFile();
-                return json_encode(['ok' => $res['ok'], 'error' => $res['error']]);
+                return json_encode($this->forwardConfigCommand($command, $data));
 
             default:
                 return json_encode(['ok' => false, 'error' => 'unknown command ' . $command]);
@@ -449,56 +307,6 @@ class EOSServer extends IPSModuleStrict
                 $this->SendDebug('EOSClient ' . $tag, $message, 0);
             }
         );
-    }
-
-    /**
-     * EOS 0.4.0rc1 looks up device measurements (SoC factor, completed cycles)
-     * with dropna=False: the newest measurement record decides, and a record
-     * written for another key (EV SoC, meter reading, cycles) has NaN for the
-     * others, which cancels the run. Work-around: remember the latest value of
-     * these "sticky" keys and re-send all of them whenever a different key is
-     * written, so the newest record always carries every device value.
-     */
-    /** Remember SoC / cycle values so they can be re-sent with every other measurement. */
-    private function rememberSticky(string $key, float $value): void
-    {
-        if (!$this->isStickyKey($key)) {
-            return;
-        }
-        $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
-        $cache = is_array($cache) ? $cache : [];
-        $cache[$key] = ['value' => $value, 'ts' => $this->eosNow()];
-        $this->WriteAttributeString('SoCCache', json_encode($cache));
-    }
-
-    /**
-     * EOS 0.4.0rc1 looks up SoC and cycle counts in the newest measurement record
-     * only (configrequest.py, dropna=False). Every record we write therefore has to
-     * carry all known sticky values; this returns them as key => value, without
-     * $exceptKey. SoC values expire with the EOS freshness limit, cycle counts do not.
-     */
-    private function stickyBundle(string $exceptKey): array
-    {
-        $cache = $this->eosJsonDecode($this->ReadAttributeString('SoCCache'), []);
-        $cache = is_array($cache) ? $cache : [];
-        $now = $this->eosNow();
-        $maxAge = max(60, (int) ($this->ReadPropertyInteger('OptMeasurementMaxAge') ?: 300));
-        $bundle = [];
-        foreach ($cache as $stickyKey => $entry) {
-            if ($stickyKey === $exceptKey) {
-                continue;
-            }
-            if (str_ends_with((string) $stickyKey, '-soc-factor') && $now - (int) ($entry['ts'] ?? 0) > $maxAge) {
-                continue;
-            }
-            $bundle[(string) $stickyKey] = (float) $entry['value'];
-        }
-        return $bundle;
-    }
-
-    private function isStickyKey(string $key): bool
-    {
-        return str_ends_with($key, '-soc-factor') || str_ends_with($key, '.cycles_completed');
     }
 
     private function applyHealth(array $health): void
