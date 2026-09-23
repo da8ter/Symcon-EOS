@@ -179,7 +179,7 @@ class EOSMeter extends IPSModuleStrict
         }
         $res = $this->forward(['Command' => 'MergeConfig', 'Value' => ['measurement' => $merge]]);
         if (($res['ok'] ?? false) !== true) {
-            $this->SetValue('LastError', 'keys: ' . (string) ($res['error'] ?? '?'));
+            $this->SetValue('LastError', sprintf($this->Translate('Meter keys: %s'), (string) ($res['error'] ?? '?')));
             return false;
         }
         $this->forward(['Command' => 'SaveConfig']);
@@ -232,7 +232,7 @@ class EOSMeter extends IPSModuleStrict
         }
         $msg = $ok ? sprintf($this->Translate('%d history values imported.'), $total) : (string) $this->GetValue('LastError');
         $this->UpdateFormField('ActionResult', 'caption', $msg);
-        $this->LogMessage('EOS meter history import: ' . $msg, KL_NOTIFY);
+        $this->LogMessage(sprintf($this->Translate('History import: %s'), $msg), KL_NOTIFY);
         return $ok;
     }
 
@@ -288,7 +288,7 @@ class EOSMeter extends IPSModuleStrict
     {
         $res = $this->forward(['Command' => 'PutSamples', 'Samples' => $samples]);
         if (($res['ok'] ?? false) !== true) {
-            $this->SetValue('LastError', 'import: ' . (string) ($res['error'] ?? '?'));
+            $this->SetValue('LastError', sprintf($this->Translate('History import: %s'), (string) ($res['error'] ?? '?')));
             return false;
         }
         return true;

@@ -136,7 +136,7 @@ if (!trait_exists('EOSApplianceConfig')) {
                 'DateTime' => $this->eosIsoNow(),
             ]);
             if (($res['ok'] ?? false) !== true) {
-                $this->LogMessage('cycles push failed: ' . (string) ($res['error'] ?? '?'), KL_WARNING);
+                $this->LogMessage(sprintf($this->Translate('Sending the completed cycles failed: %s'), (string) ($res['error'] ?? '?')), KL_WARNING);
                 return false;
             }
             $this->syncTimes();

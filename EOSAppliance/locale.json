@@ -126,7 +126,11 @@
             "Apply writes to EOS: %s": "Apply writes to EOS: %s",
             "Overwrite EOS with these values": "Overwrite EOS with these values",
             "Load values from EOS": "Load values from EOS",
-            "Remove old EOS entry": "Remove old EOS entry"
+            "Remove old EOS entry": "Remove old EOS entry",
+            "The EOS plan contains no instructions for %s": "The EOS plan contains no instructions for %s",
+            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon",
+            "Planned start of %s at %s missed (grace period over), not starting": "Planned start of %s at %s missed (grace period over), not starting",
+            "Sending the completed cycles failed: %s": "Sending the completed cycles failed: %s"
         },
         "de": {
             "EOS Appliance": "EOS Haushaltsgerät",
@@ -280,7 +284,11 @@
             "Apply writes to EOS: %s": "Übernehmen schreibt nach EOS: %s",
             "Overwrite EOS with these values": "EOS mit diesen Werten überschreiben",
             "Load values from EOS": "Werte aus EOS laden",
-            "Remove old EOS entry": "Alten EOS-Eintrag entfernen"
+            "Remove old EOS entry": "Alten EOS-Eintrag entfernen",
+            "The EOS plan contains no instructions for %s": "Der EOS-Plan enthält keine Anweisungen für %s",
+            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "Der EOS-Plan ist %d s in die Zukunft datiert (generated_at); Uhren von EOS-Rechner und Symcon prüfen",
+            "Planned start of %s at %s missed (grace period over), not starting": "Geplanter Start von %s um %s verpasst (Gnadenfrist vorbei), kein Start",
+            "Sending the completed cycles failed: %s": "Senden der erledigten Läufe fehlgeschlagen: %s"
         }
     }
 }

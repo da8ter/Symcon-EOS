@@ -143,7 +143,9 @@
             "SoC source value %s is out of range; not sent to EOS": "SoC source value %s is out of range; not sent to EOS",
             "SoC source not updated for more than %d minutes; not sent to EOS": "SoC source not updated for more than %d minutes; not sent to EOS",
             "SoC push works again": "SoC push works again",
-            "Max. age of the SoC source (min), 0 = off": "Max. age of the SoC source (min), 0 = off"
+            "Max. age of the SoC source (min), 0 = off": "Max. age of the SoC source (min), 0 = off",
+            "The EOS plan contains no instructions for %s": "The EOS plan contains no instructions for %s",
+            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon"
         },
         "de": {
             "EOS Vehicle": "EOS E-Auto",
@@ -317,7 +319,9 @@
             "SoC source value %s is out of range; not sent to EOS": "SoC-Quellwert %s liegt außerhalb des gültigen Bereichs; nicht an EOS gesendet",
             "SoC source not updated for more than %d minutes; not sent to EOS": "SoC-Quelle seit mehr als %d Minuten nicht aktualisiert; nicht an EOS gesendet",
             "SoC push works again": "SoC-Push funktioniert wieder",
-            "Max. age of the SoC source (min), 0 = off": "Höchstalter der SoC-Quelle (min), 0 = aus"
+            "Max. age of the SoC source (min), 0 = off": "Höchstalter der SoC-Quelle (min), 0 = aus",
+            "The EOS plan contains no instructions for %s": "Der EOS-Plan enthält keine Anweisungen für %s",
+            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "Der EOS-Plan ist %d s in die Zukunft datiert (generated_at); Uhren von EOS-Rechner und Symcon prüfen"
         }
     }
 }

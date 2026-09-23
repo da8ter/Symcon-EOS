@@ -58,7 +58,7 @@ if (!trait_exists('EOSServerStatus')) {
             $versionOk = $expected === '' || str_starts_with($version, $expected);
             $this->WriteAttributeBoolean('VersionOk', $versionOk);
             if (!$versionOk) {
-                $this->SetValue('LastError', 'version ' . $version . ' != ' . $expected . '*');
+                $this->SetValue('LastError', sprintf($this->Translate('EOS version %s does not match the expected %s*'), $version, $expected));
             }
             $this->updateServerStatus();
         }
@@ -112,7 +112,7 @@ if (!trait_exists('EOSServerStatus')) {
             $this->SetValue('Connected', false);
             $this->SetValue('LastError', $error);
             if ($wasReachable) {
-                $this->LogMessage('EOS not reachable: ' . $error, KL_WARNING);
+                $this->LogMessage(sprintf($this->Translate('EOS not reachable: %s'), $error), KL_WARNING);
             }
             $this->updateServerStatus($defer);
         }

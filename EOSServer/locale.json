@@ -43,7 +43,19 @@
             "Max. power (W), 0 = not managed": "Max. power (W), 0 = not managed",
             "Max. AC charge power (W), 0 = like max. power": "Max. AC charge power (W), 0 = like max. power",
             "AC to DC efficiency": "AC to DC efficiency",
-            "DC to AC efficiency": "DC to AC efficiency"
+            "DC to AC efficiency": "DC to AC efficiency",
+            "Optimization: %s": "Optimization: %s",
+            "EOS optimization failed: %s": "EOS optimization failed: %s",
+            "Invalid JSON": "Invalid JSON",
+            "Configuration %s: %s": "Configuration %s: %s",
+            "Write configuration: %s": "Write configuration: %s",
+            "Save configuration: %s": "Save configuration: %s",
+            "Remove %s: %s": "Remove %s: %s",
+            "EOS version %s does not match the expected %s*": "EOS version %s does not match the expected %s*",
+            "EOS not reachable: %s": "EOS not reachable: %s",
+            "Measurement: %s": "Measurement: %s",
+            "Resent values: %s": "Resent values: %s",
+            "Samples: %s": "Samples: %s"
         },
         "de": {
             "EOS Server": "EOS Server",
@@ -198,7 +210,19 @@
             "Max. power (W), 0 = not managed": "Max. Leistung (W), 0 = nicht verwaltet",
             "Max. AC charge power (W), 0 = like max. power": "Max. AC-Ladeleistung (W), 0 = wie max. Leistung",
             "AC to DC efficiency": "Wirkungsgrad AC zu DC",
-            "DC to AC efficiency": "Wirkungsgrad DC zu AC"
+            "DC to AC efficiency": "Wirkungsgrad DC zu AC",
+            "Optimization: %s": "Optimierung: %s",
+            "EOS optimization failed: %s": "EOS-Optimierung fehlgeschlagen: %s",
+            "Invalid JSON": "Ungültiges JSON",
+            "Configuration %s: %s": "Konfiguration %s: %s",
+            "Write configuration: %s": "Konfiguration schreiben: %s",
+            "Save configuration: %s": "Konfiguration speichern: %s",
+            "Remove %s: %s": "%s entfernen: %s",
+            "EOS version %s does not match the expected %s*": "EOS-Version %s passt nicht zur erwarteten %s*",
+            "EOS not reachable: %s": "EOS nicht erreichbar: %s",
+            "Measurement: %s": "Messwert: %s",
+            "Resent values: %s": "Erneut gesendete Werte: %s",
+            "Samples: %s": "Messreihe: %s"
         }
     }
 }

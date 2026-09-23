@@ -212,7 +212,7 @@ if (!trait_exists('EOSPlanDevice')) {
                 $this->WriteAttributeBoolean('EmptyPlanWarned', false);
             } else {
                 if ($list === [] && !$this->ReadAttributeBoolean('EmptyPlanWarned')) {
-                    $this->LogMessage('EOS plan contains no instructions for ' . $this->ReadPropertyString('DeviceID'), KL_WARNING);
+                    $this->LogMessage(sprintf($this->Translate('The EOS plan contains no instructions for %s'), $this->ReadPropertyString('DeviceID')), KL_WARNING);
                     $this->WriteAttributeBoolean('EmptyPlanWarned', true);
                 }
                 $this->showNoInstruction();
@@ -338,7 +338,7 @@ if (!trait_exists('EOSPlanDevice')) {
             $generated = $this->eosParseTime($meta['generated_at'] ?? null);
             $skewed = $generated > $this->eosNow() + 60;
             if ($skewed && !$this->ReadAttributeBoolean('SkewWarned')) {
-                $this->LogMessage(sprintf('EOS plan generated_at is %d s in the future - check the clocks of EOS host and Symcon', $generated - $this->eosNow()), KL_WARNING);
+                $this->LogMessage(sprintf($this->Translate('The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon'), $generated - $this->eosNow()), KL_WARNING);
             }
             $this->WriteAttributeBoolean('SkewWarned', $skewed);
         }

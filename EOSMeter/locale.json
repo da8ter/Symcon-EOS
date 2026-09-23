@@ -9,7 +9,9 @@
             "%d history values imported.": "%d history values imported.",
             "No archive control found.": "No archive control found.",
             "could not read measurement configuration from EOS": "could not read measurement configuration from EOS",
-            "Unknown": "Unknown"
+            "Unknown": "Unknown",
+            "Meter keys: %s": "Meter keys: %s",
+            "History import: %s": "History import: %s"
         },
         "de": {
             "EOS Meter": "EOS Zähler",
@@ -40,7 +42,9 @@
             "No active EOS Server": "Kein aktiver EOS Server",
             "No meter configured": "Kein Zähler konfiguriert",
             "could not read measurement configuration from EOS": "Messwert-Konfiguration konnte nicht aus EOS gelesen werden",
-            "Unknown": "Unbekannt"
+            "Unknown": "Unbekannt",
+            "Meter keys: %s": "Zählerschlüssel: %s",
+            "History import: %s": "Historien-Import: %s"
         }
     }
 }

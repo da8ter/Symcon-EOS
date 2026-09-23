@@ -196,6 +196,13 @@ class EOSBattery extends IPSModuleStrict
     public function GetVisualizationTile(): string
     {
         $html = (string) file_get_contents(__DIR__ . '/module.html');
+        // Every t('…')/tf('…') literal of the tile is translated here, so the tile has no key list of its own.
+        preg_match_all("/\\btf?\\('((?:[^'\\\\]|\\\\.)*)'/", $html, $matches);
+        $texts = [];
+        foreach (array_unique($matches[1]) as $key) {
+            $texts[$key] = $this->Translate($key);
+        }
+        $html = str_replace('const I18N = {};', 'const I18N = ' . json_encode($texts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) . ';', $html);
         return $html . '<script>handleMessage(' . json_encode(json_encode($this->tileState(), JSON_UNESCAPED_UNICODE)) . ');</script>';
     }
 
@@ -382,13 +389,13 @@ class EOSBattery extends IPSModuleStrict
         }
         $message = '';
         if ($state['mode']['grid'] && $soc >= $this->ReadPropertyInteger('MaxSoC')) {
-            $message = sprintf('SoC %.0f %% is at or above max SoC while %s is planned', $soc, $state['modeRaw']);
+            $message = sprintf($this->Translate('SoC %.0f %% is at or above the maximum SoC while EOS plans %s.'), $soc, $state['modeRaw']);
         } elseif (in_array($state['modeRaw'], ['GRID_SUPPORT_EXPORT', 'PEAK_SHAVING'], true) && $soc <= $this->ReadPropertyInteger('MinSoC')) {
-            $message = sprintf('SoC %.0f %% is at or below min SoC while %s is planned', $soc, $state['modeRaw']);
+            $message = sprintf($this->Translate('SoC %.0f %% is at or below the minimum SoC while EOS plans %s.'), $soc, $state['modeRaw']);
         }
         $id = (string) ($instruction['execution_time'] ?? '') . '|' . $state['modeRaw']; // EOS ids change with every run
         if ($message !== '' && $id !== $this->ReadAttributeString('PlausibilityWarned')) {
-            $this->LogMessage($message . ' - battery limits in EOS and Symcon may differ, press "Write to EOS"', KL_WARNING);
+            $this->LogMessage($message . ' ' . $this->Translate('The SoC limits in EOS and Symcon probably differ; the instance form shows the comparison.'), KL_WARNING);
             $this->WriteAttributeString('PlausibilityWarned', $id);
         }
     }

@@ -15,7 +15,7 @@ if (!trait_exists('EOSServerConfig')) {
         {
             $res = $this->client()->getConfigRaw($Path);
             if (!$res['ok']) {
-                $this->SetValue('LastError', 'config ' . $Path . ': ' . (string) $res['error']);
+                $this->SetValue('LastError', sprintf($this->Translate('Configuration %s: %s'), $Path, (string) $res['error']));
                 return '';
             }
             return (string) $res['data'];
@@ -29,7 +29,7 @@ if (!trait_exists('EOSServerConfig')) {
             }
             $res = $this->client()->putConfigPath($Path, $value);
             if (!$res['ok']) {
-                $this->SetValue('LastError', 'config ' . $Path . ': ' . (string) $res['error']);
+                $this->SetValue('LastError', sprintf($this->Translate('Configuration %s: %s'), $Path, (string) $res['error']));
             }
             return $res['ok'];
         }
@@ -38,7 +38,7 @@ if (!trait_exists('EOSServerConfig')) {
             $res = $this->client()->saveConfigFile();
             $this->UpdateFormField('ConfigInfo', 'caption', $res['ok'] ? $this->Translate('Configuration saved to EOS.config.json.') : (string) $res['error']);
             if (!$res['ok']) {
-                $this->SetValue('LastError', 'save config: ' . (string) $res['error']);
+                $this->SetValue('LastError', sprintf($this->Translate('Save configuration: %s'), (string) $res['error']));
             }
             return $res['ok'];
         }
@@ -66,7 +66,7 @@ if (!trait_exists('EOSServerConfig')) {
             if ($this->configErrors !== []) {
                 // EOS rejects the whole request for one bad field: refuse before sending anything.
                 $this->UpdateFormField('ConfigInfo', 'caption', implode(' · ', $this->configErrors));
-                $this->SetValue('LastError', 'write config: ' . implode(' · ', $this->configErrors));
+                $this->SetValue('LastError', sprintf($this->Translate('Write configuration: %s'), implode(' · ', $this->configErrors)));
                 return false;
             }
             if (isset($merge['devices']['inverters'])) {
@@ -76,7 +76,7 @@ if (!trait_exists('EOSServerConfig')) {
                 if ($others !== []) {
                     $message = sprintf($this->Translate('EOS already has inverter %s; set the inverter ID to it (GENETIC supports one). Nothing written.'), implode(', ', $others));
                     $this->UpdateFormField('ConfigInfo', 'caption', $message);
-                    $this->SetValue('LastError', 'write config: ' . $message);
+                    $this->SetValue('LastError', sprintf($this->Translate('Write configuration: %s'), $message));
                     return false;
                 }
             }
@@ -86,7 +86,7 @@ if (!trait_exists('EOSServerConfig')) {
                 if (!$current['ok'] || !is_array($current['data'])) {
                     $message = sprintf($this->Translate('Measurement keys could not be read from EOS (%s); nothing written.'), (string) $current['error']);
                     $this->UpdateFormField('ConfigInfo', 'caption', $message);
-                    $this->SetValue('LastError', 'write config: ' . $message);
+                    $this->SetValue('LastError', sprintf($this->Translate('Write configuration: %s'), $message));
                     return false;
                 }
                 foreach ($merge['measurement'] as $field => $keys) {
@@ -98,7 +98,7 @@ if (!trait_exists('EOSServerConfig')) {
             $res = $this->client()->putConfig($merge);
             if (!$res['ok']) {
                 $this->UpdateFormField('ConfigInfo', 'caption', (string) $res['error']);
-                $this->SetValue('LastError', 'write config: ' . (string) $res['error']);
+                $this->SetValue('LastError', sprintf($this->Translate('Write configuration: %s'), (string) $res['error']));
                 return false;
             }
             if (is_array($res['data'])) {
@@ -139,7 +139,7 @@ if (!trait_exists('EOSServerConfig')) {
         {
             $merge = json_decode($JSON); // objects stay objects ("{}" is not a list)
             if (!is_object($merge)) {
-                $this->UpdateFormField('RawResult', 'caption', 'invalid JSON');
+                $this->UpdateFormField('RawResult', 'caption', $this->Translate('Invalid JSON'));
                 return false;
             }
             $res = $this->client()->putConfig($merge);
@@ -179,7 +179,7 @@ if (!trait_exists('EOSServerConfig')) {
             ] as $step) {
                 $res = $step();
                 if (!$res['ok']) {
-                    $this->SetValue('LastError', 'remove ' . $collection . '/' . $id . ': ' . (string) $res['error']);
+                    $this->SetValue('LastError', sprintf($this->Translate('Remove %s: %s'), $collection . '/' . $id, (string) $res['error']));
                     return ['ok' => false, 'status' => $res['status'], 'error' => $res['error']];
                 }
             }

@@ -33,7 +33,7 @@ if (!trait_exists('EOSMeasurementBundle')) {
                 $res = $this->client()->putMeasurementData(['start_datetime' => $dateTime, 'interval' => '1 minute', $key => [$value]] + array_map(static fn (float $v): array => [$v], $bundle));
             }
             if (!$res['ok']) {
-                $this->SetValue('LastError', 'measurement: ' . (string) $res['error']);
+                $this->SetValue('LastError', sprintf($this->Translate('Measurement: %s'), (string) $res['error']));
             }
             return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'error' => $res['error']];
         }
@@ -51,12 +51,12 @@ if (!trait_exists('EOSMeasurementBundle')) {
                 $newest = max(array_map(fn (array $s): int => $this->eosParseTime((string) ($s['date_time'] ?? '')), $samples));
                 $sticky = $this->client()->putMeasurementData(['start_datetime' => $this->eosIsoNow($newest > 0 ? $newest : null), 'interval' => '1 minute'] + array_map(static fn (float $v): array => [$v], $bundle));
                 if (!$sticky['ok']) {
-                    $this->SetValue('LastError', 'sticky values: ' . (string) $sticky['error']);
+                    $this->SetValue('LastError', sprintf($this->Translate('Resent values: %s'), (string) $sticky['error']));
                 }
             }
             $res = $this->client()->putMeasurementSamples($samples);
             if (!$res['ok']) {
-                $this->SetValue('LastError', 'samples: ' . (string) $res['error']);
+                $this->SetValue('LastError', sprintf($this->Translate('Samples: %s'), (string) $res['error']));
             }
             return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'error' => $res['error'], 'data' => $res['data']];
         }

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -112,23 +112,28 @@
         window.handleMessage = function (m) { window._pendingMessages.push(m); };
     }
 
+    // ---- texts: GetVisualizationTile replaces the empty object with the translation of every t()/tf() key below
+    const I18N = {};
+    function t(key) { return I18N[key] || key; }
+    function tf(key) { const args = Array.prototype.slice.call(arguments, 1); return t(key).replace(/%s/g, () => String(args.shift())); }
+
     const MODES = {
-        IDLE:                { label: 'Gesperrt',        cls: 'idle',      color: '--m-idle' },
-        SELF_CONSUMPTION:    { label: 'Eigenverbrauch',  cls: 'self',      color: '--m-self' },
-        NON_EXPORT:          { label: 'Nur PV-Laden',    cls: 'nonexport', color: '--m-nonexport' },
-        PEAK_SHAVING:        { label: 'Nur Entladen',    cls: 'peak',      color: '--m-peak' },
-        GRID_SUPPORT_IMPORT: { label: 'Netzladen',       cls: 'import',    color: '--m-import' },
-        FORCED_CHARGE:       { label: 'Zwangsladen',     cls: 'forced',    color: '--m-forced' },
-        GRID_SUPPORT_EXPORT: { label: 'Netzeinspeisung', cls: 'export',    color: '--m-export' }
+        IDLE:                { label: t('Locked'),            cls: 'idle',      color: '--m-idle' },
+        SELF_CONSUMPTION:    { label: t('Self consumption'),  cls: 'self',      color: '--m-self' },
+        NON_EXPORT:          { label: t('PV charging only'),  cls: 'nonexport', color: '--m-nonexport' },
+        PEAK_SHAVING:        { label: t('Discharge only'),    cls: 'peak',      color: '--m-peak' },
+        GRID_SUPPORT_IMPORT: { label: t('Grid charging'),     cls: 'import',    color: '--m-import' },
+        FORCED_CHARGE:       { label: t('Forced charging'),   cls: 'forced',    color: '--m-forced' },
+        GRID_SUPPORT_EXPORT: { label: t('Grid export'),       cls: 'export',    color: '--m-export' }
     };
-    const UNKNOWN = { label: 'Unbekannt', cls: 'unknown', color: '--m-unknown' };
+    const UNKNOWN = { label: t('Unknown'), cls: 'unknown', color: '--m-unknown' };
     const NS = 'http://www.w3.org/2000/svg';
     let state = null;
 
     function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-    function modeInfo(id) { return MODES[id] || Object.assign({}, UNKNOWN, { label: id || 'Unbekannt' }); }
-    function fmtTime(ts) { const d = new Date(ts * 1000); return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }); }
-    function fmtDay(ts) { const d = new Date(ts * 1000); return d.toLocaleDateString('de-DE', { weekday: 'short' }); }
+    function modeInfo(id) { return MODES[id] || Object.assign({}, UNKNOWN, { label: id || t('Unknown') }); }
+    function fmtTime(ts) { const d = new Date(ts * 1000); return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+    function fmtDay(ts) { const d = new Date(ts * 1000); return d.toLocaleDateString([], { weekday: 'short' }); }
     function el(tag, attrs, parent) {
         const e = document.createElementNS(NS, tag);
         for (const k in attrs) { e.setAttribute(k, attrs[k]); }
@@ -158,25 +163,25 @@
         // ---- header
         const mi = modeInfo(state.modeRaw);
         document.querySelector('.mode i').style.setProperty('--mode-color', css(mi.color));
-        document.getElementById('modeText').textContent = state.modeRaw ? mi.label : 'Kein Plan';
+        document.getElementById('modeText').textContent = state.modeRaw ? mi.label : t('No plan');
         const f = Number(state.factor || 0);
         let ftxt = '';
         if (state.modeRaw && (state.modeRaw === 'GRID_SUPPORT_IMPORT' || state.modeRaw === 'FORCED_CHARGE')) {
-            ftxt = Math.round(state.targetW || 0).toLocaleString('de-DE') + ' W';
+            ftxt = Math.round(state.targetW || 0).toLocaleString() + ' W';
         } else if (state.modeRaw && f > 0 && f < 1) {
             ftxt = Math.round(f * 100) + ' %';
         }
         document.getElementById('factorText').textContent = ftxt;
-        document.getElementById('nextText').textContent = state.nextChange ? ('ab ' + fmtTime(state.nextChange) + ': ' + modeInfo(state.nextMode).label) : '';
-        document.getElementById('staleText').textContent = state.planStale ? 'Plan veraltet' : '';
+        document.getElementById('nextText').textContent = state.nextChange ? tf('from %s: %s', fmtTime(state.nextChange), modeInfo(state.nextMode).label) : '';
+        document.getElementById('staleText').textContent = state.planStale ? t('Plan outdated') : '';
         const c = state.control || null;
         let ctxt = '', ccls = 'sub ctrl';
         if (c && c.mode > 0) {
-            if (!c.active) { ctxt = 'Steuerung aus'; }
-            else if (c.mode === 1) { ctxt = 'Simulation'; ccls += ' sim'; }
-            else if (c.manual !== 100) { ctxt = 'Manuell: ' + modeInfo(c.manualId).label; ccls += ' warn'; }
-            else if (c.fallback) { ctxt = 'Fallback'; ccls += ' warn'; }
-            else { ctxt = 'Steuerung aktiv'; }
+            if (!c.active) { ctxt = t('Control off'); }
+            else if (c.mode === 1) { ctxt = t('Simulation'); ccls += ' sim'; }
+            else if (c.manual !== 100) { ctxt = tf('Manual: %s', modeInfo(c.manualId).label); ccls += ' warn'; }
+            else if (c.fallback) { ctxt = t('Fallback'); ccls += ' warn'; }
+            else { ctxt = t('Control active'); }
         }
         const ce = document.getElementById('controlText');
         ce.textContent = ctxt; ce.className = ccls; ce.title = (c && c.result) ? c.result : '';
@@ -185,7 +190,7 @@
         const soc = (state.soc || []).slice().sort((a, b) => a.ts - b.ts);
         const price = (state.price || []).slice().sort((a, b) => a.ts - b.ts);
         if (!instr.length && !soc.length) {
-            const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Noch kein Plan von EOS.'; chart.appendChild(d);
+            const d = document.createElement('div'); d.className = 'empty'; d.textContent = t('No plan from EOS yet.'); chart.appendChild(d);
             return;
         }
 
@@ -208,7 +213,7 @@
         const priceH = hasPrice ? plotH - socH - panelGap : 0;
         const x = ts => padL + (ts - t0) / (t1 - t0) * (W - padL - padR);
 
-        const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': 'EOS Fahrplan' }, chart);
+        const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', 'aria-label': t('EOS schedule') }, chart);
         const defs = el('defs', {}, svg);
         const pat = el('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(135)' }, defs);
         el('rect', { width: 6, height: 6, fill: 'transparent' }, pat);
@@ -282,7 +287,7 @@
         if (now >= t0 && now <= t1) {
             const g = el('g', { class: 'now' }, svg);
             el('line', { x1: x(now), x2: x(now), y1: plotTop, y2: plotTop + plotH }, g); // below the band, not through its labels
-            const tx = el('text', { x: x(now) + 3, y: plotTop + 9 }, g); tx.textContent = 'jetzt';
+            const tx = el('text', { x: x(now) + 3, y: plotTop + 9 }, g); tx.textContent = t('now');
         }
 
         // ---- hover layer (crosshair + one tooltip for every series)
@@ -306,7 +311,7 @@
             const head = document.createElement('div'); head.textContent = fmtDay(snapped) + ' ' + fmtTime(snapped); head.style.opacity = '.75'; tip.appendChild(head);
             if (m) { const r = document.createElement('div'); r.className = 'row'; const sw = document.createElement('s'); sw.style.color = css(modeInfo(m.mode).color); r.appendChild(sw); const b = document.createElement('b'); b.textContent = modeInfo(m.mode).label + (m.factor > 0 && m.factor < 1 ? ' ' + Math.round(m.factor * 100) + ' %' : ''); r.appendChild(b); tip.appendChild(r); }
             if (s) { const r = document.createElement('div'); r.className = 'row'; const sw = document.createElement('s'); sw.style.color = css('--soc'); r.appendChild(sw); const b = document.createElement('b'); b.textContent = Math.round(s.v) + ' %'; r.appendChild(b); r.appendChild(document.createTextNode(' SoC')); tip.appendChild(r); dotS.setAttribute('cx', xs); dotS.setAttribute('cy', ySoc(s.v)); dotS.setAttribute('visibility', 'visible'); }
-            if (p && hasPrice) { const r = document.createElement('div'); r.className = 'row'; const sw = document.createElement('s'); sw.style.color = css('--price'); r.appendChild(sw); const b = document.createElement('b'); b.textContent = (p.v * 100).toFixed(1) + ' ct/kWh'; r.appendChild(b); r.appendChild(document.createTextNode(' Preis')); tip.appendChild(r); }
+            if (p && hasPrice) { const r = document.createElement('div'); r.className = 'row'; const sw = document.createElement('s'); sw.style.color = css('--price'); r.appendChild(sw); const b = document.createElement('b'); b.textContent = (p.v * 100).toFixed(1) + ' ct/kWh'; r.appendChild(b); r.appendChild(document.createTextNode(' ' + t('Price'))); tip.appendChild(r); }
             tip.style.display = 'block';
             const tw = tip.offsetWidth;
             tip.style.left = Math.min(Math.max(0, px - tw / 2), W - tw) + 'px';
@@ -330,13 +335,13 @@
             c.appendChild(i); c.appendChild(document.createTextNode(info.label)); legend.appendChild(c);
         });
         if (soc.length > 1) { const c = document.createElement('span'); c.className = 'chip'; const l = document.createElement('span'); l.className = 'ln'; l.style.borderColor = css('--soc'); c.appendChild(l); c.appendChild(document.createTextNode('SoC')); legend.appendChild(c); }
-        if (hasPrice) { const c = document.createElement('span'); c.className = 'chip'; const l = document.createElement('span'); l.className = 'ln'; l.style.borderColor = css('--price'); c.appendChild(l); c.appendChild(document.createTextNode('Preis')); legend.appendChild(c); }
+        if (hasPrice) { const c = document.createElement('span'); c.className = 'chip'; const l = document.createElement('span'); l.className = 'ln'; l.style.borderColor = css('--price'); c.appendChild(l); c.appendChild(document.createTextNode(t('Price'))); legend.appendChild(c); }
 
         // ---- table view (accessibility; visually offscreen)
         const table = document.getElementById('table');
         table.textContent = '';
         const th = document.createElement('tr');
-        ['Zeit', 'Modus', 'Faktor'].forEach(h => { const c = document.createElement('th'); c.textContent = h; th.appendChild(c); });
+        [t('Time'), t('Mode'), t('Factor')].forEach(h => { const c = document.createElement('th'); c.textContent = h; th.appendChild(c); });
         table.appendChild(th);
         instr.forEach(i => { const tr = document.createElement('tr'); [fmtTime(i.ts), modeInfo(i.mode).label, String(i.factor)].forEach(v => { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }); table.appendChild(tr); });
     }

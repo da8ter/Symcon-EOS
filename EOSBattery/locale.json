@@ -138,7 +138,25 @@
             "SoC source value %s is out of range; not sent to EOS": "SoC source value %s is out of range; not sent to EOS",
             "SoC source not updated for more than %d minutes; not sent to EOS": "SoC source not updated for more than %d minutes; not sent to EOS",
             "SoC push works again": "SoC push works again",
-            "Max. age of the SoC source (min), 0 = off": "Max. age of the SoC source (min), 0 = off"
+            "Max. age of the SoC source (min), 0 = off": "Max. age of the SoC source (min), 0 = off",
+            "No plan": "No plan",
+            "from %s: %s": "from %s: %s",
+            "Plan outdated": "Plan outdated",
+            "Control off": "Control off",
+            "Simulation": "Simulation",
+            "Manual: %s": "Manual: %s",
+            "Fallback": "Fallback",
+            "No plan from EOS yet.": "No plan from EOS yet.",
+            "EOS schedule": "EOS schedule",
+            "now": "now",
+            "Price": "Price",
+            "Time": "Time",
+            "Mode": "Mode",
+            "SoC %.0f %% is at or above the maximum SoC while EOS plans %s.": "SoC %.0f %% is at or above the maximum SoC while EOS plans %s.",
+            "SoC %.0f %% is at or below the minimum SoC while EOS plans %s.": "SoC %.0f %% is at or below the minimum SoC while EOS plans %s.",
+            "The SoC limits in EOS and Symcon probably differ; the instance form shows the comparison.": "The SoC limits in EOS and Symcon probably differ; the instance form shows the comparison.",
+            "The EOS plan contains no instructions for %s": "The EOS plan contains no instructions for %s",
+            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon"
         },
         "de": {
             "EOS Battery": "EOS Batterie",
@@ -306,7 +324,25 @@
             "SoC source value %s is out of range; not sent to EOS": "SoC-Quellwert %s liegt außerhalb des gültigen Bereichs; nicht an EOS gesendet",
             "SoC source not updated for more than %d minutes; not sent to EOS": "SoC-Quelle seit mehr als %d Minuten nicht aktualisiert; nicht an EOS gesendet",
             "SoC push works again": "SoC-Push funktioniert wieder",
-            "Max. age of the SoC source (min), 0 = off": "Höchstalter der SoC-Quelle (min), 0 = aus"
+            "Max. age of the SoC source (min), 0 = off": "Höchstalter der SoC-Quelle (min), 0 = aus",
+            "No plan": "Kein Plan",
+            "from %s: %s": "ab %s: %s",
+            "Plan outdated": "Plan veraltet",
+            "Control off": "Steuerung aus",
+            "Simulation": "Simulation",
+            "Manual: %s": "Manuell: %s",
+            "Fallback": "Fallback",
+            "No plan from EOS yet.": "Noch kein Plan von EOS.",
+            "EOS schedule": "EOS-Fahrplan",
+            "now": "jetzt",
+            "Price": "Preis",
+            "Time": "Zeit",
+            "Mode": "Modus",
+            "SoC %.0f %% is at or above the maximum SoC while EOS plans %s.": "SoC %.0f %% liegt auf oder über dem maximalen SoC, EOS plant aber %s.",
+            "SoC %.0f %% is at or below the minimum SoC while EOS plans %s.": "SoC %.0f %% liegt auf oder unter dem minimalen SoC, EOS plant aber %s.",
+            "The SoC limits in EOS and Symcon probably differ; the instance form shows the comparison.": "Die SoC-Grenzen in EOS und Symcon weichen vermutlich ab; das Instanzformular zeigt den Vergleich.",
+            "The EOS plan contains no instructions for %s": "Der EOS-Plan enthält keine Anweisungen für %s",
+            "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "Der EOS-Plan ist %d s in die Zukunft datiert (generated_at); Uhren von EOS-Rechner und Symcon prüfen"
         }
     }
 }

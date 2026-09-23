@@ -307,7 +307,7 @@ class EOSAppliance extends IPSModuleStrict
             // e.g. Symcon restarted hours after the planned start: do not start late.
             $key = $executionTime . '|' . $modeId;
             if ($this->ReadAttributeString('MissedStartWarned') !== $key) {
-                $this->LogMessage(sprintf('Planned start of %s at %s missed (grace period), not starting', $this->ReadPropertyString('DeviceID'), date('H:i', $ts)), KL_WARNING);
+                $this->LogMessage(sprintf($this->Translate('Planned start of %s at %s missed (grace period over), not starting'), $this->ReadPropertyString('DeviceID'), date('H:i', $ts)), KL_WARNING);
                 $this->WriteAttributeString('MissedStartWarned', $key);
             }
             return $this->desiredAppliance(false, false, $id, $executionTime, $this->Translate('start missed (grace period)'), 'RUN');

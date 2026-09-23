@@ -123,4 +123,20 @@ check($sv->variables['NextChange']['setCount'] === $sets && $pushes() === [], 'K
 unset($GLOBALS['objects'][1011]);
 setClock(null);
 
+// ---------------------------------------------------------------- tile texts (K27)
+echo "== Kachel-Texte\n";
+$de = json_decode((string) file_get_contents(__DIR__ . '/../EOSBattery/locale.json'), true)['translations']['de'];
+$tile = new class(1020) extends EOSBattery {
+    public array $de = [];
+    protected function Translate(string $text): string { return $this->de[$text] ?? $text; }
+};
+$tile->de = $de; $tile->Create();
+$html = $tile->GetVisualizationTile();
+preg_match('/const I18N = (\{.*?\});/', $html, $m);
+$i18n = json_decode($m[1] ?? 'null', true);
+check(is_array($i18n) && ($i18n['Locked'] ?? '') === 'Gesperrt' && ($i18n['from %s: %s'] ?? '') === 'ab %s: %s' && !str_contains($html, 'const I18N = {};'), 'K27: the tile receives its texts translated');
+$source = (string) file_get_contents(__DIR__ . '/../EOSBattery/module.html');
+preg_match_all("/\\btf?\\('((?:[^'\\\\]|\\\\.)*)'/", $source, $keys);
+check(count($keys[1]) > 20 && array_diff($keys[1], array_keys($de)) === [] && !preg_match('/Gesperrt|Steuerung|jetzt|Preis|de-DE/', $source), 'K27: every tile text has a German translation and none is hard-coded');
+
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

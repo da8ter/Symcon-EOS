@@ -294,8 +294,8 @@ class EOSServer extends IPSModuleStrict
             }
             return;
         }
-        $this->setServerError('optimize: ' . (string) $res['error']);
-        $this->LogMessage('EOS optimize failed: ' . (string) $res['error'], KL_WARNING);
+        $this->setServerError(sprintf($this->Translate('Optimization: %s'), (string) $res['error']));
+        $this->LogMessage(sprintf($this->Translate('EOS optimization failed: %s'), (string) $res['error']), KL_WARNING);
     }
 
     public function GetDashboardURL(): string
