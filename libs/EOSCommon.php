@@ -7,10 +7,10 @@ declare(strict_types=1);
  * tables, ISO-8601 time handling and presentation builders.
  */
 if (!class_exists('EOSClock')) {
-    /** Single time source of the library. Symcon never sets it; the test bench pins it. */
+    /** Single time source of the library. Symcon never sets it; the test bench pins it (fractions allowed). */
     final class EOSClock
     {
-        public static ?int $now = null;
+        public static int|float|null $now = null;
     }
 }
 
@@ -95,7 +95,13 @@ if (!trait_exists('EOSCommon')) {
         /** Current unix time; every time decision of the library goes through here. */
         protected function eosNow(): int
         {
-            return EOSClock::$now ?? time();
+            return EOSClock::$now !== null ? (int) floor(EOSClock::$now) : time();
+        }
+
+        /** Current time with fractions of a second, for arming timers exactly. */
+        protected function eosNowFloat(): float
+        {
+            return EOSClock::$now !== null ? (float) EOSClock::$now : microtime(true);
         }
 
         /** Parse an ISO-8601 string with offset (as EOS sends it) into a unix timestamp; 0 on failure. */

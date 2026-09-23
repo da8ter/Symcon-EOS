@@ -212,6 +212,7 @@ check(writesTo(40) === [false], 'OFF with AllowStop writes enable=false');
 
 // ---------------------------------------------------------------- T12 heartbeat respects the backoff (review round 2)
 echo "== Heartbeat und Backoff\n";
+setClock($now);
 $m = battery(2); $m->properties['HeartbeatSeconds'] = 30; $m->ApplyChanges(); $m->fireOnce(); resetWorld();
 $GLOBALS['world'][21]['fail'] = true;
 $eos->instructions = []; $eos->instruction('battery1', $now - 5, 'FORCED_CHARGE', 1.0); $eos->freshPlan($now - 30); $m->RefreshPlan(); $m->fireOnce();
@@ -223,6 +224,9 @@ check(writesTo(20) === ['now'] && writesTo(23) === [false] && writesTo(21) === [
 resetWorld(); setClock($now + 100);
 $m->Dispatch();
 check(lastSent($m)['targets']['ChargePowerW']['fail'] === 2, 'after the 60 s backoff the failed value is retried');
+resetWorld(); setClock($now + 130.8);
+$m->Dispatch();
+check(writesTo(20) === ['now'] && $m->timers['Retry']['ms'] === 29700, 'K48: the next heartbeat is counted from when the timer is armed, so fractions of a second do not add up (live 30/31 s): ' . $m->timers['Retry']['ms']);
 setClock(null);
 $GLOBALS['world'][21]['fail'] = false;
 

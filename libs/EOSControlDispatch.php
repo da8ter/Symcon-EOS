@@ -124,7 +124,7 @@ if (!trait_exists('EOSControlDispatch')) {
                     $this->WriteAttributeString('LastSent', json_encode($last));
                     $this->recordResult('[' . (string) ($desired['source'] ?? 'plan') . '] ' . $this->Translate('nothing to write') . ($degraded !== '' ? ' · ' . $degraded : ''), false);
                 }
-                $this->armRetryTimer($last, $plan['resolved'], $now);
+                $this->armRetryTimer($last, $plan['resolved']);
                 return;
             }
             $source = (string) ($desired['source'] ?? 'plan');
@@ -251,7 +251,7 @@ if (!trait_exists('EOSControlDispatch')) {
             if ($durationMs > self::SLOW_WRITE_MS) {
                 $this->LogMessage(sprintf($this->Translate('Control writes took %d ms - consider a script binding for slow devices'), $durationMs), KL_WARNING);
             }
-            $this->armRetryTimer($lastNew, $plan['resolved'], $now);
+            $this->armRetryTimer($lastNew, $plan['resolved']);
             if (!$sim) {
                 $outcome['success'] = $this->deviceSideOk($outcome);
                 $this->onDispatched($desired, $outcome);
@@ -282,7 +282,7 @@ if (!trait_exists('EOSControlDispatch')) {
          * per-target heartbeats, the mode-row and change-action retries. Armed on absolute due
          * times, so re-arming from every dispatch cannot starve it.
          */
-        protected function armRetryTimer(array $last, array $resolved, int $now): void
+        protected function armRetryTimer(array $last, array $resolved): void
         {
             $due = [];
             $heartbeatSeconds = $this->heartbeatSeconds();
@@ -307,8 +307,10 @@ if (!trait_exists('EOSControlDispatch')) {
                 $this->SetTimerInterval('Retry', 0);
                 return;
             }
-            $delay = max(1, min($due) - $now);
-            $this->SetTimerInterval('Retry', min(3600, $delay) * 1000 + 500);
+            // Counted from this moment, not from the second the dispatch started: writes take time, and
+            // SetTimerInterval starts counting when it is called, so whole seconds would add up per cycle.
+            $delayMs = (int) round((min($due) - $this->eosNowFloat()) * 1000);
+            $this->SetTimerInterval('Retry', min(3600000, max(1000, $delayMs)) + 500);
         }
     }
 }

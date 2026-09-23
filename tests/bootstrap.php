@@ -259,8 +259,8 @@ $GLOBALS['eos'] = new FakeEOS();
 
 function sdkLive(): bool { return $GLOBALS['sdkMode'] === 'live'; }
 function sdkWarn(string $message): void { trigger_error($message, E_USER_WARNING); }
-function setClock(?int $ts): void { EOSClock::$now = $ts; }
-function nowTs(): int { return EOSClock::$now ?? time(); }
+function setClock(int|float|null $ts): void { EOSClock::$now = $ts; }
+function nowTs(): int { return EOSClock::$now !== null ? (int) floor(EOSClock::$now) : time(); }
 
 function worldVar(int $id, int $type, mixed $value, bool $actionable = true, bool $fail = false): void
 {
