@@ -289,5 +289,20 @@ check($y->status === IS_ACTIVE && isset($be->live['devices']['home_appliances'][
 drop(1400, 1401);
 $GLOBALS['registry'] = false;
 
+// ---------------------------------------------------------------- final check: unsaved values are compared with what EOS holds
+echo "== Abschluss: ungespeicherte Werte mit Wert\n";
+eosLoad(['batteries' => ['battery1' => BAT], 'inverters' => INV, 'max_batteries' => 1]);
+$uv = batteryAt(1390); $uv->ApplyChanges();
+$be->saveFails = true;
+$uv->properties['CapacityWh'] = 12000; $uv->ApplyChanges();   // written, not saved
+$uv->properties['CapacityWh'] = 13000; $uv->ApplyChanges();   // a second edit: a plain change, not a conflict
+$second = (int) eosField('devices/batteries/battery1/capacity_wh');
+$uv->properties['CapacityWh'] = 12000; $uv->ApplyChanges();   // taken back
+$be->saveFails = false; $be->live = $be->file; $be->runtime = []; // EOS restart: 10000 again
+$uv->ApplyChanges();
+check($second === 13000 && (int) eosField('devices/batteries/battery1/capacity_wh') === 12000 && (int) ($be->file['devices']['batteries']['battery1']['capacity_wh'] ?? 0) === 12000,
+    'final: unsaved edits stay plain changes, and after an EOS restart the last Symcon value is written and saved: second ' . $second . ', now ' . json_encode(eosField('devices/batteries/battery1/capacity_wh')));
+drop(1390);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

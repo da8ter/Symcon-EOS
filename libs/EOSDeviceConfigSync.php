@@ -113,21 +113,29 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 return $this->createDeviceEntry($id, $device, $merge, $previousId);
             }
             $base = $this->syncedBase($id) ?? $this->adoptionBase($device, $eos);
-            $class = $this->classifyConfig($device, $eos, $base);
+            // Written earlier but not in EOS.config.json: EOS holds it until it restarts. Compared with what EOS
+            // holds, a new Symcon edit is a plain change; after a restart the stored base makes it a write again.
+            $synced = $this->syncedState();
+            $unsaved = (($synced['id'] ?? '') === $id && is_array($synced['unsaved'] ?? null) && !array_is_list($synced['unsaved'])) ? $synced['unsaved'] : [];
+            $classBase = $base;
+            foreach ($unsaved as $key => $value) {
+                if (array_key_exists($key, $device) && $this->valuesEqual((string) $key, $eos[$key] ?? null, $value)) {
+                    $classBase[$key] = $value;
+                }
+            }
+            $class = $this->classifyConfig($device, $eos, $classBase);
             if ($force) {
                 $class['push'] = array_merge($class['push'], $class['eos'], $class['conflict']);
                 $class['eos'] = $class['conflict'] = [];
             }
-            // Written earlier but not in EOS.config.json yet: equal in EOS now, still not a common state.
-            $synced = $this->syncedState();
-            $unsaved = (($synced['id'] ?? '') === $id && is_array($synced['unsaved'] ?? null)) ? $synced['unsaved'] : [];
+            // Equal in EOS but still unsaved is no common state yet: the base moves only after a save.
             $newBase = $base;
             foreach ($class['same'] as $key) {
-                if (!in_array($key, $unsaved, true)) {
+                if (!array_key_exists($key, $unsaved)) {
                     $newBase[$key] = $device[$key];
                 }
             }
-            $pending = array_values(array_intersect($class['same'], $unsaved));
+            $pending = array_values(array_intersect($class['same'], array_map('strval', array_keys($unsaved))));
             if ($class['push'] !== []) {
                 if (!$this->writeConfigKeys($id, $device, $class['push'], $eos)) {
                     return false;
@@ -148,7 +156,9 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                     }
                 } else {
                     // Not in EOS.config.json: an EOS restart would drop it. The base stays and the save is retried.
-                    $unsavedNext = $pending;
+                    foreach ($pending as $key) {
+                        $unsavedNext[$key] = $device[$key];
+                    }
                     if ($class['push'] !== []) {
                         $this->LogMessage(sprintf($this->Translate('Device configuration written to EOS but not saved (%s); it is written again with the next Apply'), implode(', ', $class['push'])), KL_WARNING);
                     }
