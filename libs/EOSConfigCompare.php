@@ -45,7 +45,52 @@ if (!trait_exists('EOSConfigCompare')) {
             if (str_ends_with($key, '_w') && is_numeric($eos) && is_numeric($ours)) {
                 return abs((float) $eos - (float) $ours) < 1.0; // integer form fields vs. float in EOS (3680.5 W)
             }
+            if ($key === 'time_windows') {
+                return $this->normalizedWindows($eos) === $this->normalizedWindows($ours);
+            }
             return $this->configEquals($eos, $ours);
+        }
+
+        /**
+         * Time windows compared in full: a restriction EOSdash added (day_of_week, date, locale)
+         * is a difference even when Symcon never had the key, because a write replaces the list.
+         */
+        private function normalizedWindows(mixed $value): array
+        {
+            $windows = is_array($value) ? ($value['windows'] ?? (array_is_list($value) ? $value : [])) : [];
+            $clock = static fn (string $t): string => preg_match('/^(\d{1,2}):(\d\d)(?::(\d\d)(?:\.\d+)?)?$/', trim($t), $m) === 1
+                ? sprintf('%02d:%02d:%02d', (int) $m[1], (int) $m[2], (int) ($m[3] ?? 0)) : trim($t);
+            $optional = static fn (mixed $v): mixed => ($v === null || $v === '') ? null : (is_numeric($v) ? (int) $v : strtolower(trim((string) $v)));
+            $out = [];
+            foreach (is_array($windows) ? $windows : [] as $w) {
+                $duration = trim((string) ($w['duration'] ?? ''));
+                $out[] = [$clock((string) ($w['start_time'] ?? '')), $this->durationSeconds($duration) ?? $duration,
+                    $optional($w['day_of_week'] ?? null), $optional($w['date'] ?? null), $optional($w['locale'] ?? null)];
+            }
+            return $out;
+        }
+
+        /** Seconds of a duration in any notation EOS reads or writes ("90 minutes", "1 hour 30 minutes", "PT1H30M", "01:30", 5400); null if unknown. */
+        private function durationSeconds(string $duration): ?int
+        {
+            if (is_numeric($duration)) {
+                return (int) round((float) $duration);
+            }
+            if (preg_match('/^(\d{1,3}):(\d\d)(?::(\d\d))?$/', $duration, $m) === 1) {
+                return (int) $m[1] * 3600 + (int) $m[2] * 60 + (int) ($m[3] ?? 0);
+            }
+            if (preg_match('/^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i', $duration, $m) === 1 && $duration !== 'P') {
+                return (int) ($m[1] ?? 0) * 604800 + (int) ($m[2] ?? 0) * 86400 + (int) ($m[3] ?? 0) * 3600 + (int) ($m[4] ?? 0) * 60 + (int) ($m[5] ?? 0);
+            }
+            $units = ['w' => 604800, 'd' => 86400, 'h' => 3600, 'm' => 60, 's' => 1];
+            if (preg_match_all('/(\d+(?:\.\d+)?)\s*(weeks?|days?|hours?|hrs?|minutes?|mins?|seconds?|secs?|[wdhms])\b/i', $duration, $parts, PREG_SET_ORDER) === 0) {
+                return null;
+            }
+            $seconds = 0.0;
+            foreach ($parts as $part) {
+                $seconds += (float) $part[1] * $units[strtolower($part[2][0])];
+            }
+            return (int) round($seconds);
         }
 
         /** Structural equality with EOS notation tolerance (extra EOS keys, .000000 times, ISO offsets). */

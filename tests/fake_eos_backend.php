@@ -53,10 +53,10 @@ final class FakeEOSBackend
     public int $measurementMaxAge = 300;
     /** > 0: GET /v1/config/<path> answers with this HTTP error (e.g. 500) */
     public int $getConfigStatus = 0;
-    /** Paths whose GET answers 500; a failing PUT /v1/config/file; EOS notation for durations ("1 hour 30 minutes"). */
+    /** Paths whose GET answers 500; a failing PUT /v1/config/file; EOS notation for durations ("1 hour 30 minutes", as str(Duration) in EOS). */
     public array $failPaths = [];
     public bool $saveFails = false;
-    public bool $normalizeDurations = false;
+    public bool $normalizeDurations = true;
 
     public function __construct()
     {

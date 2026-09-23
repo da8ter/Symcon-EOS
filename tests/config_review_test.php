@@ -96,5 +96,27 @@ check(strtotime((string) eosField('devices/home_appliances/dishwasher1/earliest_
     && array_filter($h->logs, static fn (array $l): bool => str_contains($l[1], 'update failed')) === [], 'R8-12: moving the window past the old deadline writes the deadline first (EOS checks deadline > earliest)');
 drop(1303);
 
+// ---------------------------------------------------------------- R8-2, R8-9: time windows compared in full, durations in any notation
+echo "== Zeitfenster vollständig, Dauern normalisiert\n";
+
+$win = static fn (string $start, string $duration, array $extra = []): array => ['windows' => [['start_time' => $start, 'duration' => $duration] + $extra]];
+eosLoad(['home_appliances' => ['dishwasher1' => HA + ['time_windows' => $win('08:00', '2 hours', ['day_of_week' => 1])]], 'max_home_appliances' => 1]);
+$w = applianceAt(1310, ['TimeWindows' => json_encode([['start_time' => '08:00', 'duration' => '2 hours']])]);
+$w->ApplyChanges(); // first sync after the update: EOSdash restricted the window to Mondays
+$w->properties['TimeWindows'] = json_encode([['start_time' => '08:00', 'duration' => '3 hours']]); $w->ApplyChanges();
+check((eosField('devices/home_appliances/dishwasher1/time_windows')['windows'][0]['day_of_week'] ?? null) === 1,
+    'R8-2: a window EOSdash restricted to a weekday is not replaced by a Symcon edit that lacks it (conflict, nothing written): ' . json_encode(eosField('devices/home_appliances/dishwasher1/time_windows')));
+drop(1310);
+
+eosLoad(['home_appliances' => ['dishwasher1' => HA], 'max_home_appliances' => 1]);
+$w = applianceAt(1311, ['TimeWindows' => json_encode([['start_time' => '08:00', 'duration' => '90 minutes']])]);
+$w->ApplyChanges();
+$stored = eosField('devices/home_appliances/dishwasher1/time_windows')['windows'][0]['duration'] ?? null;
+$w->properties['TimeWindows'] = json_encode([['start_time' => '09:00', 'duration' => '90 minutes']]); $be->calls = []; $w->ApplyChanges();
+check($stored === '1 hour 30 minutes' && (eosField('devices/home_appliances/dishwasher1/time_windows')['windows'][0]['start_time'] ?? null) === '09:00:00.000000',
+    'R8-9: "90 minutes" and EOS\'s "1 hour 30 minutes" are the same duration: a later window edit is written, not a conflict: ' . json_encode(eosField('devices/home_appliances/dishwasher1/time_windows')));
+drop(1311);
+
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
