@@ -84,6 +84,15 @@ if (!trait_exists('EOSConfigFormValues')) {
                 $l[$prop] = array_map(static fn ($k): array => ['key' => (string) $k], is_array($keys) ? $keys : []);
             }
 
+            $inverters = $g($c, ['devices', 'inverters'], []);
+            if (is_array($inverters) && $inverters !== []) {
+                $inv = reset($inverters);
+                $s['InverterID'] = (string) key($inverters);
+                $s['InverterMaxPowerW'] = (int) round((float) ($inv['max_power_w'] ?? 0));
+                $s['InverterMaxAcChargePowerW'] = (int) round((float) ($inv['max_ac_charge_power_w'] ?? 0));
+                $s['InverterAcToDcEfficiency'] = (float) ($inv['ac_to_dc_efficiency'] ?? 1.0);
+                $s['InverterDcToAcEfficiency'] = (float) ($inv['dc_to_ac_efficiency'] ?? 1.0);
+            }
             return ['scalar' => $s, 'list' => $l];
         }
 

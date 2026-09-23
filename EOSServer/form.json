@@ -9,7 +9,7 @@
                 { "type": "ValidationTextBox", "name": "Host", "caption": "Host" },
                 { "type": "NumberSpinner", "name": "Port", "caption": "Port", "minimum": 1, "maximum": 65535 },
                 { "type": "NumberSpinner", "name": "Timeout", "caption": "Request timeout (s)", "minimum": 1, "maximum": 120, "suffix": " s" },
-                { "type": "NumberSpinner", "name": "HealthInterval", "caption": "Health poll interval (s)", "minimum": 0, "maximum": 3600, "suffix": " s" },
+                { "type": "NumberSpinner", "name": "HealthInterval", "caption": "Health poll interval (s)", "minimum": 10, "maximum": 3600, "suffix": " s" },
                 { "type": "NumberSpinner", "name": "PlanRefreshInterval", "caption": "Plan refresh interval (s)", "minimum": 0, "maximum": 86400, "suffix": " s" },
                 { "type": "ValidationTextBox", "name": "ExpectedVersion", "caption": "Expected EOS version (prefix)" },
                 { "type": "CheckBox", "name": "Active", "caption": "Active" }
@@ -30,6 +30,7 @@
                     ]
                 },
                 { "type": "Label", "name": "ConfigInfo", "caption": " " },
+                { "type": "Label", "name": "ConfigCheck", "caption": " " },
                 {
                     "type": "ExpansionPanel",
                     "caption": "Location and general",
@@ -209,6 +210,18 @@
                         { "type": "PasswordTextBox", "name": "PvNodeApiKey", "caption": "pvnode API key" },
                         { "type": "ValidationTextBox", "name": "PvNodeSiteId", "caption": "pvnode site ID" },
                         { "type": "NumberSpinner", "name": "PvNodeForecastDays", "caption": "pvnode forecast days", "minimum": 1, "maximum": 7 }
+                    ]
+                },
+                {
+                    "type": "ExpansionPanel",
+                    "caption": "Inverter",
+                    "items": [
+                        { "type": "Label", "caption": "GENETIC needs exactly one inverter; its battery_id is set to the battery instance connected to this server. 0 W = the inverter is maintained in EOSdash." },
+                        { "type": "ValidationTextBox", "name": "InverterID", "caption": "Inverter ID in EOS", "validate": "^[A-Za-z][A-Za-z0-9_-]*$" },
+                        { "type": "NumberSpinner", "name": "InverterMaxPowerW", "caption": "Max. power (W), 0 = not managed", "minimum": 0, "maximum": 100000, "suffix": " W" },
+                        { "type": "NumberSpinner", "name": "InverterMaxAcChargePowerW", "caption": "Max. AC charge power (W), 0 = like max. power", "minimum": 0, "maximum": 100000, "suffix": " W" },
+                        { "type": "NumberSpinner", "name": "InverterAcToDcEfficiency", "caption": "AC to DC efficiency", "digits": 2, "minimum": 0.5, "maximum": 1 },
+                        { "type": "NumberSpinner", "name": "InverterDcToAcEfficiency", "caption": "DC to AC efficiency", "digits": 2, "minimum": 0.5, "maximum": 1 }
                     ]
                 },
                 {

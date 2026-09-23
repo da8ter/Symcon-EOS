@@ -209,9 +209,8 @@ class EOSMeter extends IPSModuleStrict
                 $this->SendDebug('ImportHistory', 'variable ' . $meter['variable'] . ' is not logged', 0);
                 continue;
             }
-            $values = AC_GetLoggedValues($archive, $meter['variable'], $start, $end, 0);
             $samples = [];
-            foreach ($values as $v) {
+            foreach ($this->loggedValues($archive, $meter['variable'], $start, $end) as $v) {
                 $samples[] = [
                     'date_time' => $this->eosIsoNow((int) $v['TimeStamp']),
                     'key'       => $meter['key'],
@@ -235,6 +234,25 @@ class EOSMeter extends IPSModuleStrict
     }
 
     // ------------------------------------------------------------------ internals
+
+    /**
+     * All logged rows of $start..$end. AC_GetLoggedValues returns at most 10000 rows,
+     * newest first: page backwards from the oldest row of each full page.
+     */
+    private function loggedValues(int $archive, int $varId, int $start, int $end): array
+    {
+        $rows = [];
+        $to = $end;
+        do {
+            $page = AC_GetLoggedValues($archive, $varId, $start, $to, 0);
+            $rows = array_merge($rows, $page);
+            if (count($page) < 10000) {
+                break;
+            }
+            $to = min(array_map(static fn (array $r): int => (int) $r['TimeStamp'], $page)) - 1;
+        } while ($to >= $start);
+        return $rows;
+    }
 
     /** @return array<int, array{variable:int, key:string, category:string, unit:int}> */
     private function meters(): array

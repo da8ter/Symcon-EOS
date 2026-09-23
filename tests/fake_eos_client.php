@@ -496,10 +496,32 @@ final class FakeEOSBackend
         return $this->solution !== null ? $this->result(true, 200, $this->solution, null) : $this->problem(404, 'Not Found', 'Did not find solution.', '/v1/energy-management/optimization/solution');
     }
 
-    public function optimize(): array
+    /** true: the run takes longer than the client waits (the client sees curl error 28). */
+    public bool $optimizeSlow = false;
+
+    public function optimize(int $timeoutSec = 600): array
     {
-        $this->calls[] = ['POST', '/v1/optimize'];
-        return $this->unreachable() ?? $this->result(true, 200, ['ok' => true], null);
+        $this->calls[] = ['POST', '/v1/optimize', $timeoutSec];
+        if (($down = $this->unreachable()) !== null) {
+            return $down;
+        }
+        return $this->optimizeSlow
+            ? $this->result(false, 0, null, 'Operation timed out after ' . ($timeoutSec * 1000) . ' milliseconds with 0 bytes received', 28)
+            : $this->result(true, 200, ['ok' => true], null);
+    }
+
+    /** Raw JSON text: device maps stay objects, also when empty (as EOS sends them). */
+    public function getConfigRaw(string $path): array
+    {
+        $res = $path === '' ? $this->getConfig() : $this->getConfigPath($path);
+        if (!$res['ok']) {
+            return $res;
+        }
+        $data = $res['data'];
+        if ($data === [] && preg_match('#^devices/(batteries|electric_vehicles|inverters|home_appliances)$#', $path) === 1) {
+            $data = new stdClass();
+        }
+        return $this->result(true, 200, (string) json_encode($data, JSON_UNESCAPED_SLASHES), null);
     }
 }
 
@@ -526,14 +548,15 @@ if (!class_exists('EOSClient')) {
         public function getPlan(): array { return $this->b()->getPlan(); }
         public function getSolution(): array { return $this->b()->getSolution(); }
         public function getSolutionNative(string $algorithm = 'GENETIC'): array { return $this->b()->getSolution(); }
-        public function optimize(): array { return $this->b()->optimize(); }
+        public function optimize(int $timeoutSec = self::OPTIMIZE_TIMEOUT): array { return $this->b()->optimize($timeoutSec); }
+        public function getConfigRaw(string $path): array { return $this->b()->getConfigRaw($path); }
         public function putMeasurementValue(string $key, float $value, string $isoDatetime): array { return $this->b()->putMeasurementValue($key, $value, $isoDatetime); }
         public function putMeasurementData(array $data): array { return $this->b()->putMeasurementData($data); }
         public function putMeasurementSamples(array $samples): array { return $this->b()->putMeasurementSamples($samples); }
         public function getMeasurementKeys(): array { return $this->b()->getMeasurementKeys(); }
         public function getConfig(): array { return $this->b()->getConfig(); }
         public function getConfigPath(string $path): array { return $this->b()->getConfigPath($path); }
-        public function putConfig(mixed $merge): array { return $this->b()->putConfig($merge); }
+        public function putConfig(array|object $merge): array { return $this->b()->putConfig($merge); }
         public function putConfigPath(string $path, mixed $value): array { return $this->b()->putConfigPath($path, $value); }
         public function saveConfigFile(): array { return $this->b()->saveConfigFile(); }
         public function resetConfig(): array { return $this->b()->resetConfig(); }

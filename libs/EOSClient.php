@@ -9,8 +9,10 @@ declare(strict_types=1);
  * All modules run in the same PHP worker, hence the class_exists guard.
  *
  * Every call returns the same shape:
- *   ['ok' => bool, 'status' => int, 'data' => mixed, 'error' => ?string]
- * where `error` carries the `detail` field of an EOS problem response if present.
+ *   ['ok' => bool, 'status' => int, 'data' => mixed, 'error' => ?string, 'errno' => int]
+ * where `error` carries the `detail` field of an EOS problem response if present and
+ * `errno` the curl error number for transport failures (status 0; 7 = no connection,
+ * 28 = timeout).
  */
 if (!class_exists('EOSClient')) {
     class EOSClient
@@ -76,9 +78,10 @@ if (!class_exists('EOSClient')) {
             return $this->request('GET', '/v1/energy-management/optimization/solution/' . rawurlencode($algorithm));
         }
 
-        public function optimize(): array
+        /** POST /v1/optimize waits for the whole run; a short $timeoutSec only starts it (EOS keeps running). */
+        public function optimize(int $timeoutSec = self::OPTIMIZE_TIMEOUT): array
         {
-            return $this->request('POST', '/v1/optimize', [], new stdClass(), self::OPTIMIZE_TIMEOUT);
+            return $this->request('POST', '/v1/optimize', [], new stdClass(), $timeoutSec);
         }
 
         // ---------------------------------------------------------------- measurements
@@ -161,8 +164,14 @@ if (!class_exists('EOSClient')) {
             return $this->request('GET', '/v1/config/' . $this->encodePath($path));
         }
 
-        /** Merge a partial settings object into the running configuration. */
-        public function putConfig(array $merge): array
+        /** The configuration (or a path of it) as the raw JSON text EOS sent: "{}" stays "{}". */
+        public function getConfigRaw(string $path): array
+        {
+            return $this->request('GET', '/v1/config' . ($path !== '' ? '/' . $this->encodePath($path) : ''), [], null, null, false, true);
+        }
+
+        /** Merge a partial settings object into the running configuration (objects keep "{}" as "{}"). */
+        public function putConfig(array|object $merge): array
         {
             return $this->request('PUT', '/v1/config', [], $merge);
         }
@@ -188,7 +197,7 @@ if (!class_exists('EOSClient')) {
          * @param mixed $body      Encoded as JSON when not null. Pass new stdClass() for `{}`.
          * @param bool  $rawValue  When true the body is a bare JSON value (config path PUT), not an object.
          */
-        public function request(string $method, string $path, array $query = [], mixed $body = null, ?int $timeout = null, bool $rawValue = false): array
+        public function request(string $method, string $path, array $query = [], mixed $body = null, ?int $timeout = null, bool $rawValue = false, bool $rawResponse = false): array
         {
             $url = $this->baseUrl . $path;
             if ($query !== []) {
@@ -226,11 +235,16 @@ if (!class_exists('EOSClient')) {
             $raw = curl_exec($ch);
             $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
             $curlError = curl_error($ch);
+            $errno = curl_errno($ch);
             unset($ch);
 
             if ($raw === false) {
                 $this->log('error', $method . ' ' . $path . ': ' . $curlError);
-                return $this->result(false, 0, null, $curlError !== '' ? $curlError : 'connection failed');
+                return $this->result(false, 0, null, $curlError !== '' ? $curlError : 'connection failed', $errno);
+            }
+            if ($rawResponse && $status >= 200 && $status < 300) {
+                $this->log('response', $method . ' ' . $path . ' -> ' . $status);
+                return $this->result(true, $status, (string) $raw, null);
             }
 
             $data = null;
@@ -266,9 +280,9 @@ if (!class_exists('EOSClient')) {
             return implode('/', array_map('rawurlencode', $parts));
         }
 
-        private function result(bool $ok, int $status, mixed $data, ?string $error): array
+        private function result(bool $ok, int $status, mixed $data, ?string $error, int $errno = 0): array
         {
-            return ['ok' => $ok, 'status' => $status, 'data' => $data, 'error' => $error];
+            return ['ok' => $ok, 'status' => $status, 'data' => $data, 'error' => $error, 'errno' => $errno];
         }
 
         private function log(string $tag, string $message): void
@@ -278,9 +292,10 @@ if (!class_exists('EOSClient')) {
             }
         }
 
+        /** Cut at a character boundary: a cut inside a multibyte character made the error text invalid UTF-8. */
         private function shorten(string $text, int $max = 300): string
         {
-            return strlen($text) > $max ? substr($text, 0, $max) . '…' : $text;
+            return strlen($text) > $max ? mb_strcut($text, 0, $max, 'UTF-8') . '…' : $text;
         }
     }
 }

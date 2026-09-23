@@ -26,6 +26,12 @@ if (!trait_exists('EOSConfigMapper')) {
         /** Register all configuration properties. Called from Create(). */
         protected function RegisterConfigProperties(): void
         {
+            // inverter (GENETIC needs exactly one; 0 W = not managed by Symcon)
+            $this->RegisterPropertyString('InverterID', 'inv1');
+            $this->RegisterPropertyInteger('InverterMaxPowerW', 0);
+            $this->RegisterPropertyInteger('InverterMaxAcChargePowerW', 0);
+            $this->RegisterPropertyFloat('InverterAcToDcEfficiency', 0.95);
+            $this->RegisterPropertyFloat('InverterDcToAcEfficiency', 0.95);
             // general
             $this->RegisterPropertyFloat('GeneralLatitude', 0.0);
             $this->RegisterPropertyFloat('GeneralLongitude', 0.0);
@@ -229,6 +235,25 @@ if (!trait_exists('EOSConfigMapper')) {
             }
             $this->putIfSet($cfg, 'measurement', $meas);
 
+            // inverter: battery_id is computed at write time from the battery instance on this server
+            if ($this->ReadPropertyInteger('InverterMaxPowerW') > 0) {
+                $invId = trim($this->ReadPropertyString('InverterID')) !== '' ? trim($this->ReadPropertyString('InverterID')) : 'inv1';
+                $inverter = [
+                    'device_id'           => $invId,
+                    'max_power_w'         => (float) $this->ReadPropertyInteger('InverterMaxPowerW'),
+                    'ac_to_dc_efficiency' => $this->ReadPropertyFloat('InverterAcToDcEfficiency'),
+                    'dc_to_ac_efficiency' => $this->ReadPropertyFloat('InverterDcToAcEfficiency'),
+                ];
+                if ($this->ReadPropertyInteger('InverterMaxAcChargePowerW') > 0) {
+                    $inverter['max_ac_charge_power_w'] = (float) $this->ReadPropertyInteger('InverterMaxAcChargePowerW');
+                }
+                $battery = $this->connectedBatteryId();
+                if ($battery !== '') {
+                    $inverter['battery_id'] = $battery;
+                }
+                $cfg['devices'] = ['max_inverters' => 1, 'inverters' => [$invId => $inverter]];
+            }
+
             return $cfg;
         }
 
@@ -320,6 +345,18 @@ if (!trait_exists('EOSConfigMapper')) {
                 $planes[] = $plane;
             }
             return $planes;
+        }
+
+        /** DeviceID of the one battery instance connected to this server; '' when none or several. */
+        protected function connectedBatteryId(): string
+        {
+            $ids = [];
+            foreach (IPS_GetInstanceListByModuleID('{F4B30383-1210-4169-93DA-5C9664447B42}') as $id) {
+                if ((int) IPS_GetInstance($id)['ConnectionID'] === $this->InstanceID) {
+                    $ids[] = (string) IPS_GetProperty($id, 'DeviceID');
+                }
+            }
+            return count($ids) === 1 ? $ids[0] : '';
         }
 
         private function KeysFromProperty(string $property): array

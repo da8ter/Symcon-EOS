@@ -10,18 +10,20 @@ declare(strict_types=1);
 if (!trait_exists('EOSServerConfig')) {
     trait EOSServerConfig
     {
+        /** The configuration (or a path) as EOS sent it; raw text, so an empty map stays "{}". */
         public function GetConfig(string $Path): string
         {
-            $res = $Path === '' ? $this->client()->getConfig() : $this->client()->getConfigPath($Path);
+            $res = $this->client()->getConfigRaw($Path);
             if (!$res['ok']) {
                 $this->SetValue('LastError', 'config ' . $Path . ': ' . (string) $res['error']);
                 return '';
             }
-            return json_encode($res['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return (string) $res['data'];
         }
         public function SetConfig(string $Path, string $ValueJSON): bool
         {
-            $value = json_decode($ValueJSON, true);
+            // Objects stay objects: "{}" must reach EOS as {} (device maps), not as [].
+            $value = json_decode($ValueJSON);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 $value = $ValueJSON;
             }
@@ -67,6 +69,17 @@ if (!trait_exists('EOSServerConfig')) {
                 $this->SetValue('LastError', 'write config: ' . implode(' · ', $this->configErrors));
                 return false;
             }
+            if (isset($merge['devices']['inverters'])) {
+                // GENETIC supports one inverter: never add a second one under another id.
+                $current = $this->client()->getConfigPath('devices/inverters');
+                $others = ($current['ok'] && is_array($current['data'])) ? array_diff(array_map('strval', array_keys($current['data'])), array_keys($merge['devices']['inverters'])) : [];
+                if ($others !== []) {
+                    $message = sprintf($this->Translate('EOS already has inverter %s; set the inverter ID to it (GENETIC supports one). Nothing written.'), implode(', ', $others));
+                    $this->UpdateFormField('ConfigInfo', 'caption', $message);
+                    $this->SetValue('LastError', 'write config: ' . $message);
+                    return false;
+                }
+            }
             if (isset($merge['measurement'])) {
                 // EOS replaces lists: keep the keys registered by the meter instances (and in EOSdash).
                 $current = $this->client()->getConfigPath('measurement');
@@ -94,11 +107,17 @@ if (!trait_exists('EOSServerConfig')) {
             $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('Configuration written to EOS.'));
             return true;
         }
+        /** Location of the Symcon Location Control (property "Location": {"latitude", "longitude"}). */
         public function UseSymconLocation(): void
         {
-            $loc = json_decode(IPS_GetLocation(), true);
-            $lat = (float) ($loc['Latitude'] ?? 0);
-            $lon = (float) ($loc['Longitude'] ?? 0);
+            $ids = IPS_GetInstanceListByModuleID('{45E97A63-F870-408A-B259-2933F7EABF74}');
+            $location = $ids !== [] ? json_decode((string) IPS_GetProperty($ids[0], 'Location'), true) : null;
+            $lat = (float) ($location['latitude'] ?? 0);
+            $lon = (float) ($location['longitude'] ?? 0);
+            if ($lat == 0.0 && $lon == 0.0) {
+                $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('No location set in Symcon (Location Control).'));
+                return;
+            }
             $this->UpdateFormField('GeneralLatitude', 'value', $lat);
             $this->UpdateFormField('GeneralLongitude', 'value', $lon);
             $this->UpdateFormField('ConfigInfo', 'caption', sprintf($this->Translate('Location taken from Symcon: %s / %s. Press Apply to store.'), (string) $lat, (string) $lon));
@@ -118,8 +137,8 @@ if (!trait_exists('EOSServerConfig')) {
         }
         public function WriteRawMerge(string $JSON): bool
         {
-            $merge = json_decode($JSON, true);
-            if (!is_array($merge)) {
+            $merge = json_decode($JSON); // objects stay objects ("{}" is not a list)
+            if (!is_object($merge)) {
                 $this->UpdateFormField('RawResult', 'caption', 'invalid JSON');
                 return false;
             }
@@ -168,6 +187,45 @@ if (!trait_exists('EOSServerConfig')) {
             return ['ok' => true, 'status' => 200, 'error' => null];
         }
 
+        /**
+         * Why would EOS refuse to plan? The device checks of optimization/genetic/configrequest.py
+         * (maxima, one battery/vehicle/inverter, inverter present and linked, unique ids) plus
+         * min < max SoC. [] = nothing found.
+         */
+        protected function configProblems(array $config): array
+        {
+            $devices = is_array($config['devices'] ?? null) ? $config['devices'] : [];
+            $problems = [];
+            $all = [];
+            foreach (['batteries', 'electric_vehicles', 'inverters', 'home_appliances'] as $group) {
+                $entries = is_array($devices[$group] ?? null) ? $devices[$group] : [];
+                $max = $devices['max_' . $group] ?? null;
+                if ($max !== null && count($entries) > (int) $max) {
+                    $problems[] = sprintf($this->Translate('devices.%s: %d entries, maximum %d'), $group, count($entries), (int) $max);
+                }
+                if ($group !== 'home_appliances' && count($entries) > 1) {
+                    $problems[] = sprintf($this->Translate('devices.%s: GENETIC supports one, EOS has %s'), $group, implode(', ', array_keys($entries)));
+                }
+                foreach ($entries as $id => $entry) {
+                    $all[] = (string) $id;
+                    if (($group === 'batteries' || $group === 'electric_vehicles') && is_array($entry) && (int) ($entry['min_soc_percentage'] ?? 0) >= (int) ($entry['max_soc_percentage'] ?? 100)) {
+                        $problems[] = sprintf($this->Translate('%s: min. SoC not below max. SoC'), (string) $id);
+                    }
+                }
+            }
+            if (count($all) !== count(array_unique($all))) {
+                $problems[] = $this->Translate('device ids are not unique across device kinds');
+            }
+            $inverters = is_array($devices['inverters'] ?? null) ? $devices['inverters'] : [];
+            $battery = array_key_first(is_array($devices['batteries'] ?? null) ? $devices['batteries'] : []);
+            if ($inverters === []) {
+                $problems[] = $this->Translate('no inverter (set it in the section "Inverter")');
+            } elseif (count($inverters) === 1 && (reset($inverters)['battery_id'] ?? null) !== $battery) {
+                $problems[] = sprintf($this->Translate('inverter battery_id is %s, the battery is %s'), json_encode(reset($inverters)['battery_id'] ?? null), json_encode($battery));
+            }
+            return $problems;
+        }
+
         /** ForwardData GetConfig / SetConfig / MergeConfig / SaveConfig / RemoveDevice. */
         protected function forwardConfigCommand(string $command, array $data): array
         {
@@ -175,19 +233,19 @@ if (!trait_exists('EOSServerConfig')) {
                 case 'GetConfig':
                     $res = $this->client()->getConfigPath((string) ($data['Path'] ?? ''));
                     // An EOS error answer is a problem body, never configuration data.
-                    return ['ok' => $res['ok'], 'status' => $res['status'], 'data' => $res['ok'] ? $res['data'] : null, 'error' => $res['error']];
+                    return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'data' => $res['ok'] ? $res['data'] : null, 'error' => $res['error']];
 
                 case 'SetConfig':
                     $res = $this->client()->putConfigPath((string) ($data['Path'] ?? ''), $data['Value'] ?? null);
-                    return ['ok' => $res['ok'], 'status' => $res['status'], 'error' => $res['error']];
+                    return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'error' => $res['error']];
 
                 case 'MergeConfig':
                     $res = $this->client()->putConfig(is_array($data['Value'] ?? null) ? $data['Value'] : []);
-                    return ['ok' => $res['ok'], 'status' => $res['status'], 'error' => $res['error']];
+                    return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'error' => $res['error']];
 
                 case 'SaveConfig':
                     $res = $this->client()->saveConfigFile();
-                    return ['ok' => $res['ok'], 'status' => $res['status'], 'error' => $res['error']];
+                    return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'error' => $res['error']];
 
                 case 'RemoveDevice':
                     return $this->removeDevice((string) ($data['Collection'] ?? ''), (string) ($data['DeviceID'] ?? ''));

@@ -323,7 +323,6 @@ if (!trait_exists('EOSPlanDevice')) {
                 'generated_at' => $meta['generated_at'] ?? null,
                 'valid_from'   => $meta['valid_from'] ?? null,
                 'valid_until'  => $meta['valid_until'] ?? null,
-                'received'     => $this->eosNow(),
             ]));
             $this->SetValue('PlanJSON', json_encode(array_map(static function (array $i): array {
                 return [

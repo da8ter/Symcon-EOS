@@ -35,7 +35,7 @@ if (!trait_exists('EOSMeasurementBundle')) {
             if (!$res['ok']) {
                 $this->SetValue('LastError', 'measurement: ' . (string) $res['error']);
             }
-            return ['ok' => $res['ok'], 'error' => $res['error']];
+            return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'error' => $res['error']];
         }
 
         /** ForwardData PutSamples: meter samples, preceded by the sticky values for the same timestamp. */
@@ -46,14 +46,19 @@ if (!trait_exists('EOSMeasurementBundle')) {
             // same timestamp FIRST, so the newest record is never a meter-only record.
             $bundle = $this->stickyBundle('');
             if ($bundle !== [] && $samples !== []) {
-                $stamp = (string) (end($samples)['date_time'] ?? $this->eosIsoNow());
-                $this->client()->putMeasurementData(['start_datetime' => $stamp, 'interval' => '1 minute'] + array_map(static fn (float $v): array => [$v], $bundle));
+                // Stamped with the NEWEST sample (a history import arrives newest first), so the
+                // newest record keeps every device value.
+                $newest = max(array_map(fn (array $s): int => $this->eosParseTime((string) ($s['date_time'] ?? '')), $samples));
+                $sticky = $this->client()->putMeasurementData(['start_datetime' => $this->eosIsoNow($newest > 0 ? $newest : null), 'interval' => '1 minute'] + array_map(static fn (float $v): array => [$v], $bundle));
+                if (!$sticky['ok']) {
+                    $this->SetValue('LastError', 'sticky values: ' . (string) $sticky['error']);
+                }
             }
             $res = $this->client()->putMeasurementSamples($samples);
             if (!$res['ok']) {
                 $this->SetValue('LastError', 'samples: ' . (string) $res['error']);
             }
-            return ['ok' => $res['ok'], 'error' => $res['error'], 'data' => $res['data']];
+            return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'error' => $res['error'], 'data' => $res['data']];
         }
 
         /**
@@ -87,15 +92,27 @@ if (!trait_exists('EOSMeasurementBundle')) {
             $cache = is_array($cache) ? $cache : [];
             $now = $this->eosNow();
             $maxAge = max(60, (int) ($this->ReadPropertyInteger('OptMeasurementMaxAge') ?: 300));
+            $midnight = (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone(date_default_timezone_get()))->setTime(0, 0)->getTimestamp();
             $bundle = [];
+            $changed = false;
             foreach ($cache as $stickyKey => $entry) {
-                if ($stickyKey === $exceptKey) {
+                $stickyKey = (string) $stickyKey;
+                if (str_ends_with($stickyKey, '-soc-factor') && $now - (int) ($entry['ts'] ?? 0) > $maxAge) {
+                    unset($cache[$stickyKey]); // too old for EOS anyway
+                    $changed = true;
                     continue;
                 }
-                if (str_ends_with((string) $stickyKey, '-soc-factor') && $now - (int) ($entry['ts'] ?? 0) > $maxAge) {
-                    continue;
+                if (str_ends_with($stickyKey, '.cycles_completed') && (int) ($entry['ts'] ?? 0) < $midnight) {
+                    // A new day starts with no completed cycles; yesterday's count must not be re-dated.
+                    $cache[$stickyKey] = ['value' => 0.0, 'ts' => $now];
+                    $changed = true;
                 }
-                $bundle[(string) $stickyKey] = (float) $entry['value'];
+                if ($stickyKey !== $exceptKey) {
+                    $bundle[$stickyKey] = (float) $cache[$stickyKey]['value'];
+                }
+            }
+            if ($changed) {
+                $this->WriteAttributeString('SoCCache', json_encode($cache));
             }
             return $bundle;
         }

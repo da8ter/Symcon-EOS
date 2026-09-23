@@ -399,12 +399,12 @@ class EOSBattery extends IPSModuleStrict
     private function fetchSolutionSubset(): void
     {
         $id = $this->ReadPropertyString('DeviceID');
-        $res = $this->forward(['Command' => 'GetSolution', 'Columns' => [$id . '_soc_factor', 'elec_price_amt_kwh', 'pvforecast_ac_energy_wh']]);
+        $res = $this->forward(['Command' => 'GetSolution', 'Columns' => [$id . '_soc_factor', 'elec_price_amt_kwh']]);
         if (($res['ok'] ?? false) !== true || !is_array($res['series'] ?? null)) {
             return;
         }
         $subset = [];
-        foreach ([$id . '_soc_factor' => 'soc', 'elec_price_amt_kwh' => 'price', 'pvforecast_ac_energy_wh' => 'pv'] as $col => $key) {
+        foreach ([$id . '_soc_factor' => 'soc', 'elec_price_amt_kwh' => 'price'] as $col => $key) {
             $subset[$key] = [];
             foreach ($res['series'][$col] ?? [] as $iso => $value) {
                 $ts = $this->eosParseTime((string) $iso);
@@ -451,7 +451,6 @@ class EOSBattery extends IPSModuleStrict
             ], $this->instructionList()),
             'soc'          => $soc,
             'price'        => is_array($subset['price'] ?? null) ? $subset['price'] : [],
-            'pv'           => is_array($subset['pv'] ?? null) ? $subset['pv'] : [],
         ];
     }
 }
