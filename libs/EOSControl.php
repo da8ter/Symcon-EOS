@@ -67,6 +67,7 @@ if (!trait_exists('EOSControl')) {
             $this->RegisterAttributeInteger('ManualUntil', 0);
             $this->RegisterAttributeBoolean('ControlReady', false);
             $this->RegisterAttributeString('ControlErrorSig', '');
+            $this->RegisterAttributeBoolean('ControlSlowWarned', false);
             $this->RegisterAttributeString('ControlProblem', '');
             $this->RegisterAttributeBoolean('ControlInitDone', false);
             // Last plan instruction the control acted on, for the short gap before a new plan starts.
@@ -383,20 +384,30 @@ if (!trait_exists('EOSControl')) {
          * Warn when something starts failing (a new target or a new kind of error) and once when
          * everything works again. $failing is the state after the dispatch, including targets that
          * wait in their backoff; a heartbeat that skips them therefore does not count as recovery.
+         * The same failure coming back within an hour (a flapping target) is not warned again.
          */
         protected function logThrottled(array $failing, string $text): void
         {
-            $previous = $this->eosJsonDecode($this->ReadAttributeString('ControlErrorSig'), []);
-            $previous = is_array($previous) ? $previous : []; // text from before 23.09.2026 counts as nothing
-            if ($failing === $previous) {
+            $sig = $this->eosJsonDecode($this->ReadAttributeString('ControlErrorSig'), []);
+            if (!is_array($sig) || array_is_list($sig)) {
+                // before: text (until 23.09.2026) or the plain list of failures
+                $sig = ['failing' => is_array($sig) ? $sig : [], 'warned' => is_array($sig) ? $sig : [], 'warnedTs' => 0, 'ok' => false];
+            }
+            if ($failing === ($sig['failing'] ?? [])) {
                 return;
             }
-            $this->WriteAttributeString('ControlErrorSig', json_encode($failing));
-            if (array_diff($failing, $previous) !== []) {
-                $this->LogMessage($this->Translate('Control write failed') . ': ' . ($text !== '' ? $text : implode(', ', $failing)), KL_WARNING);
-            } elseif ($failing === []) {
+            $now = $this->eosNow();
+            if ($failing !== [] && array_diff($failing, (array) ($sig['failing'] ?? [])) !== []) {
+                if ($failing !== ($sig['warned'] ?? null) || $now - (int) ($sig['warnedTs'] ?? 0) >= 3600) {
+                    $this->LogMessage($this->Translate('Control write failed') . ': ' . ($text !== '' ? $text : implode(', ', $failing)), KL_WARNING);
+                    $sig = ['warned' => $failing, 'warnedTs' => $now, 'ok' => false];
+                }
+            } elseif ($failing === [] && ($sig['warned'] ?? []) !== [] && empty($sig['ok'])) {
                 $this->LogMessage($this->Translate('Control writes OK again'), KL_NOTIFY);
+                $sig['ok'] = true;
             }
+            $sig['failing'] = $failing;
+            $this->WriteAttributeString('ControlErrorSig', json_encode($sig));
         }
 
         /** Hook: may the mode-row action for $modeRaw fire now? (appliance: start rules) */

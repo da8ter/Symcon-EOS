@@ -281,5 +281,41 @@ $eos->claimFails = false;
 unset($GLOBALS['objects'][1052], $GLOBALS['objects'][1053], $GLOBALS['objects'][1054]);
 $GLOBALS['registry'] = false;
 
+// ---------------------------------------------------------------- R6-12: log throttling
+echo "== Log-Drosselung\n";
+$warnings = static fn (IPSModuleStrict $m, string $needle): int => count(array_filter($m->logs, static fn (array $l): bool => str_contains($l[1], $needle)));
+setClock($now);
+worldVar(21, 1, 0, true);
+$sl = bat(1060, ['HeartbeatSeconds' => 30]);
+$GLOBALS['world'][21]['slowS'] = 6;
+planFor('battery1', 'FORCED_CHARGE');
+$sl->ApplyChanges(); $sl->fireOnce();
+for ($t = 1; $t <= 4; $t++) { setClock($now + $t * 60); $sl->fireTimer('Retry'); }
+check($warnings($sl, 'Control writes took') === 1, 'R6-12: a slow device warns once, not on every heartbeat: ' . $warnings($sl, 'Control writes took'));
+$GLOBALS['world'][21]['slowS'] = 0;
+unset($GLOBALS['objects'][1060]);
+
+setClock($now);
+worldVar(21, 1, 0, true);
+$fl = bat(1061);
+planFor('battery1', 'FORCED_CHARGE', 1.0);
+$fl->ApplyChanges(); $fl->fireOnce();
+for ($i = 1; $i <= 6; $i++) { // the target flaps: fails, works, fails ... within an hour
+    $GLOBALS['world'][21]['fail'] = $i % 2 === 1;
+    setClock($now + $i * 300); planFor('battery1', 'FORCED_CHARGE', $i % 2 === 1 ? 0.5 : 1.0); $fl->RefreshPlan(); $fl->fireOnce();
+}
+check($warnings($fl, 'Control write failed') === 1 && $warnings($fl, 'Control writes OK again') === 1, 'R6-12: a flapping target logs one warning and one "OK again" per hour: ' . $warnings($fl, 'Control write failed') . '/' . $warnings($fl, 'Control writes OK again'));
+$GLOBALS['world'][21]['fail'] = false;
+unset($GLOBALS['objects'][1061]);
+
+setClock($now);
+worldVar(40, 0, false, true);
+$rk = appliance(1062, ['ModeAction_RUN' => json_encode(['actionID' => '{FAIL}', 'parameters' => []])]);
+planFor('dishwasher1', 'RUN', 1.0, 30);
+$rk->ApplyChanges(); $rk->fireOnce();
+for ($i = 1; $i <= 3; $i++) { setClock($now + $i * 120); planFor('dishwasher1', 'RUN', 1.0, 30); $rk->RefreshPlan(); $rk->fireOnce(); } // re-plans move the start
+check($warnings($rk, 'Control write failed') === 1, 'R6-12: a failing RUN action warns once across re-plans (RUN@<start> keys): ' . $warnings($rk, 'Control write failed'));
+unset($GLOBALS['objects'][1062]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

@@ -175,7 +175,7 @@ if (!trait_exists('EOSControlDispatch')) {
             $fragments = [];
             $failed = [];
             $outcome = ['targets' => [], 'row' => 'notdue', 'chg' => 'none'];
-            $started = microtime(true);
+            $started = $this->eosNowFloat();
             $toWrite = $force ? $plan['resolved'] : $plan['change'] + $plan['retry'] + $plan['heartbeat'];
             foreach ($plan['resolved'] as $key => $target) {
                 if (!isset($toWrite[$key])) {
@@ -271,7 +271,7 @@ if (!trait_exists('EOSControlDispatch')) {
                 'chg'      => $chg,
             ];
             $this->WriteAttributeString('LastSent', json_encode($lastNew));
-            $durationMs = (int) round((microtime(true) - $started) * 1000);
+            $durationMs = (int) round(($this->eosNowFloat() - $started) * 1000);
             $text = ($sim ? 'SIM ' : '') . '[' . $reason . '] ' . ($fragments !== [] ? implode(' · ', $fragments) : $this->Translate('nothing to write'));
             if (($desired['degraded'] ?? '') !== '') {
                 $text .= ' · ' . (string) $desired['degraded'];
@@ -279,8 +279,13 @@ if (!trait_exists('EOSControlDispatch')) {
             $this->recordResult($text);
             $this->SendDebug('Control', $text . ' (' . $durationMs . ' ms)', 0);
             $this->logThrottled($this->failureSignature($lastNew), implode(' · ', $failed));
-            if ($durationMs > self::SLOW_WRITE_MS) {
-                $this->LogMessage(sprintf($this->Translate('Control writes took %d ms - consider a script binding for slow devices'), $durationMs), KL_WARNING);
+            // Warn when writes become slow, not on every heartbeat of a device that stays slow.
+            $slow = $durationMs > self::SLOW_WRITE_MS;
+            if ($slow !== $this->ReadAttributeBoolean('ControlSlowWarned')) {
+                $this->WriteAttributeBoolean('ControlSlowWarned', $slow);
+                if ($slow) {
+                    $this->LogMessage(sprintf($this->Translate('Control writes took %d ms - consider a script binding for slow devices'), $durationMs), KL_WARNING);
+                }
             }
             $this->armRetryTimer($lastNew, $plan);
             if (!$sim) {
@@ -332,7 +337,8 @@ if (!trait_exists('EOSControlDispatch')) {
                 }
             }
             if ((int) ($last['row']['fail'] ?? 0) > 0) {
-                $failing[] = 'row:' . (string) ($last['row']['failMode'] ?? '');
+                // The mode only: an appliance key RUN@<start> changes with every re-plan.
+                $failing[] = 'row:' . strstr((string) ($last['row']['failMode'] ?? '') . '@', '@', true);
             }
             if ((int) ($last['chg']['fail'] ?? 0) > 0) {
                 $failing[] = 'chg';

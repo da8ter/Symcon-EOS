@@ -346,6 +346,9 @@ function RequestAction(int $id, mixed $value): bool
     } elseif (!empty($GLOBALS['world'][$id]['fail'])) {
         throw new RuntimeException('device rejected value');
     }
+    if (!empty($GLOBALS['world'][$id]['slowS']) && EOSClock::$now !== null) {
+        EOSClock::$now += $GLOBALS['world'][$id]['slowS']; // a slow device: the write takes that long
+    }
     $GLOBALS['actions'][] = [$id, $value];
     $GLOBALS['world'][$id]['value'] = $value;
     $GLOBALS['world'][$id]['VariableUpdated'] = nowTs();
