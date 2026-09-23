@@ -136,23 +136,39 @@ Jede Geräte-Instanz merkt sich den zuletzt abgeglichenen Stand ihres EOS-Eintra
 | Symcon | EOS | Ergebnis |
 | --- | --- | --- |
 | geändert | unverändert | wird nach EOS geschrieben |
-| unverändert | geändert (z. B. in EOSdash) | bleibt in EOS; das Formular zeigt den EOS-Wert und bietet „Werte aus EOS laden“ an |
-| geändert | anders geändert | Konflikt, nichts wird geschrieben; beide Werte stehen im Formular, entschieden wird mit „EOS mit diesen Werten überschreiben“ oder „Werte aus EOS laden“ |
+| unverändert | geändert (z. B. in EOSdash) | bleibt in EOS; beim Öffnen lädt das Formular den EOS-Wert in das Feld, Übernehmen speichert ihn in Symcon |
+| geändert | anders geändert | Konflikt, nichts wird geschrieben; das Feld behält den Symcon-Wert, die Meldung unter den Parametern zeigt beide, entschieden wird mit „EOS mit den gespeicherten Symcon-Werten überschreiben“ oder „Werte aus EOS laden“ |
 
 - Kernelstart, Modul-Reload und verzögertes Übernehmen ändern keine Symcon-Werte und schreiben deshalb nie.
-- „Gerät in EOS“ wählt einen vorhandenen Eintrag und lädt ihn vollständig ins Formular; Übernehmen schreibt danach
-  nur, was man selbst geändert hat.
+- Ohne gemeinsamen Stand (erster Abgleich nach einem Update, eine eingetippte ID eines vorhandenen Eintrags)
+  behält EOS jeden Wert, den es hat; Abweichungen werden angeboten, nur Felder, die EOS leer lässt, werden aus
+  Symcon gefüllt.
+- „Gerät in EOS“ wählt einen vorhandenen Eintrag und lädt ihn vollständig ins Formular; Übernehmen im selben
+  Formular schreibt danach nur, was man selbst geändert hat. Eine Auswahl ohne Übernehmen verfällt mit dem
+  Schließen des Formulars. „Werte aus EOS laden“ lädt das Gerät, dessen ID das Formular gerade zeigt;
+  „EOS mit den gespeicherten Symcon-Werten überschreiben“ schreibt die gespeicherten Werte und verweigert, solange
+  das Formular eine andere ID zeigt.
+- Zeitfenster werden vollständig verglichen, auch `day_of_week`, `date` und `locale` aus EOSdash; Dauern in jeder
+  Schreibweise („90 minutes“ = „1 hour 30 minutes“, wie EOS sie zurückschreibt).
 - Batterie und E-Auto gibt es in EOS nur je einmal (GENETIC rechnet mit genau einer Batterie und höchstens einem
   E-Auto). Hat EOS schon ein anderes, zeigt die Instanz Status 205 und legt kein zweites an. Nach einem Wechsel der
-  Geräte-ID bleibt der alte Eintrag stehen, bis „Alten EOS-Eintrag entfernen“ ihn dauerhaft löscht (auch aus
-  `EOS.config.json`); die Batterie zieht dabei die `battery_id` des Wechselrichters nach. Geräte-IDs beginnen mit
-  einem Buchstaben und sind über Batterien, E-Autos und Haushaltsgeräte hinweg eindeutig (sonst Status 203).
+  Geräte-ID (bei allen Gerätearten) bleibt der alte Eintrag stehen, bis „Alten EOS-Eintrag entfernen“ ihn dauerhaft
+  löscht (auch aus `EOS.config.json`); der Knopf erscheint, solange der alte Eintrag existiert. Die Batterie zieht
+  dabei die `battery_id` des Wechselrichters nach. Scheitert das Entfernen halb, stellt der Server den Eintrag
+  wieder her.
+- Geräte-IDs beginnen mit einem Buchstaben und sind je EOS Server über Batterien, E-Autos und Haushaltsgeräte
+  hinweg eindeutig. Die ID gehört der Instanz, die sie zuerst beansprucht hat; der EOS Server merkt sich das. Eine
+  später angelegte Instanz mit derselben ID zeigt Status 203, auch mit kleinerer InstanceID. In 201/203/205 schreibt
+  eine Instanz weder in EOS noch an ihre Hardware.
 - Widersprüchliche Grenzen (Batterie: Min-SoC ≥ Max-SoC; E-Auto: Max-SoC 0) gehen nicht nach EOS (Status 206).
   Ein Ziel-SoC ≥ Max-SoC geht als Max-SoC − 1 nach EOS, weil EOS das Ziel unter dem Maximum verlangt.
-- **Zeiten** (Abfahrt des E-Autos, Fertig-bis und frühester Start des Haushaltsgeräts) schreibt die Instanz nur, wenn
-  der Schalter „… nach EOS schreiben“ an ist und eine Quelle existiert: eine Quellvariable oder
-  `EOSEV_SetDeparture`/`EOSHA_SetDeadline`. Vergangene Zeiten löscht sie in EOS. Ohne Quelle bleiben die Zeiten aus
-  EOSdash unangetastet; eine vergangene Frist mit Strategie STRICT, an der jeder Lauf scheitert, meldet die Instanz.
+- **Zeiten** (Abfahrt des E-Autos, Fertig-bis und frühester Start des Haushaltsgeräts) schreibt die Instanz je Feld
+  nur, wenn der Schalter „… nach EOS schreiben“ an ist und das Feld eine eigene Quelle hat: die Abfahrt ihre
+  Quellvariable oder `EOSEV_SetDeparture`, das Fertig-bis seine Quellvariable oder `EOSHA_SetDeadline`, der
+  früheste Start seine Quellvariable. Vergangene Zeiten löscht sie in EOS. Felder ohne Quelle bleiben aus EOSdash
+  unangetastet; eine vergangene Frist mit Strategie STRICT, an der jeder Lauf scheitert, meldet die Instanz.
+- Scheitert nach einem Schreibvorgang das Speichern in EOS, schreibt die Instanz den Wert beim nächsten Übernehmen
+  erneut, statt ihn nach einem EOS-Neustart für eine EOSdash-Änderung zu halten.
 
 ### E-Auto, Haushaltsgerät, Zähler
 
@@ -187,12 +203,16 @@ herstellerneutral und kombinierbar:
 3. **Option 3: Bei jeder Änderung, jedem Moduswechsel und jedem Heartbeat Instanzaktion oder Skript ausführen** –
    eine Aktion und ein Skript, das Skript mit dem Kontext in `$_IPS` (`Reason`, `ModeRaw`, `Factor`, `PowerW`,
    `ChargeAllowed`, `CurrentA`, `Run` …, vollständige Liste in [docs/geraete-mapping.md](docs/geraete-mapping.md)).
-   Reine Wiederholungen fehlgeschlagener Ziele lösen Option 3 nicht aus.
+   Option 3 folgt dem ganzen Sollzustand, auch ohne Option-1-Ziele: eine neue Leistung im selben Modus erreicht das
+   Skript. Reine Wiederholungen fehlgeschlagener Ziele lösen Option 3 nicht aus.
 
 Geschrieben wird nur bei Änderung. Ob ein Ziel geschrieben wurde, entscheidet der Rückgabewert von `RequestAction`
 bzw. die Ausgabe der Aktion (Symcon wirft dabei keine Ausnahmen). Ein fehlgeschlagenes Ziel wird mit wachsendem
 Abstand wiederholt (60 s je Fehlschlag, höchstens 300 s); die übrigen Ziele laufen weiter. Optional sendet ein
-**Heartbeat** die Sollwerte alle n Sekunden erneut (mindestens 5 s, für Wechselrichter mit eigenem Timeout).
+**Heartbeat** die Sollwerte alle n Sekunden erneut (mindestens 5 s, für Wechselrichter mit eigenem Timeout): alle
+gesunden Ziele und Option 3 gemeinsam, auch bei reiner Skript-Anbindung. Liefert die Steuerung nichts zu tun
+(Fallback „kein Eingriff“, Bindungen nicht bereit), verwirft sie den gemerkten Sollzustand: keine Heartbeats und
+Wiederholungen mehr, beim Wiedereinstieg ein vollständiger Abgleich.
 Strukturfehler sperren die Steuerung und stehen im Ergebnis-Text: keine Bindung, eine Variable der eigenen
 Instanz als Ziel, Modus-Werte, die die Modus-Variable nicht annehmen kann, ein Leistungsziel bei Max-Leistung 0,
 beim Haushaltsgerät keine Bindung, die starten kann. Ein gelöschtes oder nicht schaltbares Ziel sperrt nicht, es
@@ -200,11 +220,12 @@ wird gemeldet und wiederholt. Der **Fallback-Modus** greift, wenn der Plan veral
 „Plan als veraltet markieren nach“), abgelaufen (`valid_until`) oder für die Steuerung unbrauchbar ist
 (unbekannter Modus); ein kurzer EOS-Ausfall ist kein Auslöser, der gespeicherte Plan läuft weiter. Ein
 **Hauptschalter** (Variable „Steuerung aktiv“) und ein **manueller Modus** mit Haltezeit überlagern den
-Plan. Beim Abschalten wird der Fallback einmal geschrieben (abschaltbar). Schreiben passiert nie im
-Empfangspfad des Servers, sondern kurz danach im eigenen Zeitgeber der Instanz; ein 60-s-Wächter prüft
-Alter des Plans und Rückkehr aus dem manuellen Modus, Heartbeat und Wiederholungen weckt ein eigener Zeitgeber
-genau zum nächsten fälligen Zeitpunkt. Im Modus „Nur anzeigen“ bleibt ein laufender manueller Modus mit seiner
-Haltezeit erhalten.
+Plan. Beim Abschalten wird der Fallback einmal geschrieben (abschaltbar), danach ruht die Steuerung bis zum
+Wiedereinschalten. Schreiben passiert nie im Empfangspfad des Servers, sondern kurz danach im eigenen Zeitgeber der
+Instanz; ein 60-s-Wächter prüft Alter des Plans, Heartbeat und Wiederholungen weckt ein eigener Zeitgeber genau zum
+nächsten fälligen Zeitpunkt. Eine abgelaufene manuelle Haltezeit endet vor jeder Entscheidung; im Modus „Nur
+anzeigen“ bleibt ein laufender manueller Modus mit seiner Haltezeit erhalten. Warnungen kommen einmal je
+Störung, ein flatterndes Ziel höchstens einmal je Stunde.
 
 Sicherheitsregeln der Batterie: Netzladen mit 0 W wird nie geschrieben (wird zu `NON_EXPORT`), „Netzladen
 erlauben“ und „Netzeinspeisung erlauben“ schwächen die Modi ab, wenn der Anwender sie verbietet. Leistungen
@@ -213,10 +234,13 @@ Entladeleistung.
 E-Auto: Mindest-Ladestrom (6 A), Mindestabstand zwischen Laden Ein/Aus (300 s; in der Wartezeit bleibt der zuletzt
 geschriebene Ladezustand stehen), nicht angesteckt = aus.
 Haushaltsgerät: ein Startimpuls je geplantem Lauf, nur innerhalb der Gnadenfrist nach dem geplanten Start; danach
-sperrt die Instanz weitere Starts für die Laufdauer, auch wenn EOS neu plant. Mit Quellvariable „läuft“ fällt die
-Sperre, wenn das Gerät 5 Minuten nach dem Impuls nicht läuft (Warnung, neuer Versuch in der Gnadenfrist). Der
-Impuls geht an die RUN-Aktion (Option 2), sonst an die Freigabe (Flanke aus → an), sonst an Option 3 mit
-`Start = true`. Stoppen nur wenn erlaubt.
+sperrt die Instanz weitere Starts für die Laufdauer, auch wenn EOS neu plant. Die Gnadenfrist begrenzt nur späte
+Starts: ein gestartetes oder laufendes Gerät behält seine Freigabe, auch mit „Stoppen erlauben“. Mit Quellvariable
+„läuft“ fällt die Sperre, wenn das Gerät 5 Minuten nach dem Impuls nicht läuft; dann folgt ein neuer Versuch in der
+Gnadenfrist, bei erneutem Ausbleiben eine Warnung und kein weiterer. Läuft das Gerät zum geplanten Start schon (von
+Hand gestartet), gilt der geplante Lauf als erledigt. Der Impuls geht an die RUN-Aktion (Option 2), sonst an die
+Freigabe (Flanke aus → an), sonst an Option 3 mit `Start = true`. Manuell „Läuft“ startet einmal auf der Flanke,
+nicht bei erneutem Setzen und nicht, wenn das Gerät schon läuft. Stoppen nur wenn erlaubt.
 
 ## Variablen der Batterie
 
@@ -270,7 +294,7 @@ EOSBAT_GetActiveInstruction($id);   // JSON der aktiven Anweisung
 EOSBAT_ApplyControl($id, true);     // Steuerung jetzt anwenden, true = alle Ziele neu schreiben
 EOSBAT_SetManualMode($id, 5);       // manuell FORCED_CHARGE; 100 = Automatik (EOSEV_: 0 aus / 5 laden; EOSHA_: 0 / 1)
 EOSBAT_GetControlState($id);        // JSON: Sollzustand, zuletzt Geschriebenes, Fallback, manuell
-EOSBAT_WriteConfigToEOS($id);       // Geräteeintrag in EOS mit den Symcon-Werten überschreiben (auch EOSEV_, EOSHA_)
+EOSBAT_WriteConfigToEOS($id);       // Geräteeintrag in EOS mit den gespeicherten Symcon-Werten überschreiben (auch EOSEV_, EOSHA_)
 EOSBAT_ReadConfigFromEOS($id);      // EOS-Werte ins Formular laden
 EOSEV_SetDeparture($id, strtotime('tomorrow 07:00'));   // Abfahrt nach EOS
 EOSHA_SetDeadline($id, strtotime('today 18:00'));       // Gerät muss bis dann fertig sein

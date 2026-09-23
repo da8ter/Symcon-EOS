@@ -12,7 +12,8 @@ fest. Drei Mechanismen stehen zur Verfügung und lassen sich kombinieren:
 
 Reihenfolge je Durchlauf: Option 1 → Option 2 → Option 3 (Aktion, dann Skript).
 
-- **Option 1** schreibt nur, was sich geändert hat, plus beim Heartbeat alle Ziele erneut. Erfolg erkennt die
+- **Option 1** schreibt nur, was sich geändert hat; ist ein Heartbeat fällig, gehen alle gesunden Ziele gemeinsam
+  erneut hinaus. Erfolg erkennt die
   Instanz am Rückgabewert von `RequestAction`; Symcon wirft dabei keine Ausnahme. Ein fehlgeschlagenes, gelöschtes
   oder nicht schaltbares Ziel wird gemerkt und nach 60 s × Anzahl Fehlschläge (höchstens 300 s) erneut versucht;
   ein anderer Sollwert geht sofort hinaus.
@@ -20,10 +21,11 @@ Reihenfolge je Durchlauf: Option 1 → Option 2 → Option 3 (Aktion, dann Skrip
   demselben Abstand wiederholt. Als fehlgeschlagen gilt eine Aktion, deren Ausgabe eine PHP-Fehlermeldung enthält
   (Zeile mit `Fatal error:`, `Warning:` …) oder die Symcon nicht kennt; sonstige Ausgabe gilt als Erfolg und steht
   gekürzt im Ergebnis-Text.
-- **Option 3** läuft bei jeder Änderung, jedem Moduswechsel, jedem Heartbeat, nach einer gefeuerten Modus-Aktion
-  und beim erzwungenen Schreiben (`EOSBAT_ApplyControl($id, true)`), nicht aber für reine Wiederholungen von
-  Option 1. Scheitert sie selbst, wiederholt sie sich mit eigenem Abstand. Das Skript startet über
-  `IPS_RunScriptEx` asynchron: „OK“ heißt gestartet, nicht fertig.
+- **Option 3** läuft bei jeder Änderung des Sollzustands (Modus, Faktor und jeder Sollwert, auch ohne
+  Option-1-Bindung), jedem Moduswechsel, jedem Heartbeat (auch bei reiner Skript-Anbindung), nach einer gefeuerten
+  Modus-Aktion und beim erzwungenen Schreiben (`EOSBAT_ApplyControl($id, true)`), nicht aber für reine
+  Wiederholungen von Option 1. Scheitert sie selbst, wiederholt sie denselben Stand mit eigenem Abstand; ein neuer
+  Stand läuft sofort. Das Skript startet über `IPS_RunScriptEx` asynchron: „OK“ heißt gestartet, nicht fertig.
 
 ## Kontext für Aktionen und Skripte (`$_IPS`)
 
@@ -36,7 +38,7 @@ Reihenfolge je Durchlauf: Option 1 → Option 2 → Option 3 (Aktion, dann Skrip
 | `Factor` | `operation_mode_factor` 0–1 |
 | `ExecutionTime` | Beginn der Anweisung (ISO 8601), leer bei Fallback/manuell |
 | `Simulation` | `true` im Steuerungsmodus „Simulation“ (dann werden Skripte und Aktionen NICHT ausgeführt) |
-| `Changed` | Kommagetrennte Liste der geänderten Ziele |
+| `Changed` | Kommagetrennte Liste der geänderten Werte: gebundene Ziele, die jetzt geschrieben werden, und jeder Sollwert, der sich seit dem letzten Lauf von Aktion/Skript geändert hat |
 | `Retried` | Kommagetrennte Liste der Ziele, die nach einem Fehlschlag erneut geschrieben werden |
 | `Heartbeat` | `true`, wenn der Durchlauf ein Heartbeat ist |
 | `ModeChanged` | `true`, wenn der EOS-Modus seit dem letzten Durchlauf gewechselt hat |
@@ -151,22 +153,28 @@ wenn **Stoppen erlauben** aktiv ist (Spülmaschinen nicht mitten im Programm aus
 
 In Option 2 die Aktion für `RUN` auf die Start-Aktion des Moduls legen. Der Startimpuls kommt einmal je
 geplantem Lauf, nur innerhalb der **Gnadenfrist** (Standard 30 min nach geplantem Start) und nicht, wenn die
-optionale Quellvariable „läuft“ schon wahr ist. Weil EOS bei jedem Lauf neue Anweisungs-IDs vergibt, sperrt die
-Instanz nach einem Impuls weitere Starts für die **Laufdauer**. Mit Quellvariable „läuft“ gilt der Start erst als
-bestätigt, wenn sie wahr wird; bleibt sie 5 Minuten nach dem Impuls falsch, fällt die Sperre mit Warnung, und die
-Gnadenfrist erlaubt einen neuen Versuch.
+optionale Quellvariable „läuft“ schon wahr ist; ein Gerät, das zum geplanten Start schon läuft (von Hand
+gestartet), hat den geplanten Lauf damit erledigt. Weil EOS bei jedem Lauf neue Anweisungs-IDs vergibt, sperrt die
+Instanz nach einem Impuls weitere Starts für die **Laufdauer**; die Gnadenfrist begrenzt nur späte Starts, ein
+laufendes Gerät behält seine Freigabe. Mit Quellvariable „läuft“ gilt der Start erst als gelungen, wenn sie wahr
+wird; bleibt sie 5 Minuten nach dem Impuls falsch, fällt die Sperre mit Warnung, und die Gnadenfrist erlaubt genau
+einen neuen Versuch (RUN-Aktion und Freigabe werden dafür wieder scharf). Bleibt auch er ohne Lauf, warnt die
+Instanz und startet nicht erneut.
 
 Den Impuls trägt, in dieser Reihenfolge: die RUN-Aktion aus Option 2, sonst die Freigabe (Wechsel aus → an), sonst
 Option 3 mit `Start = true`. Ohne eine dieser Bindungen sperrt die Instanz die Steuerung („keine Bindung, die das
-Gerät starten kann“). Manuell „Läuft“ startet genau einmal auf der Flanke und umgeht die Sperre bewusst.
+Gerät starten kann“). Manuell „Läuft“ startet genau einmal auf der Flanke in „Läuft“ und umgeht die Sperre bewusst;
+erneutes Setzen von „Läuft“ startet nicht noch einmal, und läuft das Gerät auf der Flanke schon, ist sie verbraucht.
 
 ## Heartbeat und Geräte-Watchdogs
 
 Viele Wechselrichter (Victron ESS, SMA, Fronius, E3DC, Sungrow) verwerfen Sollwerte, wenn sie nicht regelmäßig
-erneuert werden, und fallen dann in ihren Standardbetrieb. Genau dafür gibt es **„Sollwerte erneut senden alle
-n s“**: den Wert etwas unter der Timeout-Zeit des Geräts wählen (typisch 30–120 s, mindestens 5 s). Ohne Heartbeat
-schreibt die Steuerung nur bei Änderung. Ein eigener Zeitgeber weckt die Instanz genau zum nächsten Heartbeat oder
-zur nächsten Wiederholung, unabhängig vom 60-s-Wächter. Fällt Symcon aus, greift so der geräteseitige Watchdog.
+erneuert werden, und fallen dann in ihren Standardbetrieb. Genau dafür gibt es **„Sollwerte erneut senden alle n
+s“**: den Wert etwas unter der Timeout-Zeit des Geräts wählen (typisch 30–120 s, mindestens 5 s); das gilt auch für
+eine reine Skript- oder Aktionsanbindung (Option 3). Ohne Heartbeat schreibt die Steuerung nur bei Änderung. Bei
+Fallback „kein Eingriff“ ruhen Heartbeat und Wiederholungen, damit der geräteseitige Watchdog greifen kann. Ein
+eigener Zeitgeber weckt die Instanz genau zum nächsten Heartbeat oder zur nächsten Wiederholung, unabhängig vom
+60-s-Wächter. Fällt Symcon aus, greift so der geräteseitige Watchdog.
 
 ## Was die Steuerung nie tut
 

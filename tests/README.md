@@ -7,9 +7,10 @@ Regressionstests ohne Symcon und ohne EOS. Keine Abhängigkeiten außer PHP ≥ 
 tests/run.sh
 ```
 
-`run.sh` prüft zuerst Syntax (`php -l`, `bash -n .docker/setup.sh`) und alle JSON-Dateien und startet dann die vier
+`run.sh` prüft zuerst Syntax (`php -l`, `bash -n .docker/setup.sh`) und alle JSON-Dateien und startet dann die sechs
 Testdateien. Jede endet mit `Alle N Prüfungen bestanden.`; die erste fehlgeschlagene Prüfung bricht mit `FAIL:` und
-Exit-Code 1 ab. Die Kennungen des Reviews vom 23.09.2026 (K…, S…, N1, C1) stehen im Text der jeweiligen Prüfung.
+Exit-Code 1 ab. Die Kennungen des Reviews vom 23.09.2026 (K…, S…, N1, C1) und seiner Abschlussprüfung (R6-…, R8-…)
+stehen im Text der jeweiligen Prüfung.
 
 ## Bausteine
 
@@ -25,14 +26,20 @@ Exit-Code 1 ab. Die Kennungen des Reviews vom 23.09.2026 (K…, S…, N1, C1) st
 - **Uhr**: Alle Zeitentscheidungen des Moduls laufen über `eosNow()`. `setClock($ts)` stellt die Uhr,
   `setClock(null)` gibt sie frei; Tests altern die Welt, statt Zeitstempel in Attributen zu fälschen.
 - **Zwei Eltern für Geräte-Instanzen**: `connectToServer($m)` hängt sie an `FakeEOS`, einen schnellen Ersatz für
-  den ForwardData-Vertrag des EOS Servers. `connectToRealServer($m)` hängt sie an das echte `EOSServer`-Modul über
-  `FakeEOSClient` (`fake_eos_client.php`, wird vor `libs/EOSClient.php` geladen).
-- **`FakeEOSBackend`** bildet EOS 0.4.0rc1 nach, wie im Quelltext gelesen und live gemessen: Merge mit
+  den ForwardData-Vertrag des EOS Servers (auch `ClaimDevice`; Konflikte nur mit `$GLOBALS['registry']`, wie die
+  Instanzsuche; `claimFails` simuliert einen Server ohne Antwort). `connectToRealServer($m)` hängt sie an das echte
+  `EOSServer`-Modul über `FakeEOSClient` (`fake_eos_client.php`, wird vor `libs/EOSClient.php` geladen).
+- **Prüfstand-Schalter**: `$GLOBALS['unreadable'][$id]` lässt `IPS_GetProperty` wie im Modul-Reload warnen und
+  `false` liefern; `worldVar`-Ziele mit `slowS` rücken die gepinnte Uhr beim Schreiben vor; der Fehler-Handler
+  respektiert `@`; `attrWrites` zählt Attribut-Schreibzugriffe.
+- **`FakeEOSBackend`** (`fake_eos_backend.php`, Messwert-Teil in `fake_eos_measurements.php`) bildet EOS 0.4.0rc1
+  nach, wie im Quelltext gelesen und live gemessen: Merge mit
   `exclude_none` (`null` löscht nie) und Listenersatz, Pfad-PUT (`null` löscht), Geräteschlüssel, die nach dem
   Ersetzen der Map beim nächsten Merge zurückkommen, bis gespeichert und zurückgesetzt wird, 404-Problem-Body,
   Validierung des Teil-Bodys mit Standardwerten, Messwertspeicher (unbekannte Schlüssel: `/value` 404, `/data`
-  verwirft still, `/samples` 422 ohne Energiekanal). `runCheck()` spiegelt die Lauf-Vorprüfung von
-  `configrequest.py` (der jüngste Datensatz entscheidet).
+  verwirft still, `/samples` 422 ohne Energiekanal), Dauern in EOS-Schreibweise („1 hour 30 minutes“), „Frist nach
+  frühestem Start“. `runCheck()` spiegelt die Lauf-Vorprüfung von `configrequest.py` (der jüngste Datensatz
+  entscheidet). Fehlerschalter: `failPaths` (GET antwortet 500), `saveFails`, `getConfigStatus`.
 
 ## Was geprüft wird
 
@@ -80,6 +87,15 @@ Exit-Code 1 ab. Die Kennungen des Reviews vom 23.09.2026 (K…, S…, N1, C1) st
   nach 422 registriert der Zähler sie neu.
 - Frische Messwerte für die Lauf-Vorprüfung: `EOS_PutMeasurement` und der letzte angesteckte SoC eines
   abgesteckten E-Autos.
+
+`control_review_test.php` (Abschlussprüfung Phase 6): kein Abspielen bei „kein Eingriff“, Leerlauf ohne
+Schreibzugriffe, Option 3 und Heartbeat ohne Option-1-Ziele, ausgerichtete Heartbeats, Modus-Aktion nur solange
+offen, Haushaltsgerät (Freigabe über die Gnadenfrist, eine Wiederholung, manuelle Flanke), abgelaufene
+Haltezeit, gesperrte Instanzen, Geräte-ID-Hoheit, Log-Drosselung.
+
+`config_review_test.php` (Abschlussprüfung Phase 8, echter EOS Server): ID-Hoheit im Server, Zeitfelder je Feld,
+Zeitfenster vollständig, SoC-Paar, Basis ohne Abgleich, Auswahl nur im offenen Formular, FormFill ohne
+Konfliktfelder, Leistung aus EOS, alter Eintrag nach Umbenennen, Fehlerpfade, Formularknöpfe.
 
 ## Nicht abgedeckt
 
