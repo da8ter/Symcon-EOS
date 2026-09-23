@@ -24,6 +24,9 @@ if (!trait_exists('EOSServerStatus')) {
         /** A child's request reached EOS or not: connection errors (and two timeouts in a row) mean unreachable. */
         private function noteTransport(array $reply): void
         {
+            if (!empty($reply['local'])) {
+                return; // answered by this instance itself (e.g. a refusal): says nothing about EOS
+            }
             if (($reply['ok'] ?? false) === true || (int) ($reply['status'] ?? -1) > 0) {
                 $this->WriteAttributeInteger('TransportTimeouts', 0);
                 if (!$this->ReadAttributeBoolean('Reachable')) {

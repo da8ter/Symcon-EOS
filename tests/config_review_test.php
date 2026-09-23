@@ -277,7 +277,11 @@ eosLoad(['home_appliances' => ['dishwasher1' => HA], 'max_home_appliances' => 1]
 $x = applianceAt(1400); $x->ApplyChanges();
 $x->properties['DeviceID'] = 'dryer1'; $x->ApplyChanges();   // X renamed, dishwasher1 still in EOS
 $y = applianceAt(1401); $y->ApplyChanges();                  // Y with the default id adopts dishwasher1
-$x->RequestAction('RemoveOldEOSEntry', '');
+$be->down = 'connect'; $x->ApplyChanges();                    // EOS goes down: the server marks it unreachable
+$downBefore = realServer()->status;
+$x->RequestAction('RemoveOldEOSEntry', '');                  // refused locally (409)
+check($downBefore === 201 && realServer()->status === 201, 'final: the local refusal of a removal does not count as "EOS reachable": ' . $downBefore . ' -> ' . realServer()->status);
+$be->down = ''; realServer()->PollHealth();
 $form = json_decode($x->GetConfigurationForm(), true);
 $button = formElement(array_merge($form['elements'] ?? [], $form['actions'] ?? []), 'RemoveOldEntry');
 check($y->status === IS_ACTIVE && isset($be->live['devices']['home_appliances']['dishwasher1']) && ($button['visible'] ?? true) === false,

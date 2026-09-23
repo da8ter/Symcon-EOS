@@ -311,7 +311,7 @@ if (!trait_exists('EOSServerConfig')) {
                     // Never the entry of another instance (the id may have been taken over since the rename).
                     $owner = $this->deviceOwner((string) ($data['DeviceID'] ?? ''));
                     if ($owner > 0 && $owner !== (int) ($data['InstanceID'] ?? 0)) {
-                        return ['ok' => false, 'status' => 409, 'error' => sprintf($this->Translate('%s belongs to instance %d'), (string) ($data['DeviceID'] ?? ''), $owner)];
+                        return ['ok' => false, 'status' => 409, 'local' => true, 'error' => sprintf($this->Translate('%s belongs to instance %d'), (string) ($data['DeviceID'] ?? ''), $owner)];
                     }
                     return $this->removeDevice((string) ($data['Collection'] ?? ''), (string) ($data['DeviceID'] ?? ''));
             }
