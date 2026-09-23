@@ -296,8 +296,9 @@ if (!trait_exists('EOSControl')) {
 
         protected function changeManualMode(int $mode): void
         {
+            $previous = (int) $this->GetValue('ManualMode');
             $this->SetValue('ManualMode', $mode);
-            $this->onManualModeChanged($mode);
+            $this->onManualModeChanged($mode, $previous);
             $minutes = $this->ReadPropertyInteger('ManualReturnMinutes');
             $this->WriteAttributeInteger('ManualUntil', ($mode !== self::MANUAL_AUTO && $minutes > 0) ? $this->eosNow() + $minutes * 60 : 0);
             // The hardware state is unknown after manual operation: write once.
@@ -333,8 +334,9 @@ if (!trait_exists('EOSControl')) {
             $this->updatePlanStale($active);
             $until = $this->ReadAttributeInteger('ManualUntil');
             if ((int) $this->GetValue('ManualMode') !== self::MANUAL_AUTO && $until > 0 && $this->eosNow() >= $until) {
+                $previous = (int) $this->GetValue('ManualMode');
                 $this->SetValue('ManualMode', self::MANUAL_AUTO);
-                $this->onManualModeChanged(self::MANUAL_AUTO);
+                $this->onManualModeChanged(self::MANUAL_AUTO, $previous);
                 $this->WriteAttributeInteger('ManualUntil', 0);
                 $this->WriteAttributeString('LastSent', '{}');
                 $this->LogMessage($this->Translate('Manual mode ended, back to automatic'), KL_NOTIFY);
@@ -395,8 +397,8 @@ if (!trait_exists('EOSControl')) {
             return true;
         }
 
-        /** Hook: the manual mode was set by the user, a script or the automatic return. */
-        protected function onManualModeChanged(int $mode): void
+        /** Hook: the manual mode was set by the user, a script or the automatic return ($previous: the mode before). */
+        protected function onManualModeChanged(int $mode, int $previous): void
         {
         }
 

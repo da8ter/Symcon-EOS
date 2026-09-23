@@ -25,6 +25,10 @@ if (!trait_exists('EOSApplianceStart')) {
             $now = $this->eosNow();
             $this->migrateStartedIds($id, $ts);
             if ($now >= $ts + $this->ReadPropertyInteger('StartGraceMinutes') * 60) {
+                // The grace period only limits late starts: a started or running appliance keeps its release.
+                if ($this->startLocked($now) || $this->isRunning()) {
+                    return $this->desiredAppliance(true, false, $id, $executionTime, $this->Translate('already started'));
+                }
                 // e.g. Symcon restarted hours after the planned start: do not start late.
                 $key = $executionTime . '|' . $modeId;
                 if ($this->ReadAttributeString('MissedStartWarned') !== $key) {
@@ -33,11 +37,10 @@ if (!trait_exists('EOSApplianceStart')) {
                 }
                 return $this->desiredAppliance(false, false, $id, $executionTime, $this->Translate('start missed (grace period)'), 'RUN');
             }
-            $this->releaseUnconfirmedLockout($now);
+            $this->releaseUnconfirmedLockout($now, $executionTime);
             $degraded = '';
             $start = false;
-            $pulse = $this->ReadAttributeInteger('StartPulseTs');
-            if ($pulse > 0 && $now < $pulse + max(1, $this->ReadPropertyInteger('DurationH')) * 3600) {
+            if ($this->startLocked($now)) {
                 $degraded = $this->Translate('already started');
             } elseif ($this->isRunning()) {
                 $degraded = $this->Translate('already running');
@@ -51,12 +54,23 @@ if (!trait_exists('EOSApplianceStart')) {
         protected function desiredManual(int $manualMode): array
         {
             $run = $manualMode === self::MODE_RUN;
-            return $this->desiredAppliance($run, $run && $this->ReadAttributeBoolean('ManualStartArmed') && !$this->isRunning(), 'manual', '', '');
+            $armed = $run && $this->ReadAttributeBoolean('ManualStartArmed');
+            if ($armed && $this->isRunning()) {
+                // Already running at the edge: nothing to start, and the edge is used up.
+                $this->WriteAttributeBoolean('ManualStartArmed', false);
+                $armed = false;
+            }
+            return $this->desiredAppliance($run, $armed, 'manual', '', '');
         }
 
-        protected function onManualModeChanged(int $mode): void
+        /** Armed only on the edge into "run"; choosing "run" again while in "run" is no new start. */
+        protected function onManualModeChanged(int $mode, int $previous): void
         {
-            $this->WriteAttributeBoolean('ManualStartArmed', $mode === self::MODE_RUN);
+            if ($mode !== self::MODE_RUN) {
+                $this->WriteAttributeBoolean('ManualStartArmed', false);
+            } elseif ($previous !== self::MODE_RUN) {
+                $this->WriteAttributeBoolean('ManualStartArmed', true);
+            }
         }
 
         /** RUN row action only for a real start; OFF row action only when stopping is allowed (or manual). */
@@ -144,7 +158,7 @@ if (!trait_exists('EOSApplianceStart')) {
          * otherwise the pulse did not start anything (e.g. an action that reported OK but failed
          * inside the device) and the lockout is released so the grace period can retry.
          */
-        private function releaseUnconfirmedLockout(int $now): void
+        private function releaseUnconfirmedLockout(int $now, string $startKey): void
         {
             $pulse = $this->ReadAttributeInteger('StartPulseTs');
             if ($pulse <= 0 || $this->ReadPropertyInteger('RunningSourceVariable') <= 0 || $now - $pulse < 300 || $this->isRunning()) {
@@ -153,8 +167,32 @@ if (!trait_exists('EOSApplianceStart')) {
             if ($this->wasRunningSince($pulse)) {
                 return; // it ran (and finished): the lockout stays
             }
+            // One retry per planned start; a device that ignores two starts is left to the user.
+            $retried = $this->ReadAttributeString('StartRetriedFor');
+            if ($retried === $startKey || $retried === $startKey . '|given up') {
+                if ($retried === $startKey) {
+                    $this->WriteAttributeString('StartRetriedFor', $startKey . '|given up');
+                    $this->LogMessage(sprintf($this->Translate('%s did not report running after the retried start either; not starting again'), $this->ReadPropertyString('DeviceID')), KL_WARNING);
+                }
+                return;
+            }
+            $this->WriteAttributeString('StartRetriedFor', $startKey);
             $this->WriteAttributeInteger('StartPulseTs', 0);
+            // Let the RUN action and the enable target pulse again, not only after an Apply.
+            $last = $this->lastSent();
+            if (str_starts_with((string) ($last['row']['modeRaw'] ?? ''), 'RUN')) {
+                $last['row']['modeRaw'] = null;
+            }
+            unset($last['targets']['Enable']);
+            $this->WriteAttributeString('LastSent', json_encode($last));
             $this->LogMessage(sprintf($this->Translate('%s did not report running after the start; the start may be retried'), $this->ReadPropertyString('DeviceID')), KL_WARNING);
+        }
+
+        /** A start pulse within the run duration locks further plan starts. */
+        private function startLocked(int $now): bool
+        {
+            $pulse = $this->ReadAttributeInteger('StartPulseTs');
+            return $pulse > 0 && $now < $pulse + max(1, $this->ReadPropertyInteger('DurationH')) * 3600;
         }
 
         /** Did the running-source variable change after $since (the appliance ran and finished)? */

@@ -196,6 +196,7 @@ check($a->attributes['StartPulseTs'] > 0 && $a->attributes['StartConfirmedTs'] >
 $c = count($GLOBALS['runActions']); $a->RefreshPlan(); $a->fireOnce(); $a->Watchdog(); $a->fireOnce();
 check(count($GLOBALS['runActions']) === $c && writesTo(40) === [true], 'no second start for the same instruction');
 resetWorld();
+$a->attributes['StartPulseTs'] = 0; // no run in progress (a started run keeps its release, see control_review_test R6-3)
 $eos->instructions = []; $eos->instruction('dishwasher1', $now - 5400, 'RUN'); $a->RefreshPlan(); $a->fireOnce();
 check($GLOBALS['runActions'] === [] && str_contains((string) $a->value('LastControlResult'), 'missed'), 'start 90 min late is skipped (grace 30 min)');
 // failed start: enable write fails -> not recorded (finding 2)

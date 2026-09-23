@@ -85,6 +85,7 @@ class EOSAppliance extends IPSModuleStrict
         $this->RegisterAttributeInteger('StartPulseTs', 0);
         $this->RegisterAttributeInteger('StartConfirmedTs', 0);
         $this->RegisterAttributeBoolean('ManualStartArmed', false);
+        $this->RegisterAttributeString('StartRetriedFor', '');
         $this->RegisterAttributeString('MissedStartWarned', '');
 
         $this->RegisterVariableInteger('Mode', $this->Translate('Instruction'), [

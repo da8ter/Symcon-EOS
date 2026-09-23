@@ -130,7 +130,8 @@
             "The EOS plan contains no instructions for %s": "The EOS plan contains no instructions for %s",
             "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon",
             "Planned start of %s at %s missed (grace period over), not starting": "Planned start of %s at %s missed (grace period over), not starting",
-            "Sending the completed cycles failed: %s": "Sending the completed cycles failed: %s"
+            "Sending the completed cycles failed: %s": "Sending the completed cycles failed: %s",
+            "%s did not report running after the retried start either; not starting again": "%s did not report running after the retried start either; not starting again"
         },
         "de": {
             "EOS Appliance": "EOS Haushaltsgerät",
@@ -288,7 +289,8 @@
             "The EOS plan contains no instructions for %s": "Der EOS-Plan enthält keine Anweisungen für %s",
             "The EOS plan is dated %d s in the future (generated_at); check the clocks of the EOS host and Symcon": "Der EOS-Plan ist %d s in die Zukunft datiert (generated_at); Uhren von EOS-Rechner und Symcon prüfen",
             "Planned start of %s at %s missed (grace period over), not starting": "Geplanter Start von %s um %s verpasst (Gnadenfrist vorbei), kein Start",
-            "Sending the completed cycles failed: %s": "Senden der erledigten Läufe fehlgeschlagen: %s"
+            "Sending the completed cycles failed: %s": "Senden der erledigten Läufe fehlgeschlagen: %s",
+            "%s did not report running after the retried start either; not starting again": "%s meldet auch nach dem wiederholten Start keinen Lauf; es wird nicht erneut gestartet"
         }
     }
 }

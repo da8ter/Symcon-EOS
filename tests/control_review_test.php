@@ -173,5 +173,54 @@ setClock($now + 61); $r2->fireTimer('Retry');
 check(count($GLOBALS['runActions']) === 1 && ls($r2)['row']['modeRaw'] === 'NON_EXPORT' && ls($r2)['row']['fail'] === 0, 'R6-6: ... and the retry that succeeds marks the row done');
 unset($GLOBALS['objects'][1021]);
 
+// ---------------------------------------------------------------- R6-3, R6-4, R6-5: appliance start lifecycle
+echo "== Haushaltsgerät: Lauf, Wiederholung, manueller Start\n";
+$eos->config['devices']['home_appliances'] = ['dishwasher1' => ['device_id' => 'dishwasher1']];
+$start = ['ModeAction_RUN' => json_encode(['actionID' => '{START}', 'parameters' => []])];
+setClock($now);
+worldVar(40, 0, false, true);
+$hb = appliance(1030, ['AllowStop' => true]);
+planFor('dishwasher1', 'RUN', 1.0, 60);
+resetWorld(); $hb->ApplyChanges(); $hb->fireOnce();
+for ($t = 60; $t <= 1860; $t += 60) { setClock($now + $t); $hb->Watchdog(); $hb->fireOnce(); }
+check(writesTo(40) === [true] && $GLOBALS['world'][40]['value'] === true, 'R6-3: with AllowStop the running appliance is not switched off when the grace period of its RUN ends: ' . json_encode(writesTo(40)));
+resetWorld(); setClock($now + 2700); $hb->ApplyChanges(); $hb->fireOnce();
+check(writesTo(40) === [true], 'R6-3: ... also not by the resync of an Apply 45 min into the run: ' . json_encode(writesTo(40)));
+unset($GLOBALS['objects'][1030]);
+
+setClock($now);
+worldVar(40, 0, false, true); worldVar(41, 0, false, false);
+$hw = appliance(1031, $start + ['RunningSourceVariable' => 41]);
+planFor('dishwasher1', 'RUN', 1.0, 60);
+resetWorld(); $hw->ApplyChanges(); $hw->fireOnce();
+$first = count($GLOBALS['runActions']);
+for ($t = 60; $t <= 900; $t += 60) { setClock($now + $t); $hw->Watchdog(); $hw->fireOnce(); } // "running" never turns true
+$released = count(array_filter($hw->logs, static fn (array $l): bool => str_contains($l[1], 'the start may be retried')));
+$gaveUp = count(array_filter($hw->logs, static fn (array $l): bool => str_contains($l[1], 'not starting again')));
+check($first === 1 && $released === 1 && $gaveUp === 1 && count($GLOBALS['runActions']) === 2, 'R6-4: an unconfirmed start is retried once within the grace period, without an Apply, then given up: starts ' . count($GLOBALS['runActions']) . ', releases ' . $released . ', given up ' . $gaveUp);
+unset($GLOBALS['objects'][1031]);
+
+setClock($now);
+worldVar(40, 0, false, true); worldVar(41, 0, true, false); // already running when "run" is chosen
+$hm = appliance(1032, $start + ['RunningSourceVariable' => 41]);
+planFor('dishwasher1', 'OFF', 1.0, 60);
+$hm->ApplyChanges(); $hm->fireOnce(); resetWorld();
+$hm->RequestAction('ManualMode', 1); $hm->fireOnce();
+setClock($now + 1800); $GLOBALS['world'][41]['value'] = false;
+for ($t = 1860; $t <= 2400; $t += 60) { setClock($now + $t); $hm->Watchdog(); $hm->fireOnce(); }
+setClock($now + 6 * 3600); $eos->freshPlan($now + 6 * 3600 - 30); $hm->ApplyChanges(); $hm->fireOnce();
+check($GLOBALS['runActions'] === [] && $hm->attributes['ManualStartArmed'] === false, 'R6-5: manual "run" chosen while running starts nothing, neither when it stops nor on an Apply hours later');
+unset($GLOBALS['objects'][1032]);
+
+setClock($now);
+worldVar(40, 0, false, true); worldVar(41, 0, false, false);
+$hr = appliance(1033, $start);
+planFor('dishwasher1', 'OFF', 1.0, 60);
+$hr->ApplyChanges(); $hr->fireOnce(); resetWorld();
+$hr->RequestAction('ManualMode', 1); $hr->fireOnce();
+setClock($now + 600); $hr->RequestAction('ManualMode', 1); $hr->fireOnce(); // the same mode again, no edge
+check(count($GLOBALS['runActions']) === 1, 'R6-5: choosing manual "run" again while in "run" does not start a second time: ' . count($GLOBALS['runActions']));
+unset($GLOBALS['objects'][1033]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
