@@ -367,5 +367,28 @@ check($ow->status === IS_ACTIVE && $ow->timers['ClaimRetry']['ms'] === 0, 'regre
 unset($GLOBALS['objects'][1089], $GLOBALS['objects'][1091]);
 $GLOBALS['registry'] = false;
 
+// ---------------------------------------------------------------- regression check: the start retry uses the binding that carries the pulse
+echo "== Regression: Startwiederholung je Impulsbindung\n";
+setClock($now);
+worldVar(40, 0, false, true); worldVar(41, 0, false, false);
+$re = appliance(1082, ['RunningSourceVariable' => 41]);        // pulse through the release target only
+planFor('dishwasher1', 'RUN', 1.0, 60);
+resetWorld(); $re->ApplyChanges(); $re->fireOnce();
+for ($t = 60; $t <= 900; $t += 60) { setClock($now + $t); $re->Watchdog(); $re->fireOnce(); }
+$warned = count(array_filter($re->logs, static fn (array $l): bool => str_contains($l[1], 'cannot be repeated')));
+check(writesTo(40) === [true] && $warned === 1 && $re->attributes['StartPulseTs'] > 0, 'regression: with only the release target no fake second start ("on" over "on"); one warning, the lock stays: ' . json_encode(writesTo(40)) . ', warnings ' . $warned);
+unset($GLOBALS['objects'][1082]);
+
+setClock($now);
+worldVar(41, 0, false, false);
+$rs = appliance(1083, ['TargetEnableVariable' => 0, 'ControlScript' => 900, 'RunningSourceVariable' => 41]); // pulse through option 3
+planFor('dishwasher1', 'RUN', 1.0, 60);
+resetWorld(); $rs->ApplyChanges(); $rs->fireOnce();
+for ($t = 60; $t <= 900; $t += 60) { setClock($now + $t); $rs->Watchdog(); $rs->fireOnce(); }
+$starts = count(array_filter($GLOBALS['runScripts'], static fn (array $r): bool => !empty($r[1]['Start'])));
+$gaveUp = count(array_filter($rs->logs, static fn (array $l): bool => str_contains($l[1], 'not starting again')));
+check($starts === 2 && $gaveUp === 1, 'regression: with option 3 as the pulse the retry runs the script again with Start=true, then gives up: starts ' . $starts . ', given up ' . $gaveUp);
+unset($GLOBALS['objects'][1083]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

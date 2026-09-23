@@ -92,13 +92,11 @@ if (!trait_exists('EOSApplianceStart')) {
         {
             $now = $this->eosNow();
             if (!empty($desired['start'])) {
-                if ($this->modeMapRow('RUN')['action'] !== '') {
-                    $pulsed = $outcome['row'] === 'fired';
-                } elseif (isset($outcome['targets']['Enable'])) {
-                    $pulsed = $outcome['targets']['Enable'] === 'ok';
-                } else {
-                    $pulsed = $outcome['chg'] === 'ok';
-                }
+                $pulsed = match ($this->startBinding()) {
+                    'row'    => $outcome['row'] === 'fired',
+                    'enable' => ($outcome['targets']['Enable'] ?? null) === 'ok',
+                    default  => $outcome['chg'] === 'ok',
+                };
                 if ($pulsed) {
                     $this->WriteAttributeInteger('StartPulseTs', $now);
                     $this->WriteAttributeInteger('StartConfirmedTs', 0);
@@ -183,16 +181,33 @@ if (!trait_exists('EOSApplianceStart')) {
                 }
                 return;
             }
+            $binding = $this->startBinding();
+            if ($binding === 'enable') {
+                // The release target already holds "on": writing "on" again is no new start. Keep the lock, tell the user.
+                $this->WriteAttributeString('StartRetriedFor', $startKey . '|given up');
+                $this->LogMessage(sprintf($this->Translate('%s did not report running after the start; the start cannot be repeated through the release target, check the device'), $this->ReadPropertyString('DeviceID')), KL_WARNING);
+                return;
+            }
             $this->WriteAttributeString('StartRetriedFor', $startKey);
             $this->WriteAttributeInteger('StartPulseTs', 0);
-            // Let the RUN action and the enable target pulse again, not only after an Apply.
+            // Let the binding that carries the pulse fire again, not only after an Apply.
             $last = $this->lastSent();
-            if (str_starts_with((string) ($last['row']['modeRaw'] ?? ''), 'RUN')) {
+            if ($binding === 'row' && str_starts_with((string) ($last['row']['modeRaw'] ?? ''), 'RUN')) {
                 $last['row']['modeRaw'] = null;
+            } elseif ($binding === 'chg' && is_array($last['chg'] ?? null)) {
+                $last['chg']['state'] = null; // the action/script runs again with Start=true
             }
-            unset($last['targets']['Enable']);
             $this->WriteAttributeString('LastSent', json_encode($last));
             $this->LogMessage(sprintf($this->Translate('%s did not report running after the start; the start may be retried'), $this->ReadPropertyString('DeviceID')), KL_WARNING);
+        }
+
+        /** Which binding carries the start pulse: the RUN action, else the release target, else the action/script on change. */
+        private function startBinding(): string
+        {
+            if ($this->modeMapRow('RUN')['action'] !== '') {
+                return 'row';
+            }
+            return $this->ReadPropertyInteger('TargetEnableVariable') > 0 ? 'enable' : 'chg';
         }
 
         /** A start pulse within the run duration locks further plan starts. */

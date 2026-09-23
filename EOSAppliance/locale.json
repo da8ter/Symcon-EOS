@@ -135,7 +135,8 @@
             "Device configuration written to EOS but not saved (%s); it is written again with the next Apply": "Device configuration written to EOS but not saved (%s); it is written again with the next Apply",
             "Overwrite EOS with the saved Symcon values": "Overwrite EOS with the saved Symcon values",
             "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with the saved Symcon values\" keeps Symcon:": "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with the saved Symcon values\" keeps Symcon:",
-            "The form shows another device id than the saved one: Apply it first, then overwrite.": "The form shows another device id than the saved one: Apply it first, then overwrite."
+            "The form shows another device id than the saved one: Apply it first, then overwrite.": "The form shows another device id than the saved one: Apply it first, then overwrite.",
+            "%s did not report running after the start; the start cannot be repeated through the release target, check the device": "%s did not report running after the start; the start cannot be repeated through the release target, check the device"
         },
         "de": {
             "EOS Appliance": "EOS Haushaltsgerät",
@@ -298,7 +299,8 @@
             "Device configuration written to EOS but not saved (%s); it is written again with the next Apply": "Gerätekonfiguration in EOS geschrieben, aber nicht gespeichert (%s); sie wird beim nächsten Übernehmen erneut geschrieben",
             "Overwrite EOS with the saved Symcon values": "EOS mit den gespeicherten Symcon-Werten überschreiben",
             "EOS differs; \"Load values from EOS\" takes them over, \"Overwrite EOS with the saved Symcon values\" keeps Symcon:": "EOS weicht ab; „Werte aus EOS laden“ übernimmt sie, „EOS mit den gespeicherten Symcon-Werten überschreiben“ behält Symcon:",
-            "The form shows another device id than the saved one: Apply it first, then overwrite.": "Das Formular zeigt eine andere Geräte-ID als die gespeicherte: erst übernehmen, dann überschreiben."
+            "The form shows another device id than the saved one: Apply it first, then overwrite.": "Das Formular zeigt eine andere Geräte-ID als die gespeicherte: erst übernehmen, dann überschreiben.",
+            "%s did not report running after the start; the start cannot be repeated through the release target, check the device": "%s meldet nach dem Start keinen Lauf; über das Freigabeziel lässt sich der Start nicht wiederholen, bitte das Gerät prüfen"
         }
     }
 }
