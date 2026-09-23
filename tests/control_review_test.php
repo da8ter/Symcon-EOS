@@ -222,5 +222,31 @@ setClock($now + 600); $hr->RequestAction('ManualMode', 1); $hr->fireOnce(); // t
 check(count($GLOBALS['runActions']) === 1, 'R6-5: choosing manual "run" again while in "run" does not start a second time: ' . count($GLOBALS['runActions']));
 unset($GLOBALS['objects'][1033]);
 
+// ---------------------------------------------------------------- R6-9: an expired manual hold is never written again
+echo "== Abgelaufene manuelle Haltezeit\n";
+setClock($now);
+$mm = bat(1040, ['ManualReturnMinutes' => 30]);
+planFor('battery1', 'NON_EXPORT');
+$mm->ApplyChanges(); $mm->fireOnce();
+$mm->RequestAction('ManualMode', 5); $mm->fireOnce();     // manual FORCED_CHARGE for 30 min
+$mm->properties['ControlMode'] = 0; $mm->ApplyChanges();  // display only for a day
+setClock($now + 86400); resetWorld(); planFor('battery1', 'NON_EXPORT');
+$mm->properties['ControlMode'] = 2; $mm->ApplyChanges(); $mm->fireOnce();
+check(writesTo(20) === ['pvonly'] && writesTo(21) === [0] && $mm->value('ManualMode') === 100, 'R6-9: back to "active" a day later writes the plan, not the expired manual FORCED_CHARGE: mode ' . json_encode(writesTo(20)) . ' power ' . json_encode(writesTo(21)));
+unset($GLOBALS['objects'][1040]);
+
+setClock($now);
+worldVar(33, 0, false, true); worldVar(32, 2, 0.0, true);
+$ev = new EOSVehicle(1041); $ev->Create(); connectToServer($ev);
+$ev->properties = array_merge($ev->properties, ['SoCSourceVariable' => 30, 'ControlMode' => 2, 'FallbackMode' => 0, 'ManualReturnMinutes' => 30, 'TargetChargeAllowedVariable' => 33, 'TargetCurrentVariable' => 32]);
+planFor('ev1', 'IDLE', 0.0);
+$ev->ApplyChanges(); $ev->fireOnce();
+$ev->RequestAction('ManualMode', 5); $ev->fireOnce();
+$ev->properties['ControlMode'] = 0; $ev->ApplyChanges();
+setClock($now + 86400); resetWorld(); planFor('ev1', 'IDLE', 0.0);
+$ev->properties['ControlMode'] = 2; $ev->ApplyChanges(); $ev->fireOnce();
+check(!in_array(true, writesTo(33), true), 'R6-9: vehicle: an expired manual charge is not switched on again (live risk: 11 kW for the 300 s dwell): ' . json_encode(writesTo(33)));
+unset($GLOBALS['objects'][1041]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

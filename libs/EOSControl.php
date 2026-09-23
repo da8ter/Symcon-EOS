@@ -162,6 +162,7 @@ if (!trait_exists('EOSControl')) {
             if (!$this->ReadAttributeBoolean('ControlReady')) {
                 return null;
             }
+            $this->expireManualMode();
             $manual = (int) $this->GetValue('ManualMode');
             $reason = '';
             if ($manual !== self::MANUAL_AUTO) {
@@ -332,16 +333,23 @@ if (!trait_exists('EOSControl')) {
             }
             $active = $this->activeInstruction();
             $this->updatePlanStale($active);
-            $until = $this->ReadAttributeInteger('ManualUntil');
-            if ((int) $this->GetValue('ManualMode') !== self::MANUAL_AUTO && $until > 0 && $this->eosNow() >= $until) {
-                $previous = (int) $this->GetValue('ManualMode');
-                $this->SetValue('ManualMode', self::MANUAL_AUTO);
-                $this->onManualModeChanged(self::MANUAL_AUTO, $previous);
-                $this->WriteAttributeInteger('ManualUntil', 0);
-                $this->WriteAttributeString('LastSent', '{}');
-                $this->LogMessage($this->Translate('Manual mode ended, back to automatic'), KL_NOTIFY);
-            }
+            $this->expireManualMode(); // also while the master switch is off, so the variable shows the truth
             $this->scheduleControl($active, 'tick');
+        }
+
+        /** An expired manual hold ends before anything is decided, also after "display only" or a restart. */
+        protected function expireManualMode(): void
+        {
+            $until = $this->ReadAttributeInteger('ManualUntil');
+            $previous = (int) $this->GetValue('ManualMode');
+            if ($previous === self::MANUAL_AUTO || $until <= 0 || $this->eosNow() < $until) {
+                return;
+            }
+            $this->SetValue('ManualMode', self::MANUAL_AUTO);
+            $this->onManualModeChanged(self::MANUAL_AUTO, $previous);
+            $this->WriteAttributeInteger('ManualUntil', 0);
+            $this->WriteAttributeString('LastSent', '{}');
+            $this->LogMessage($this->Translate('Manual mode ended, back to automatic'), KL_NOTIFY);
         }
 
         /** Form button / script API: re-evaluate now and write synchronously. */
