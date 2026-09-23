@@ -118,5 +118,15 @@ check($stored === '1 hour 30 minutes' && (eosField('devices/home_appliances/dish
 drop(1311);
 
 
+// ---------------------------------------------------------------- R8-3: the SoC pair keeps the limit EOS owns
+echo "== SoC-Paar\n";
+eosLoad(['batteries' => [], 'inverters' => INV, 'max_batteries' => 1]);
+$p = batteryAt(1320); $p->ApplyChanges(); // creates battery1 with min 10 / max 95
+$be->putConfigPath('devices/batteries/battery1/min_soc_percentage', 20); // EOSdash
+$p->properties['MaxSoC'] = 90; $p->ApplyChanges();
+check((int) eosField('devices/batteries/battery1/min_soc_percentage') === 20 && (int) eosField('devices/batteries/battery1/max_soc_percentage') === 90,
+    'R8-3: writing the max SoC sends the min SoC EOS holds (EOSdash 20), not the Symcon 10: min ' . json_encode(eosField('devices/batteries/battery1/min_soc_percentage')) . ' max ' . json_encode(eosField('devices/batteries/battery1/max_soc_percentage')));
+drop(1320);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

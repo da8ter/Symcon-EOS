@@ -131,7 +131,7 @@ if (!trait_exists('EOSDeviceConfigSync')) {
                 $newBase[$key] = $device[$key];
             }
             if ($class['push'] !== []) {
-                if (!$this->writeConfigKeys($id, $device, $class['push'])) {
+                if (!$this->writeConfigKeys($id, $device, $class['push'], $eos)) {
                     return false;
                 }
                 foreach ($class['push'] as $key) {
@@ -177,17 +177,20 @@ if (!trait_exists('EOSDeviceConfigSync')) {
             return true;
         }
 
-        /** Write $keys of $device into the EOS entry: values by merge, cleared fields by path PUT null. */
-        private function writeConfigKeys(string $id, array $device, array $keys): bool
+        /** Write $keys of $device into the EOS entry $eos: values by merge, cleared fields by path PUT null. */
+        private function writeConfigKeys(string $id, array $device, array $keys, array $eos): bool
         {
-            // EOS validates a partial body with its defaults (min 0 / max 100): send both limits together.
-            if (array_intersect($keys, ['min_soc_percentage', 'max_soc_percentage']) !== []) {
-                $keys = array_values(array_unique(array_merge($keys, array_intersect(['min_soc_percentage', 'max_soc_percentage'], array_keys($device)))));
-            }
             $values = ['device_id' => $id];
             foreach ($keys as $key) {
                 if ($device[$key] !== null) {
                     $values[$key] = $device[$key];
+                }
+            }
+            // EOS validates a partial body with its defaults (min 0 / max 100), so both limits go
+            // together; the one not written keeps the value EOS holds (EOSdash may own it).
+            foreach ([['min_soc_percentage', 'max_soc_percentage'], ['max_soc_percentage', 'min_soc_percentage']] as [$written, $partner]) {
+                if (isset($values[$written]) && !isset($values[$partner]) && array_key_exists($partner, $device)) {
+                    $values[$partner] = $eos[$partner] ?? $device[$partner];
                 }
             }
             if (count($values) > 1) {
