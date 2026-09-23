@@ -96,5 +96,57 @@ for ($t = 240; $t <= 6 * 3600 + 600; $t += 300) { setClock($now + $t); $a->Watch
 check($a->value('FallbackActive') === true && $GLOBALS['runActions'] === [], 'R6-1: a failed start is not retried from the stored state after the plan went stale (grace period long over)');
 unset($GLOBALS['objects'][1002]);
 
+// ---------------------------------------------------------------- R6-2: option 3 and the heartbeat follow the whole desired state
+echo "== Option 3 und Heartbeat ohne Option-1-Ziele\n";
+$eos->config['devices']['electric_vehicles'] = ['ev1' => ['device_id' => 'ev1']];
+worldVar(30, 1, 40, false);
+$scriptPower = static fn (): array => array_map(static fn (array $r): mixed => $r[1]['PowerW'] ?? null, $GLOBALS['runScripts']);
+setClock($now);
+$o = bat(1010, ['TargetModeVariable' => 0, 'TargetChargePowerVariable' => 0, 'ControlScript' => 900]);
+planFor('battery1', 'FORCED_CHARGE', 0.5);
+resetWorld(); $o->ApplyChanges(); $o->fireOnce();
+setClock($now + 900); planFor('battery1', 'FORCED_CHARGE', 1.0); $o->RefreshPlan(); $o->fireOnce();
+check($scriptPower() === [2500, 5000], 'R6-2: script-only battery: 2.5 kW -> 5 kW inside FORCED_CHARGE reaches the script: ' . json_encode($scriptPower()));
+unset($GLOBALS['objects'][1010]);
+
+setClock($now);
+$o2 = bat(1011, ['TargetChargePowerVariable' => 0, 'ControlScript' => 900]);
+planFor('battery1', 'GRID_SUPPORT_IMPORT', 0.3);
+resetWorld(); $o2->ApplyChanges(); $o2->fireOnce();
+setClock($now + 900); planFor('battery1', 'GRID_SUPPORT_IMPORT', 0.9); $o2->RefreshPlan(); $o2->fireOnce();
+check($scriptPower() === [1500, 4500] && writesTo(20) === ['now'], 'R6-2: mode target plus script: 1.5 kW -> 4.5 kW reaches the script, the unchanged mode is not rewritten: ' . json_encode($scriptPower()));
+unset($GLOBALS['objects'][1011]);
+
+setClock($now);
+$v = new EOSVehicle(1012); $v->Create(); connectToServer($v);
+$v->properties = array_merge($v->properties, ['SoCSourceVariable' => 30, 'ControlMode' => 2, 'ControlScript' => 900, 'FallbackMode' => 0]);
+planFor('ev1', 'GRID_SUPPORT_IMPORT', 0.5);
+resetWorld(); $v->ApplyChanges(); $v->fireOnce();
+setClock($now + 900); planFor('ev1', 'GRID_SUPPORT_IMPORT', 1.0); $v->RefreshPlan(); $v->fireOnce();
+$currents = array_map(static fn (array $r): mixed => $r[1]['CurrentA'], $GLOBALS['runScripts']);
+check(count($currents) === 2 && $currents[1] > $currents[0], 'R6-2: script-only vehicle (go-e example): a higher current reaches the script: ' . json_encode($currents));
+unset($GLOBALS['objects'][1012]);
+
+setClock($now);
+$h = bat(1013, ['TargetModeVariable' => 0, 'TargetChargePowerVariable' => 0, 'ControlScript' => 900, 'HeartbeatSeconds' => 30]);
+planFor('battery1', 'NON_EXPORT');
+resetWorld(); $h->ApplyChanges(); $h->fireOnce();
+check(count($GLOBALS['runScripts']) === 1 && $h->timers['Retry']['ms'] === 30500, 'R6-2: script-only binding with heartbeat arms the Retry timer: ' . $h->timers['Retry']['ms']);
+setClock($now + 30); $h->fireTimer('Retry');
+check(count($GLOBALS['runScripts']) === 2 && ($GLOBALS['runScripts'][1][1]['Heartbeat'] ?? null) === true, 'R6-2: ... and the heartbeat runs the script again');
+unset($GLOBALS['objects'][1013]);
+
+// Heartbeats stay aligned after a partial change: option 3 once per period, all healthy targets together.
+setClock($now);
+$al = bat(1014, ['ControlScript' => 900, 'HeartbeatSeconds' => 30]);
+planFor('battery1', 'FORCED_CHARGE', 0.5);
+resetWorld(); $al->ApplyChanges(); $al->fireOnce();
+setClock($now + 10); planFor('battery1', 'FORCED_CHARGE', 1.0); $al->RefreshPlan(); $al->fireOnce(); // only ChargePowerW changes
+resetWorld();
+for ($t = 11; $t <= 100; $t++) { setClock($now + $t); $al->Dispatch(); }
+$runs = count($GLOBALS['runScripts']);
+check($runs === 3 && count(writesTo(20)) === 3 && count(writesTo(21)) === 3, 'R6-2: after a partial change the heartbeats realign: 3 periods in 90 s, option 3 and every target once per period: script ' . $runs . ', mode ' . count(writesTo(20)) . ', power ' . count(writesTo(21)));
+unset($GLOBALS['objects'][1014]);
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";

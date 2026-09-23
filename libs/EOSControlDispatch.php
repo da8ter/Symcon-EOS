@@ -12,12 +12,15 @@ declare(strict_types=1);
  *   {v:2, ts, source, modeRaw, degraded, resync,
  *    targets: {Key: {v, ts, fail, failTs, fv, err}},  v/ts = last value written successfully
  *    row: {modeRaw, fail, failTs[, failMode]},        mode-row action, fires once per mode
- *    chg: {fail, failTs}}                             action and script on change
+ *    chg: {fail, failTs, ts, state[, fstate]}}        action and script on change
  * Rules per bound target (n = wanted value): a value that failed before is retried only
  * after the backoff; anything else that differs from the last success, or still carries
- * a failure, is written at once; an unchanged healthy target is re-sent when its own
- * heartbeat is due. A skipped target (missing, not actionable, not convertible) counts
- * as a failure, so it runs through the backoff instead of being "changed" every time.
+ * a failure, is written at once. A skipped target (missing, not actionable, not
+ * convertible) counts as a failure, so it runs through the backoff instead of being
+ * "changed" every time. Heartbeat: when any healthy target or the action/script on change
+ * is due, all healthy targets and the action/script are sent together, so their clocks
+ * stay aligned. The action/script on change follows the whole desired state (mode, factor,
+ * every target value, bound or not): 'state' is what it last ran with successfully.
  */
 if (!trait_exists('EOSControlDispatch')) {
     trait EOSControlDispatch
@@ -66,7 +69,8 @@ if (!trait_exists('EOSControlDispatch')) {
             $heartbeatSeconds = $this->heartbeatSeconds();
             $change = [];
             $retry = [];
-            $heartbeat = [];
+            $healthy = [];
+            $heartbeatDue = false;
             foreach ($resolved as $key => $target) {
                 $entry = $entries[$key] ?? null;
                 $fail = (int) ($entry['fail'] ?? 0);
@@ -78,9 +82,17 @@ if (!trait_exists('EOSControlDispatch')) {
                 }
                 if ($entry === null || ($entry['v'] ?? null) !== $target['norm'] || $fail > 0) {
                     $change[$key] = $target;
-                } elseif ($heartbeatSeconds > 0 && $now - (int) ($entry['ts'] ?? 0) >= $heartbeatSeconds) {
-                    $heartbeat[$key] = $target;
+                } else {
+                    $healthy[$key] = $target;
+                    $heartbeatDue = $heartbeatDue || ($heartbeatSeconds > 0 && $now - (int) ($entry['ts'] ?? 0) >= $heartbeatSeconds);
                 }
+            }
+            $chg = is_array($last['chg'] ?? null) ? $last['chg'] : ['fail' => 0, 'failTs' => 0];
+            $chgBound = $this->changeBindingConfigured();
+            $state = $this->desiredState($desired);
+            $chgFailedSame = (int) ($chg['fail'] ?? 0) > 0 && ($chg['fstate'] ?? null) === $state;
+            if ($chgBound && $heartbeatSeconds > 0 && (int) ($chg['fail'] ?? 0) === 0 && isset($chg['ts']) && $now - (int) $chg['ts'] >= $heartbeatSeconds) {
+                $heartbeatDue = true;
             }
             $modeRaw = (string) ($desired['modeRaw'] ?? '');
             // The mode-row action fires once per row key: the mode, or a finer key a device sets
@@ -96,16 +108,31 @@ if (!trait_exists('EOSControlDispatch')) {
                 'resolved'    => $resolved,
                 'change'      => $change,
                 'retry'       => $retry,
-                'heartbeat'   => $heartbeat,
                 'modeRaw'     => $modeRaw,
                 'rowKey'      => $rowKey,
                 'modeChanged' => !isset($last['modeRaw']) || $modeRaw !== (string) $last['modeRaw'],
                 'row'         => $row,
                 'rowPending'  => $rowPending,
                 'rowDue'      => $rowDue,
+                'heartbeat'   => $heartbeatDue ? $healthy : [],
+                'heartbeatDue' => $heartbeatDue,
                 'chg'         => $chg,
-                'chgRetry'    => (int) ($chg['fail'] ?? 0) > 0 && $now - (int) ($chg['failTs'] ?? 0) >= $this->backoffSeconds((int) $chg['fail']),
+                'state'       => $state,
+                // A new desired state runs the action/script at once; the same state that failed waits for its backoff.
+                'chgChanged'  => $chgBound && !$chgFailedSame && ($chg['state'] ?? null) !== $state,
+                'chgRetry'    => $chgBound && $chgFailedSame && $now - (int) ($chg['failTs'] ?? 0) >= $this->backoffSeconds((int) $chg['fail']),
             ];
+        }
+
+        /** The desired state the action/script on change is about: mode, factor and every target value. */
+        protected function desiredState(array $desired): string
+        {
+            return (string) json_encode(['modeRaw' => (string) ($desired['modeRaw'] ?? ''), 'factor' => $desired['factor'] ?? null, 'targets' => $desired['targets'] ?? []]);
+        }
+
+        protected function changeBindingConfigured(): bool
+        {
+            return $this->normalizeActionJson($this->ReadPropertyString('ChangeAction')) !== '' || $this->ReadPropertyInteger('ControlScript') > 0;
         }
 
         protected function executeDesired(array $desired, bool $force, bool $sim): void
@@ -115,7 +142,7 @@ if (!trait_exists('EOSControlDispatch')) {
             $entries = is_array($last['targets'] ?? null) ? $last['targets'] : [];
             $plan = $this->dispatchPlan($desired, $last, $now);
             $modeRaw = $plan['modeRaw'];
-            $due = $force || $plan['change'] !== [] || $plan['retry'] !== [] || $plan['heartbeat'] !== [] || $plan['modeChanged'] || $plan['rowDue'] || $plan['chgRetry'];
+            $due = $force || $plan['change'] !== [] || $plan['retry'] !== [] || $plan['heartbeatDue'] || $plan['modeChanged'] || $plan['rowDue'] || $plan['chgChanged'] || $plan['chgRetry'];
             if (!$due) {
                 // Nothing to write, but a changed policy degradation must stay visible.
                 $degraded = (string) ($desired['degraded'] ?? '');
@@ -132,14 +159,14 @@ if (!trait_exists('EOSControlDispatch')) {
                 $reason = 'disable';
             } elseif ($force) {
                 $reason = 'force';
-            } elseif ($plan['change'] !== [] || $plan['modeChanged'] || $plan['rowDue']) {
+            } elseif ($plan['change'] !== [] || $plan['modeChanged'] || $plan['rowDue'] || $plan['chgChanged']) {
                 $reason = $source;
             } else {
-                $reason = $plan['heartbeat'] !== [] ? 'heartbeat' : 'retry';
+                $reason = $plan['heartbeatDue'] ? 'heartbeat' : 'retry';
             }
-            $context = $this->buildContext($desired, $reason, $sim, array_keys($plan['change'])) + [
+            $context = $this->buildContext($desired, $reason, $sim, $this->changedKeys($desired, $plan)) + [
                 'Retried'     => implode(',', array_keys($plan['retry'])),
-                'Heartbeat'   => $plan['heartbeat'] !== [],
+                'Heartbeat'   => $plan['heartbeatDue'],
                 'ModeChanged' => $plan['modeChanged'],
                 // First write after Apply or a Symcon restart: the device state was unknown.
                 'Resync'      => !empty($last['resync']),
@@ -204,9 +231,9 @@ if (!trait_exists('EOSControlDispatch')) {
                 $outcome['row'] = 'waiting'; // failed before, still in its backoff
             }
 
-            // Action and script on change: on every change, mode change, heartbeat or forced write; not for pure retries.
+            // Action and script on change: on every change of the desired state, mode change, heartbeat or forced write; not for pure retries.
             $chg = $plan['chg'];
-            if ($force || $plan['change'] !== [] || $plan['heartbeat'] !== [] || $plan['modeChanged'] || $rowFired || $plan['chgRetry']) {
+            if ($force || $plan['change'] !== [] || $plan['chgChanged'] || $plan['heartbeatDue'] || $plan['modeChanged'] || $rowFired || $plan['chgRetry']) {
                 $chgFailed = false;
                 $ran = false;
                 foreach ([
@@ -224,7 +251,9 @@ if (!trait_exists('EOSControlDispatch')) {
                 }
                 if ($ran) {
                     $outcome['chg'] = $chgFailed ? 'fail' : 'ok';
-                    $chg = $chgFailed ? ['fail' => (int) ($chg['fail'] ?? 0) + 1, 'failTs' => $now] : ['fail' => 0, 'failTs' => 0];
+                    $chg = $chgFailed
+                        ? ['fail' => (int) ($chg['fail'] ?? 0) + 1, 'failTs' => $now, 'ts' => (int) ($chg['ts'] ?? 0), 'state' => $chg['state'] ?? null, 'fstate' => $plan['state']]
+                        : ['fail' => 0, 'failTs' => 0, 'ts' => $now, 'state' => $plan['state']];
                 }
             }
 
@@ -256,6 +285,20 @@ if (!trait_exists('EOSControlDispatch')) {
                 $outcome['success'] = $this->deviceSideOk($outcome);
                 $this->onDispatched($desired, $outcome);
             }
+        }
+
+        /** Bound targets written for a change, plus every desired value that differs from the last action/script run. */
+        protected function changedKeys(array $desired, array $plan): array
+        {
+            $keys = array_keys($plan['change']);
+            $before = json_decode((string) ($plan['chg']['state'] ?? ''), true);
+            $previous = is_array($before['targets'] ?? null) ? $before['targets'] : [];
+            foreach ((array) ($desired['targets'] ?? []) as $key => $value) {
+                if (!array_key_exists($key, $previous) || $previous[$key] !== $value) {
+                    $keys[] = (string) $key;
+                }
+            }
+            return array_values(array_unique($keys));
         }
 
         /**
@@ -321,6 +364,8 @@ if (!trait_exists('EOSControlDispatch')) {
             }
             if ((int) ($last['chg']['fail'] ?? 0) > 0) {
                 $due[] = (int) $last['chg']['failTs'] + $this->backoffSeconds((int) $last['chg']['fail']);
+            } elseif ($heartbeatSeconds > 0 && isset($last['chg']['ts']) && $this->changeBindingConfigured()) {
+                $due[] = (int) $last['chg']['ts'] + $heartbeatSeconds;
             }
             if ($due === []) {
                 $this->SetTimerInterval('Retry', 0);
