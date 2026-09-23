@@ -10,6 +10,7 @@ require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSControlDispatch.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
+require_once __DIR__ . '/../libs/EOSConfigCompare.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigForm.php';
 require_once __DIR__ . '/../libs/EOSBatteryConfig.php';
 
@@ -34,6 +35,7 @@ class EOSBattery extends IPSModuleStrict
     use EOSDeviceConfigSync, EOSBatteryConfig {
         EOSBatteryConfig::onDeviceSynced insteadof EOSDeviceConfigSync; // the battery links the inverter
     }
+    use EOSConfigCompare;
 
     private const MODULE_GUID = '{F4B30383-1210-4169-93DA-5C9664447B42}';
     /** Device map in the EOS configuration; GENETIC supports only one battery and one vehicle. */

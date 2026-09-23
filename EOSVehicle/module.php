@@ -10,6 +10,7 @@ require_once __DIR__ . '/../libs/EOSFormHelpers.php';
 require_once __DIR__ . '/../libs/EOSControl.php';
 require_once __DIR__ . '/../libs/EOSControlDispatch.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigSync.php';
+require_once __DIR__ . '/../libs/EOSConfigCompare.php';
 require_once __DIR__ . '/../libs/EOSDeviceConfigForm.php';
 require_once __DIR__ . '/../libs/EOSDeviceTimes.php';
 require_once __DIR__ . '/../libs/EOSVehicleConfig.php';
@@ -32,6 +33,7 @@ class EOSVehicle extends IPSModuleStrict
     use EOSControl;
     use EOSControlDispatch;
     use EOSDeviceConfigSync;
+    use EOSConfigCompare;
     use EOSDeviceConfigForm;
     use EOSDeviceTimes;
     use EOSVehicleConfig;
