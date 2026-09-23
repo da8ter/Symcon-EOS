@@ -238,7 +238,7 @@ class IPSModuleStrict
 }
 
 // ---------------------------------------------------------------- world: variables, actions, scripts, instances
-$GLOBALS['sdkMode'] = 'legacy';
+$GLOBALS['sdkMode'] = 'live';
 $GLOBALS['world'] = [];          // id => ['VariableType', 'VariableAction', 'VariableCustomAction', 'VariableUpdated', 'value', 'fail', 'parent']
 $GLOBALS['actions'] = [];        // RequestAction calls [id, value]
 $GLOBALS['runActions'] = [];     // IPS_RunActionWait calls [actionID, parameters]

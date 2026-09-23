@@ -82,6 +82,45 @@ if (!trait_exists('EOSControlBindings')) {
         }
 
         // ---------------------------------------------------------------- executors
+        //
+        // Symcon reports failures of RequestAction, IPS_RunActionWait and IPS_RunScriptEx
+        // through the return value plus a printed warning, never as an exception
+        // (measured on Symcon 9.1). The return value decides; warnings only feed the text.
+
+        /** Run an SDK call, collecting the warnings it prints instead of letting them reach the output. */
+        protected function callCapturing(callable $call, array &$warnings): mixed
+        {
+            $warnings = [];
+            set_error_handler(static function (int $severity, string $message) use (&$warnings): bool {
+                $warnings[] = trim(preg_replace('/\s+/', ' ', $message) ?? $message);
+                return true;
+            }, E_WARNING | E_USER_WARNING | E_NOTICE | E_USER_NOTICE);
+            try {
+                return $call();
+            } catch (\Throwable $e) {
+                $warnings[] = $e->getMessage();
+                return false;
+            } finally {
+                restore_error_handler();
+            }
+        }
+
+        /** Can Symcon switch this variable? A custom action of 1 means "standard action switched off". */
+        protected function isActionable(int $varId): bool
+        {
+            if (function_exists('HasAction')) {
+                return HasAction($varId);
+            }
+            $var = IPS_GetVariable($varId);
+            $custom = (int) $var['VariableCustomAction'];
+            return $custom > 0 ? $custom >= 10000 : (int) $var['VariableAction'] >= 10000;
+        }
+
+        /** Error text for a failed call: the first printed warning, otherwise $fallback. */
+        private function failureText(array $warnings, string $fallback): string
+        {
+            return $this->eosShorten($warnings !== [] ? (string) $warnings[0] : $fallback, 160);
+        }
 
         /** Write a value to a foreign variable via RequestAction. */
         protected function writeTarget(string $key, int $varId, mixed $value, bool $sim): array
@@ -89,13 +128,11 @@ if (!trait_exists('EOSControlBindings')) {
             if ($varId <= 0 || !IPS_VariableExists($varId)) {
                 return ['ok' => false, 'skipped' => true, 'norm' => '', 'text' => $key . ': ' . $this->Translate('target variable missing')];
             }
-            $var = IPS_GetVariable($varId);
-            $action = (int) $var['VariableCustomAction'] >= 10000 ? (int) $var['VariableCustomAction'] : (int) $var['VariableAction'];
-            if ($action < 10000) {
+            if (!$this->isActionable($varId)) {
                 return ['ok' => false, 'skipped' => true, 'norm' => '', 'text' => $key . ': ' . $this->Translate('target variable not actionable')];
             }
             try {
-                $typed = $this->coerceToVariableType($value, (int) $var['VariableType']);
+                $typed = $this->coerceToVariableType($value, (int) IPS_GetVariable($varId)['VariableType']);
             } catch (\Throwable $e) {
                 return ['ok' => false, 'skipped' => false, 'norm' => '', 'text' => $key . ': ' . $e->getMessage()];
             }
@@ -103,12 +140,12 @@ if (!trait_exists('EOSControlBindings')) {
             if ($sim) {
                 return ['ok' => true, 'skipped' => false, 'norm' => $norm, 'text' => 'SIM ' . $key . '→' . $norm];
             }
-            try {
-                RequestAction($varId, $typed);
-                return ['ok' => true, 'skipped' => false, 'norm' => $norm, 'text' => $key . '→' . $norm . ' OK'];
-            } catch (\Throwable $e) {
-                return ['ok' => false, 'skipped' => false, 'norm' => $norm, 'text' => $key . '→' . $norm . ' ' . $this->Translate('failed') . ': ' . $e->getMessage()];
+            $warnings = [];
+            $ok = $this->callCapturing(static fn (): mixed => RequestAction($varId, $typed), $warnings);
+            if ($ok === false) {
+                return ['ok' => false, 'skipped' => false, 'norm' => $norm, 'text' => $key . '→' . $norm . ' ' . $this->Translate('failed') . ': ' . $this->failureText($warnings, 'RequestAction returned false')];
             }
+            return ['ok' => true, 'skipped' => false, 'norm' => $norm, 'text' => $key . '→' . $norm . ' OK'];
         }
 
         /** Run a Symcon action stored by a SelectAction element ({"actionID":..., "parameters":{...}}). */
@@ -128,16 +165,21 @@ if (!trait_exists('EOSControlBindings')) {
                 return ['ok' => true, 'skipped' => false, 'norm' => '', 'text' => 'SIM ' . $label];
             }
             $parameters = is_array($action['parameters'] ?? null) ? $action['parameters'] : [];
-            try {
-                // Context first, the user's own parameters (TARGET, VALUE, ...) win on collision.
-                IPS_RunActionWait((string) $action['actionID'], array_merge($context, $parameters));
-                return ['ok' => true, 'skipped' => false, 'norm' => '', 'text' => $label . ' OK'];
-            } catch (\Throwable $e) {
-                return ['ok' => false, 'skipped' => false, 'norm' => '', 'text' => $label . ' ' . $this->Translate('failed') . ': ' . $e->getMessage()];
+            $warnings = [];
+            // Context first, the user's own parameters (TARGET, VALUE, ...) win on collision.
+            $output = $this->callCapturing(static fn (): mixed => IPS_RunActionWait((string) $action['actionID'], array_merge($context, $parameters)), $warnings);
+            if ($output === false) {
+                return ['ok' => false, 'skipped' => false, 'norm' => '', 'text' => $label . ' ' . $this->Translate('failed') . ': ' . $this->failureText($warnings, 'action not found')];
             }
+            // The return value is the output of the action; PHP errors inside the action appear there.
+            $output = trim((string) $output);
+            if (preg_match('/(^|\n)\s*(Fatal error|Parse error|Warning|Error)\s*:/', $output) === 1) {
+                return ['ok' => false, 'skipped' => false, 'norm' => '', 'text' => $label . ' ' . $this->Translate('failed') . ': ' . $this->failureText([preg_replace('/\s+/', ' ', $output)], $output)];
+            }
+            return ['ok' => true, 'skipped' => false, 'norm' => '', 'text' => $label . ' OK' . ($output !== '' ? ' (' . $this->eosShorten(preg_replace('/\s+/', ' ', $output) ?? $output, 60) . ')' : '')];
         }
 
-        /** Run a script asynchronously with the context in $_IPS. */
+        /** Start a script asynchronously with the context in $_IPS ("OK" means started). */
         protected function runScript(int $scriptId, array $context, bool $sim, string $label): array
         {
             if ($scriptId <= 0) {
@@ -149,12 +191,12 @@ if (!trait_exists('EOSControlBindings')) {
             if ($sim) {
                 return ['ok' => true, 'skipped' => false, 'norm' => '', 'text' => 'SIM ' . $label];
             }
-            try {
-                IPS_RunScriptEx($scriptId, $context);
-                return ['ok' => true, 'skipped' => false, 'norm' => '', 'text' => $label . ' OK'];
-            } catch (\Throwable $e) {
-                return ['ok' => false, 'skipped' => false, 'norm' => '', 'text' => $label . ' ' . $this->Translate('failed') . ': ' . $e->getMessage()];
+            $warnings = [];
+            $started = $this->callCapturing(static fn (): mixed => IPS_RunScriptEx($scriptId, $context), $warnings);
+            if ($started === false) {
+                return ['ok' => false, 'skipped' => false, 'norm' => '', 'text' => $label . ' ' . $this->Translate('failed') . ': ' . $this->failureText($warnings, 'script not started')];
             }
+            return ['ok' => true, 'skipped' => false, 'norm' => '', 'text' => $label . ' OK'];
         }
 
         // ---------------------------------------------------------------- desired state -> writes
@@ -307,9 +349,7 @@ if (!trait_exists('EOSControlBindings')) {
                 if (!IPS_VariableExists($varId)) {
                     return $key . ': ' . $this->Translate('target variable missing');
                 }
-                $var = IPS_GetVariable($varId);
-                $action = (int) $var['VariableCustomAction'] >= 10000 ? (int) $var['VariableCustomAction'] : (int) $var['VariableAction'];
-                if ($action < 10000) {
+                if (!$this->isActionable($varId)) {
                     return $key . ': ' . $this->Translate('target variable not actionable');
                 }
             }

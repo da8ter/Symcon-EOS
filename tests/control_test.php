@@ -244,4 +244,26 @@ $ls = lastSent($a2); $ls['targets']['Enable']['failTs'] = $now - 120; $a2->attri
 $a2->Dispatch();
 check(json_decode($a2->attributes['StartedInstructionIds'], true) === ['dishwasher1@' . ($now - 60)] && $GLOBALS['world'][41]['value'] === true, 'once the enable write succeeds the start is recorded');
 
+// ---------------------------------------------------------------- T14 Symcon reports failures by return value (K45, K15)
+echo "== Symcon-Fehlerbild\n";
+$m = battery(2); $m->ApplyChanges(); $m->fireOnce(); resetWorld();
+$GLOBALS['world'][21]['fail'] = true;
+$eos->instructions = []; $eos->instruction('battery1', $now - 5, 'FORCED_CHARGE', 1.0); $eos->freshPlan($now - 30); $m->RefreshPlan(); $m->fireOnce();
+check(lastSent($m)['targets']['ChargePowerW']['fail'] === 1 && str_contains((string) $m->value('LastControlResult'), 'device rejected value') && $GLOBALS['sdkWarnings'] === [], 'K45: RequestAction false plus warning counts as failed, the warning becomes the text and does not reach the output: ' . $m->value('LastControlResult'));
+$GLOBALS['world'][21]['fail'] = false;
+$m->properties['ChangeAction'] = json_encode(['actionID' => '{ECHO}', 'parameters' => []]);
+$eos->instructions = []; $eos->instruction('battery1', $now - 5, 'GRID_SUPPORT_IMPORT', 0.5); $m->RefreshPlan(); $m->fireOnce();
+check(str_contains((string) $m->value('LastControlResult'), 'Action on change OK (hello)'), 'K45: action output without a PHP error is success, output shown: ' . $m->value('LastControlResult'));
+$m->properties['ChangeAction'] = json_encode(['actionID' => '{FAIL}', 'parameters' => []]);
+$eos->instructions = []; $eos->instruction('battery1', $now - 5, 'GRID_SUPPORT_IMPORT', 0.6); $m->RefreshPlan(); $m->fireOnce();
+check(str_contains((string) $m->value('LastControlResult'), 'Action on change failed: Fatal error'), 'K45: a PHP error in the action output is a failure: ' . $m->value('LastControlResult'));
+$m->properties['ChangeAction'] = json_encode(['actionID' => '{UNKNOWN}', 'parameters' => []]);
+$eos->instructions = []; $eos->instruction('battery1', $now - 5, 'GRID_SUPPORT_IMPORT', 0.7); $m->RefreshPlan(); $m->fireOnce();
+check(str_contains((string) $m->value('LastControlResult'), 'Action on change failed: Aktion mit ID {UNKNOWN} nicht gefunden!') && $GLOBALS['sdkWarnings'] === [], 'K45: an unknown action (false plus warning) is a failure');
+$m->properties['ChangeAction'] = '';
+worldVar(25, 0, false, true); $GLOBALS['world'][25]['VariableCustomAction'] = 1;
+$m->properties['TargetGridChargeVariable'] = 25; $m->ApplyChanges();
+check(str_contains($m->attributes['ControlProblem'], 'GridCharge') && str_contains($m->attributes['ControlProblem'], 'not actionable'), 'K15: standard action switched off (custom action 1) is not actionable: ' . $m->attributes['ControlProblem']);
+$m->properties['TargetGridChargeVariable'] = 0;
+
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
