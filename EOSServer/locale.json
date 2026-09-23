@@ -56,7 +56,8 @@
             "Measurement: %s": "Measurement: %s",
             "Resent values: %s": "Resent values: %s",
             "Samples: %s": "Samples: %s",
-            "The form shows another device id than the saved one: Apply it first, then overwrite.": "The form shows another device id than the saved one: Apply it first, then overwrite."
+            "The form shows another device id than the saved one: Apply it first, then overwrite.": "The form shows another device id than the saved one: Apply it first, then overwrite.",
+            "%s belongs to instance %d": "%s belongs to instance %d"
         },
         "de": {
             "EOS Server": "EOS Server",
@@ -224,7 +225,8 @@
             "Measurement: %s": "Messwert: %s",
             "Resent values: %s": "Erneut gesendete Werte: %s",
             "Samples: %s": "Messreihe: %s",
-            "The form shows another device id than the saved one: Apply it first, then overwrite.": "Das Formular zeigt eine andere Geräte-ID als die gespeicherte: erst übernehmen, dann überschreiben."
+            "The form shows another device id than the saved one: Apply it first, then overwrite.": "Das Formular zeigt eine andere Geräte-ID als die gespeicherte: erst übernehmen, dann überschreiben.",
+            "%s belongs to instance %d": "%s gehört zur Instanz %d"
         }
     }
 }

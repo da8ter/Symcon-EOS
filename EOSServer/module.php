@@ -361,6 +361,9 @@ class EOSServer extends IPSModuleStrict
                 // Answered by this instance, not by EOS: must not count as "EOS reachable" (reply()).
                 return (string) json_encode($this->claimDevice((string) ($data['DeviceID'] ?? ''), (int) ($data['InstanceID'] ?? 0)));
 
+            case 'DeviceOwner':
+                return (string) json_encode(['ok' => true, 'status' => 200, 'owner' => $this->deviceOwner((string) ($data['DeviceID'] ?? ''))]);
+
             default:
                 return json_encode(['ok' => false, 'error' => 'unknown command ' . $command]);
         }

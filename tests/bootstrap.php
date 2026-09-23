@@ -101,6 +101,9 @@ final class FakeEOS
                 $this->owners = array_filter($this->owners, static fn (int $iid, string $key): bool => $iid !== $claimant || $key === $id, ARRAY_FILTER_USE_BOTH);
                 $this->owners[$id] = $owner;
                 return ['ok' => true, 'owner' => $owner];
+            case 'DeviceOwner':
+                $owner = (int) ($this->owners[(string) $data['DeviceID']] ?? 0);
+                return ['ok' => true, 'owner' => ($GLOBALS['objects'][$owner]->properties['DeviceID'] ?? null) === (string) $data['DeviceID'] ? $owner : 0];
             case 'PutMeasurement':
                 return $this->putFails ? ['ok' => false, 'error' => "HTTP 404: Key 'x' is not available."] : ['ok' => true, 'data' => null];
             case 'SaveConfig':

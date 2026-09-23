@@ -104,8 +104,11 @@ if (!trait_exists('EOSDeviceConfigForm')) {
                 $this->UpdateFormField('ConfigInfo', 'caption', $this->Translate('No old EOS entry to remove.'));
                 return;
             }
-            $res = $this->forward(['Command' => 'RemoveDevice', 'Collection' => self::DEVICE_COLLECTION, 'DeviceID' => $old]);
+            $res = $this->forward(['Command' => 'RemoveDevice', 'Collection' => self::DEVICE_COLLECTION, 'DeviceID' => $old, 'InstanceID' => $this->InstanceID]);
             if (($res['ok'] ?? false) !== true) {
+                if ((int) ($res['status'] ?? 0) === 409) {
+                    $this->WriteAttributeString('PreviousDeviceID', ''); // taken over by another instance: no longer ours to remove
+                }
                 $this->UpdateFormField('ConfigInfo', 'caption', (string) ($res['error'] ?? '?'));
                 return;
             }
@@ -199,10 +202,15 @@ if (!trait_exists('EOSDeviceConfigForm')) {
                 }
             }
             $this->setFormAttribute($form['elements'], 'EOSDevicePick', 'options', $options);
-            // Offered while the old entry is still in EOS (unknown when EOS is not readable).
+            // Offered while the old entry is still in EOS (unknown when EOS is not readable) and no other instance owns it.
             $old = $this->oldDeviceId();
             $known = isset($read) && $read['state'] === 'ok' && is_array($read['value']);
-            $this->setFormAttribute($form['elements'], 'RemoveOldEntry', 'visible', $old !== '' && (!$known || array_key_exists($old, $read['value'])));
+            $visible = $old !== '' && (!$known || array_key_exists($old, $read['value']));
+            if ($visible) {
+                $owner = (int) ($this->forward(['Command' => 'DeviceOwner', 'DeviceID' => $old], true)['owner'] ?? 0);
+                $visible = $owner === 0 || $owner === $this->InstanceID;
+            }
+            $this->setFormAttribute($form['elements'], 'RemoveOldEntry', 'visible', $visible);
         }
     }
 }

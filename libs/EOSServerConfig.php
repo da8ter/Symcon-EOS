@@ -270,6 +270,14 @@ if (!trait_exists('EOSServerConfig')) {
             return ['ok' => true, 'status' => 200, 'owner' => $owner];
         }
 
+        /** The instance that owns $id at this server, 0 = nobody (read-only, see claimDevice()). */
+        protected function deviceOwner(string $id): int
+        {
+            $owners = $this->eosJsonDecode($this->ReadAttributeString('DeviceOwners'), []);
+            $owner = is_array($owners) ? (int) ($owners[$id] ?? 0) : 0;
+            return $this->ownsDevice($owner, $id) ? $owner : 0;
+        }
+
         private function ownsDevice(int $iid, string $id): bool
         {
             if ($iid <= 0 || !IPS_InstanceExists($iid) || (int) IPS_GetInstance($iid)['ConnectionID'] !== $this->InstanceID) {
@@ -300,6 +308,11 @@ if (!trait_exists('EOSServerConfig')) {
                     return ['ok' => $res['ok'], 'status' => $res['status'], 'errno' => $res['errno'] ?? 0, 'error' => $res['error']];
 
                 case 'RemoveDevice':
+                    // Never the entry of another instance (the id may have been taken over since the rename).
+                    $owner = $this->deviceOwner((string) ($data['DeviceID'] ?? ''));
+                    if ($owner > 0 && $owner !== (int) ($data['InstanceID'] ?? 0)) {
+                        return ['ok' => false, 'status' => 409, 'error' => sprintf($this->Translate('%s belongs to instance %d'), (string) ($data['DeviceID'] ?? ''), $owner)];
+                    }
                     return $this->removeDevice((string) ($data['Collection'] ?? ''), (string) ($data['DeviceID'] ?? ''));
             }
             return ['ok' => false, 'error' => 'unknown command ' . $command];

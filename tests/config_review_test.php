@@ -270,5 +270,20 @@ $us->ApplyChanges();                                                            
 check((int) ($be->file['devices']['batteries']['battery1']['capacity_wh'] ?? 0) === 12000, 'regression: ... and the next Apply retries the save: ' . json_encode($be->file['devices']['batteries']['battery1']['capacity_wh'] ?? null));
 drop(1381);
 
+// ---------------------------------------------------------------- regression check: "Remove old EOS entry" never deletes another instance's device
+echo "== Regression: alter Eintrag gehört inzwischen einer anderen Instanz\n";
+$GLOBALS['registry'] = true;
+eosLoad(['home_appliances' => ['dishwasher1' => HA], 'max_home_appliances' => 1]);
+$x = applianceAt(1400); $x->ApplyChanges();
+$x->properties['DeviceID'] = 'dryer1'; $x->ApplyChanges();   // X renamed, dishwasher1 still in EOS
+$y = applianceAt(1401); $y->ApplyChanges();                  // Y with the default id adopts dishwasher1
+$x->RequestAction('RemoveOldEOSEntry', '');
+$form = json_decode($x->GetConfigurationForm(), true);
+$button = formElement(array_merge($form['elements'] ?? [], $form['actions'] ?? []), 'RemoveOldEntry');
+check($y->status === IS_ACTIVE && isset($be->live['devices']['home_appliances']['dishwasher1']) && ($button['visible'] ?? true) === false,
+    'regression: the old entry now owned by another instance is neither removed nor offered for removal: ' . json_encode(array_keys($be->live['devices']['home_appliances'])));
+drop(1400, 1401);
+$GLOBALS['registry'] = false;
+
 setClock(null);
 echo "\nAlle {$GLOBALS['checks']} Prüfungen bestanden.\n";
