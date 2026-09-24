@@ -57,6 +57,8 @@
     .axis .unit { fill: var(--ink-3); }
     .band rect { rx: 2; }
     .band text { fill: #fff; font-size: 9.5px; font-weight: 600; pointer-events: none; }
+    /* On the light hatch white text is invisible: use the tile's text colour (inherited from body). */
+    .band text.on-hatch { fill: var(--ink); }
     .band .idle { fill: url(#hatch); }
     .soc-area { fill: var(--soc); fill-opacity: 0.14; }
     .soc-line { stroke: var(--soc); stroke-width: 2; fill: none; stroke-linejoin: round; stroke-linecap: round; }
@@ -252,7 +254,7 @@
             if (w > 58) {
                 const tx = el('text', { x: xs + 5, y: padT + bandH - 4.5 }, gBand);
                 tx.textContent = info.label;
-                if (info.cls === 'idle') { tx.setAttribute('fill', css('--ink')); }
+                if (info.cls === 'idle') { tx.setAttribute('class', 'on-hatch'); }
             }
         }
 
