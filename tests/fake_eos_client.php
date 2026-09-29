@@ -39,6 +39,7 @@ if (!class_exists('EOSClient')) {
         public function putMeasurementData(array $data): array { return $this->b()->putMeasurementData($data); }
         public function putMeasurementSamples(array $samples): array { return $this->b()->putMeasurementSamples($samples); }
         public function getMeasurementKeys(): array { return $this->b()->getMeasurementKeys(); }
+        public function getMeasurementSeries(string $key, ?string $interval = null, ?string $start = null, ?bool $dropna = null): array { return $this->b()->getMeasurementSeries($key, $start, $dropna ?? true); }
         public function getConfig(): array { return $this->b()->getConfig(); }
         public function getConfigPath(string $path): array { return $this->b()->getConfigPath($path); }
         public function putConfig(array|object $merge): array { return $this->b()->putConfig($merge); }

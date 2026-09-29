@@ -159,6 +159,29 @@ $be->live['devices']['inverters'] = ['inverter9' => ['device_id' => 'inverter9']
 check($server->WriteConfigToEOS() === false && array_filter($be->calls, static fn (array $c): bool => $c[0] === 'PUT' && $c[1] === '/v1/config') === [], 'S2: a second inverter under another id is refused');
 $problems = (fn (): array => $this->configProblems(['devices' => ['batteries' => ['battery1' => ['min_soc_percentage' => 10, 'max_soc_percentage' => 95]], 'inverters' => []]]))->call($server);
 check(count($problems) === 1 && str_contains($problems[0], 'no inverter'), 'S2: the plausibility check names the missing inverter');
+
+// An appliance entry nobody feeds any more cancels every run (29.09.2026: dishwasher1 of a disabled test instance).
+$cycles = fn (array $cfg): array => (fn (): array => $this->applianceCycleProblems($cfg))->call($server);
+$be->live['devices']['home_appliances'] = ['dishwasher9' => ['device_id' => 'dishwasher9', 'num_cycles' => 1]];
+$cfg = ['devices' => ['home_appliances' => $be->live['devices']['home_appliances']]];
+$savedRecords = $be->records; $be->records = [];
+check($cycles($cfg) === [], 'cycles: a day without any record is skipped, as EOS does');
+$be->records[$now - 120] = ['dishwasher9.cycles_completed' => 0.0];
+check($cycles($cfg) === [], 'cycles: a valid count in the newest record of today is fine');
+$be->records[$now - 60] = ['battery1-soc-factor' => 0.5];
+$found = $cycles($cfg);
+check(count($found) === 1 && str_contains($found[0], 'dishwasher9') && str_contains($found[0], 'no instance at this server'), 'cycles: a newer record without the count names the appliance and its missing owner');
+check($be->runCheck() !== [] && in_array('Invalid completed cycle count for dishwasher9', $be->runCheck(), true), 'cycles: the fake EOS cancels the same run');
+$be->records[$now - 30] = ['dishwasher9.cycles_completed' => 2.0];
+check(count($cycles($cfg)) === 1, 'cycles: a count above num_cycles is invalid');
+$be->records[$now - 30] = ['dishwasher9.cycles_completed' => 1.0];
+check($cycles($cfg) === [], 'cycles: a count up to num_cycles is valid');
+$be->records[$now - 20] = ['battery1-soc-factor' => 0.5];
+$savedPlan = $be->plan; $be->plan = null; $server->logs = [];
+$server->attributes['PlanMissingExplained'] = '';
+$server->FetchPlan();
+check(array_filter($server->logs, static fn (array $l): bool => $l[0] === KL_WARNING && str_contains($l[1], 'dishwasher9')) !== [], 'cycles: a missing plan is explained with the appliance');
+$be->plan = $savedPlan; $be->records = $savedRecords; $be->live['devices']['home_appliances'] = [];
 $GLOBALS['registry'] = false;
 
 // ---------------------------------------------------------------- K7: history import beyond the archive limit

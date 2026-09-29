@@ -152,7 +152,7 @@ class EOSServer extends IPSModuleStrict
         $client = $this->client();
         $live = $client->getConfig();
         if ($live['ok'] && is_array($live['data'])) {
-            $problems = $this->configProblems($live['data']);
+            $problems = array_merge($this->configProblems($live['data']), $this->applianceCycleProblems($live['data']));
             $this->setFormAttribute($form['elements'], 'ConfigCheck', 'caption', $problems === []
                 ? $this->Translate('EOS device configuration: no problems found.')
                 : $this->Translate('EOS will not plan until this is fixed:') . ' ' . implode(' · ', $problems));
@@ -262,7 +262,7 @@ class EOSServer extends IPSModuleStrict
     private function explainMissingPlan(): void
     {
         $live = $this->client()->getConfig();
-        $problems = ($live['ok'] && is_array($live['data'])) ? $this->configProblems($live['data']) : [];
+        $problems = ($live['ok'] && is_array($live['data'])) ? array_merge($this->configProblems($live['data']), $this->applianceCycleProblems($live['data'])) : [];
         $text = implode(' · ', $problems);
         if ($text !== $this->ReadAttributeString('PlanMissingExplained')) {
             $this->WriteAttributeString('PlanMissingExplained', $text);

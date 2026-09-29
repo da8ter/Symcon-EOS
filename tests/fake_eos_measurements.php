@@ -96,6 +96,27 @@ trait FakeEOSMeasurements
         return $this->unreachable() ?? $this->result(true, 200, $this->knownKeys(), null);
     }
 
+    /** GET /v1/measurement/series: raw records from $start on; dropna=false keeps records without the key as null. */
+    public function getMeasurementSeries(string $key, ?string $start, bool $dropna): array
+    {
+        $this->calls[] = ['GET', '/v1/measurement/series', ['key' => $key, 'start_datetime' => $start, 'dropna' => $dropna]];
+        if (($down = $this->unreachable()) !== null) {
+            return $down;
+        }
+        if (!in_array($key, $this->knownKeys(), true)) {
+            return $this->problem(404, 'Measurement series retrieval failed', "Key '" . $key . "' not found in measurementss", '/v1/measurement/series');
+        }
+        $from = $start === null ? PHP_INT_MIN : self::second($start);
+        $data = [];
+        ksort($this->records);
+        foreach ($this->records as $ts => $row) {
+            if ($ts >= $from && (!$dropna || ($row[$key] ?? null) !== null)) {
+                $data[date('c', $ts)] = $row[$key] ?? null;
+            }
+        }
+        return $this->result(true, 200, ['data' => $data, 'dtype' => 'float64', 'tz' => date_default_timezone_get()], null);
+    }
+
     /** The newest record at or before $now that lies within $maxAge (dropna=False: that record decides). */
     private function newestRecord(int $now, int $maxAge): ?array
     {
