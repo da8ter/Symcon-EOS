@@ -239,6 +239,41 @@ if (!trait_exists('EOSServerConfig')) {
             return $problems;
         }
 
+        /**
+         * Home appliances whose completed cycles for today EOS lacks: configrequest.py cancels every
+         * run when the newest record since local midnight has no valid count (0..num_cycles) for
+         * one of them, also when the entry belongs to no Symcon instance any more. A key EOS does
+         * not know and a day without records are skipped there, and here.
+         */
+        protected function applianceCycleProblems(array $config): array
+        {
+            $appliances = $config['devices']['home_appliances'] ?? null;
+            if (!is_array($appliances) || $appliances === []) {
+                return [];
+            }
+            $midnight = (new DateTimeImmutable('@' . $this->eosNow()))->setTimezone(new DateTimeZone(date_default_timezone_get()))->setTime(0, 0);
+            $problems = [];
+            foreach ($appliances as $id => $entry) {
+                $entry = is_array($entry) ? $entry : [];
+                $key = (string) ($entry['cycles_completed_measurement_key'] ?? '') ?: $id . '.cycles_completed';
+                $res = $this->client()->getMeasurementSeries($key, null, $midnight->format('c'), false);
+                $data = ($res['ok'] && is_array($res['data']['data'] ?? null)) ? $res['data']['data'] : [];
+                if ($data === []) {
+                    continue;
+                }
+                uksort($data, static fn (string $a, string $b): int => strtotime($a) <=> strtotime($b));
+                $count = end($data);
+                if (is_int($count) || is_float($count)) {
+                    if (is_finite((float) $count) && floor((float) $count) === (float) $count && $count >= 0 && $count <= (int) ($entry['num_cycles'] ?? 1)) {
+                        continue;
+                    }
+                }
+                $owner = $this->deviceOwner((string) $id);
+                $problems[] = sprintf($this->Translate('%s: no valid count of completed cycles for today (owner: %s)'), (string) $id, $owner > 0 ? '#' . $owner : $this->Translate('no instance at this server'));
+            }
+            return $problems;
+        }
+
         /** ForwardData GetConfig / SetConfig / MergeConfig / SaveConfig / RemoveDevice. */
         /**
          * One owner per device id at this server: the first instance that claims an id keeps it

@@ -112,11 +112,18 @@ if (!class_exists('EOSClient')) {
             return $this->request('PUT', '/v1/measurement/samples', [], $samples, 120);
         }
 
-        public function getMeasurementSeries(string $key, ?string $interval = null): array
+        /** Raw records of $key; $start (ISO) limits them, $dropna false keeps records without a value as null. */
+        public function getMeasurementSeries(string $key, ?string $interval = null, ?string $start = null, ?bool $dropna = null): array
         {
             $query = ['key' => $key];
             if ($interval !== null) {
                 $query['interval'] = $interval;
+            }
+            if ($start !== null) {
+                $query['start_datetime'] = $start;
+            }
+            if ($dropna !== null) {
+                $query['dropna'] = $dropna ? 'true' : 'false';
             }
             return $this->request('GET', '/v1/measurement/series', $query);
         }
