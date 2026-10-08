@@ -6,9 +6,9 @@ Neue Dateien enden mit „Stand: geprüft gegen den Code am …“. Ändert ein 
 
 ## Anleitungen und Planung
 
-- [eos-setup](eos-setup.md) – EOS in Docker einrichten, typische Probleme, Prognose-Keys
-- [geraete-mapping](geraete-mapping.md) – Beispiele für die Steuerung je Hersteller, Kontext in `$_IPS`
-- [integrationsplan](integrationsplan.md) – Analyse von EOS 0.4.0rc1 und Phasenplan (Planungsstand, siehe [stand](stand.md))
+- [eos-setup](../../docs/eos-setup.md) – EOS in Docker einrichten, typische Probleme, Prognose-Keys
+- [geraete-mapping](../../docs/geraete-mapping.md) – Beispiele für die Steuerung je Hersteller, Kontext in `$_IPS`
+- [integrationsplan](../../docs/integrationsplan.md) – Analyse von EOS 0.4.0rc1 und Phasenplan (Planungsstand, siehe [stand](stand.md))
 
 ## Entscheidungen (`entscheidungen/`)
 
@@ -18,12 +18,12 @@ Neue Dateien enden mit „Stand: geprüft gegen den Code am …“. Ändert ein 
 
 ## Testen
 
-- [`../tests/README.md`](../tests/README.md) – Prüfstand ohne Symcon: SDK- und EOS-Attrappe, was geprüft wird
+- [`../tests/README.md`](../../tests/README.md) – Prüfstand ohne Symcon: SDK- und EOS-Attrappe, was geprüft wird
 - [live-pruefstand](testen/live-pruefstand.md) – echter Kernel, virtuelle Geräte, Mock-EOS
 
 ## Symcon-Plattform
 
-Gemessenes Symcon-Verhalten für alle Module: https://github.com/da8ter/SymDo-Family-Organizer/tree/SymDo-Beta/docs/plattform (lokal `../../List/docs/plattform/`).
+Gemessenes Symcon-Verhalten für alle Module: https://github.com/da8ter/SymDo-Family-Organizer/tree/SymDo-Beta/.claude/docs/plattform (lokal `../../List/.claude/docs/plattform/`).
 
 ## Stand
 

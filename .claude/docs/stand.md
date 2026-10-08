@@ -6,7 +6,7 @@ Offenes über alle Bereiche. Erledigtes wird hier gestrichen, nicht abgehakt. Ve
 
 - **Steuerung:** Fremdänderungs-Erkennung vor dem Heartbeat, asynchrone Aktionen, `PhasesSourceVariable` für das E-Auto ([steuerung](entscheidungen/steuerung.md)).
 - **Zähler:** Vorgabe `HistoryHours` = 48 deckt das Sieben-Tage-Fenster der Lastanpassung nicht ab ([eos-befunde](entscheidungen/eos-befunde.md)); Vorgabe anheben oder im Formular darauf hinweisen.
-- **Phase 3 des Integrationsplans:** KPIs, PDF-Report, Diagnose-Export, Prognose-Import-Instanz. **Phase 4:** Push-Kanal von EOS, Veröffentlichung im Module Store, Nachziehen auf EOS 0.4.0 final ([integrationsplan](integrationsplan.md), Abschnitt 5).
+- **Phase 3 des Integrationsplans:** KPIs, PDF-Report, Diagnose-Export, Prognose-Import-Instanz. **Phase 4:** Push-Kanal von EOS, Veröffentlichung im Module Store, Nachziehen auf EOS 0.4.0 final ([integrationsplan](../../docs/integrationsplan.md), Abschnitt 5).
 - **Upstream:** Die SoC-/Zyklensuche in `configrequest.py` nimmt den jüngsten Datensatz auch ohne den gesuchten Schlüssel (`dropna=False`); das Modul umgeht es mit gebündelten Messwerten. Ein Fix in EOS wäre `dropna=True`.
 
 ## Zu klären
