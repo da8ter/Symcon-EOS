@@ -100,5 +100,5 @@ Konfliktfelder, Leistung aus EOS, alter Eintrag nach Umbenennen, Fehlerpfade, Fo
 ## Nicht abgedeckt
 
 Echter Symcon-Kernel (Nachrichten, Zeitgeber in Echtzeit, Formulare) und echtes EOS (Optimierung, Prognosen).
-Dafür gibt es den Live-Prüfstand in der Docker-Testinstanz (Symcon 9.1 auf Port 3778, EOS auf Port 8503) mit
+Dafür gibt es den Live-Prüfstand in einer Docker-Testinstanz (Symcon 9.1, EOS auf Port 8503) mit
 virtuellen Geräten, siehe README „Prüfstand mit virtuellen Geräten“.

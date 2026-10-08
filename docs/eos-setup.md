@@ -85,14 +85,15 @@ Eigene Konfigurationen als `.docker/eos-config-local.json` ablegen, die Datei is
 eingetragen und landet nicht im Repo.
 
 Dynamischer Börsenstromtarif (Energy-Charts, 15-Minuten-Raster) mit den festen Bestandteilen des eigenen
-Tarifblatts als Netto-Aufschlag und 19 % Mehrwertsteuer:
+Tarifblatts als Netto-Aufschlag und 19 % Mehrwertsteuer (`<aufschlag>`: Netto-Aufschlag in €/kWh laut
+Tarifblatt, z. B. Netzentgelt, Umlagen und Marge zusammen):
 
 ```bash
 curl -X PUT http://localhost:8503/v1/config/elecprice/provider -H 'Content-Type: application/json' -d '"ElecPriceEnergyCharts"'
 curl -X PUT http://localhost:8503/v1/config/elecprice/energycharts/bidding_zone -H 'Content-Type: application/json' -d '"DE-LU"'
 curl -X PUT http://localhost:8503/v1/config/elecfee/provider -H 'Content-Type: application/json' -d '"ElecFeeFixed"'
 curl -X PUT http://localhost:8503/v1/config/elecfee/elecfeefixed/consumption_amt_kwh -H 'Content-Type: application/json' \
-  -d '{"windows":[{"start_time":"00:00:00","duration":"1 day","value":0.1772}]}'
+  -d '{"windows":[{"start_time":"00:00:00","duration":"1 day","value":<aufschlag>}]}'
 curl -X PUT http://localhost:8503/v1/config/elecfee/elecfeefixed/consumption_percent_amt -H 'Content-Type: application/json' \
   -d '{"windows":[{"start_time":"00:00:00","duration":"1 day","value":19}]}'
 curl -X PUT http://localhost:8503/v1/config/file

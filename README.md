@@ -339,5 +339,5 @@ EOSMTR_ImportHistory($id, 48);      // Historie der letzten 48 h importieren
 - Prüfstand ohne Symcon: `tests/run.sh` prüft Syntax und JSON und führt die Regressionstests der Steuerung,
   des Konfigurationsabgleichs, des Zählers und des EOS Servers gegen ein SDK-Double und ein EOS-Double aus
   ([tests/README.md](tests/README.md)).
-- Test gegen Symcon in Docker (`symcon-91-rust`, Port 3778) und EOS in Docker (Port 8503), siehe
+- Test gegen Symcon in Docker und EOS in Docker (Port 8503), siehe
   [docs/eos-setup.md](docs/eos-setup.md).
